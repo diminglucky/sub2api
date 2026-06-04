@@ -92,7 +92,7 @@ export function describePaymentScenarioError(
         hintKey: 'payment.errors.wechatOpenInWeChatHint',
       }
     }
-    if (code === 'PAYMENT_GATEWAY_ERROR' || code === 'UNHANDLED_PAYMENT_SCENARIO') {
+    if (code === 'UNHANDLED_PAYMENT_SCENARIO') {
       return {
         messageKey: 'payment.errors.wechatUnavailable',
         hintKey: defaultWechatHint(context),
@@ -100,7 +100,7 @@ export function describePaymentScenarioError(
     }
   }
 
-  if (method === 'alipay' && (code === 'PAYMENT_GATEWAY_ERROR' || code === 'UNHANDLED_PAYMENT_SCENARIO')) {
+  if (method === 'alipay' && code === 'UNHANDLED_PAYMENT_SCENARIO') {
     return {
       messageKey: context.isMobile
         ? 'payment.errors.alipayMobileUnavailable'

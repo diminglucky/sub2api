@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for Sub2API frontend
+ * Vue Router configuration for SuperAI frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 
@@ -253,6 +253,42 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/manual',
+    name: 'UserManual',
+    component: () => import('@/views/user/ManualView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'User Manual',
+      titleKey: 'manual.title',
+      descriptionKey: 'manual.description'
+    }
+  },
+  {
+    path: '/manual/:platform',
+    name: 'UserManualPlatform',
+    component: () => import('@/views/user/ManualView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'User Manual',
+      titleKey: 'manual.title',
+      descriptionKey: 'manual.description'
+    }
+  },
+  {
+    path: '/models',
+    name: 'UserModels',
+    component: () => import('@/views/user/ModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Models',
+      titleKey: 'models.title',
+      descriptionKey: 'models.description'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
@@ -274,6 +310,19 @@ const routes: RouteRecordRaw[] = [
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
       descriptionKey: 'userSubscriptions.description'
+    }
+  },
+  {
+    path: '/recharge',
+    name: 'Recharge',
+    component: () => import('@/views/user/PaymentView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Recharge',
+      titleKey: 'nav.recharge',
+      descriptionKey: 'payment.description',
+      requiresPayment: false
     }
   },
   {
@@ -442,6 +491,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/models',
+    name: 'AdminModels',
+    component: () => import('@/views/admin/ModelsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Model Management',
+      titleKey: 'admin.models.title',
+      descriptionKey: 'admin.models.description'
+    }
+  },
+  {
     path: '/admin/channels/monitor',
     name: 'AdminChannelMonitor',
     component: () => import('@/views/admin/ChannelMonitorView.vue'),
@@ -546,6 +607,18 @@ const routes: RouteRecordRaw[] = [
       title: 'System Settings',
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
+    }
+  },
+  {
+    path: '/admin/backups',
+    name: 'AdminBackups',
+    component: () => import('@/views/admin/BackupView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Database Backup',
+      titleKey: 'admin.backup.title',
+      descriptionKey: 'admin.backup.description'
     }
   },
   {
@@ -739,7 +812,7 @@ router.beforeEach(async (to, _from, next) => {
     const menuItem = publicItems.find((item) => item.id === id)
       ?? (authStore.isAdmin ? adminSettingsStore.customMenuItems.find((item) => item.id === id) : undefined)
     if (menuItem?.label) {
-      const siteName = appStore.siteName || 'Sub2API'
+      const siteName = appStore.siteName || 'SuperAI'
       document.title = `${menuItem.label} - ${siteName}`
     } else {
       document.title = resolveDocumentTitle(to.meta.title, appStore.siteName, to.meta.titleKey as string)

@@ -24,7 +24,7 @@ export interface PricingFormEntry {
   intervals: IntervalFormEntry[]
 }
 
-// 价格转换：后端存 per-token，前端显示 per-MTok ($/1M tokens)
+// 价格转换：后端存 per-token，前端显示 per-MTok ($/1M)
 const MTOK = 1_000_000
 
 export function toNullableNumber(val: number | string | null | undefined): number | null {

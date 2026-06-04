@@ -133,6 +133,8 @@ docs/*
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
 .serena/
 .codex/
+.playwright-mcp/
+.tmp-go-cache/
 frontend/coverage/
 aicodex
 output/

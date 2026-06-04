@@ -71,7 +71,18 @@
           </label>
           <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.schedule.cronExpr') }}</label>
-            <input v-model="scheduleForm.cron_expr" class="input w-full" placeholder="0 2 * * *" />
+            <input v-model="scheduleForm.cron_expr" class="input w-full" placeholder="30 3 * * *" />
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button
+                v-for="option in schedulePresets"
+                :key="option.value"
+                type="button"
+                class="btn btn-secondary btn-xs"
+                @click="applySchedulePreset(option.value)"
+              >
+                {{ option.label }}
+              </button>
+            </div>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.schedule.cronHint') }}</p>
           </div>
           <div>
@@ -305,18 +316,22 @@ const testingS3 = ref(false)
 // Schedule config
 const scheduleForm = ref<BackupScheduleConfig>({
   enabled: false,
-  cron_expr: '0 2 * * *',
-  retain_days: 14,
-  retain_count: 10,
+  cron_expr: '30 3 * * *',
+  retain_days: 30,
+  retain_count: 60,
 })
 const savingSchedule = ref(false)
+const schedulePresets = computed(() => [
+  { label: t('admin.backup.schedule.preset0330'), value: '30 3 * * *' },
+  { label: t('admin.backup.schedule.preset0400'), value: '0 4 * * *' },
+])
 
 // Backups
 const backups = ref<BackupRecord[]>([])
 const loadingBackups = ref(false)
 const creatingBackup = ref(false)
 const restoringId = ref('')
-const manualExpireDays = ref(14)
+const manualExpireDays = ref(30)
 
 // Polling
 const pollingTimer = ref<ReturnType<typeof setInterval> | null>(null)
@@ -487,13 +502,18 @@ async function loadSchedule() {
     const cfg = await adminAPI.backup.getSchedule()
     scheduleForm.value = {
       enabled: cfg.enabled,
-      cron_expr: cfg.cron_expr || '0 2 * * *',
-      retain_days: cfg.retain_days || 14,
-      retain_count: cfg.retain_count || 10,
+      cron_expr: cfg.cron_expr || '30 3 * * *',
+      retain_days: cfg.retain_days ?? 30,
+      retain_count: cfg.retain_count ?? 60,
     }
   } catch (error) {
     appStore.showError((error as { message?: string })?.message || t('errors.networkError'))
   }
+}
+
+function applySchedulePreset(cronExpr: string) {
+  scheduleForm.value.cron_expr = cronExpr
+  scheduleForm.value.enabled = true
 }
 
 async function saveSchedule() {

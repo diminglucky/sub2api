@@ -183,11 +183,43 @@ func (e *EasyPay) createAPIPayment(ctx context.Context, req payment.CreatePaymen
 	if resp.Code != easypayCodeSuccess {
 		return nil, fmt.Errorf("easypay error: %s", resp.Msg)
 	}
-	payURL := resp.PayURL
-	if req.IsMobile && resp.PayURL2 != "" {
-		payURL = resp.PayURL2
+	var fields map[string]any
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, fmt.Errorf("easypay parse fields: %w", err)
 	}
-	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: resp.QRCode}, nil
+	payURL := firstEasyPayString(fields, "payurl", "pay_url", "url", "jump_url", "jumpurl")
+	if req.IsMobile {
+		if mobileURL := firstEasyPayString(fields, "payurl2", "pay_url2", "urlscheme", "url_scheme"); mobileURL != "" {
+			payURL = mobileURL
+		}
+	}
+	qrCode := firstEasyPayString(fields, "qrcode", "qr_code", "code_url", "codeurl")
+	if strings.TrimSpace(payURL) == "" && strings.TrimSpace(qrCode) == "" {
+		return e.createRedirectPayment(req)
+	}
+	return &payment.CreatePaymentResponse{TradeNo: resp.TradeNo, PayURL: payURL, QRCode: qrCode}, nil
+}
+
+func firstEasyPayString(fields map[string]any, keys ...string) string {
+	for _, key := range keys {
+		value, ok := fields[key]
+		if !ok {
+			continue
+		}
+		switch v := value.(type) {
+		case string:
+			if s := strings.TrimSpace(v); s != "" {
+				return s
+			}
+		case float64:
+			return strconv.FormatFloat(v, 'f', -1, 64)
+		case json.Number:
+			if s := strings.TrimSpace(v.String()); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 // resolveURLs returns (notifyURL, returnURL) preferring request values,

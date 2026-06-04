@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-4xl space-y-6">
+    <div class="w-full space-y-6">
       <div v-if="loading" class="flex items-center justify-center py-20">
         <div class="h-8 w-8 animate-spin rounded-full border-4 border-primary-500 border-t-transparent"></div>
       </div>
@@ -31,34 +31,99 @@
         <template v-else>
           <!-- Top-up Tab -->
           <template v-if="activeTab === 'recharge'">
-            <!-- Recharge Account Card -->
-            <div class="card p-5">
-              <p class="text-xs font-medium text-gray-400 dark:text-gray-500">{{ t('payment.rechargeAccount') }}</p>
-              <p class="mt-1 text-base font-semibold text-gray-900 dark:text-white">{{ user?.username || '' }}</p>
-              <p class="mt-0.5 text-sm font-medium text-green-600 dark:text-green-400">{{ t('payment.currentBalance') }}: {{ user?.balance?.toFixed(2) || '0.00' }}</p>
-            </div>
-            <div v-if="enabledMethods.length === 0" class="card py-16 text-center">
-              <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
-            </div>
-            <template v-else>
-            <div class="card p-6">
-              <AmountInput
-                v-model="amount"
-                :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
-                :min="globalMinAmount"
-                :max="globalMaxAmount"
-              />
-              <p v-if="amountError" class="mt-2 text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
-            </div>
-            <div v-if="enabledMethods.length >= 1" class="card p-6">
-              <PaymentMethodSelector
-                :methods="methodOptions"
-                :selected="selectedMethod"
-                @select="selectedMethod = $event"
-              />
-            </div>
-            <div v-if="validAmount > 0" class="card p-6">
-              <div class="space-y-2 text-sm">
+            <section class="card space-y-8 p-6 sm:p-8">
+              <header class="flex items-center gap-3">
+                <Icon name="creditCard" size="lg" class="text-orange-500" />
+                <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('payment.onlineRecharge') }}</h2>
+              </header>
+
+              <div class="space-y-3">
+                <label class="block text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('payment.amountLabel') }}
+                </label>
+                <div class="relative">
+                  <input
+                    type="number"
+                    inputmode="decimal"
+                    :value="amountInputText"
+                    :min="rechargeMinAmount"
+                    :max="rechargeMaxAmount || undefined"
+                    step="0.01"
+                    :placeholder="amountPlaceholder"
+                    class="input h-14 w-full rounded-lg border-gray-300 bg-transparent pr-4 text-base font-semibold dark:border-dark-600"
+                    @input="handleRechargeAmountInput"
+                  />
+                </div>
+                <p v-if="amountError" class="text-xs text-amber-600 dark:text-amber-300">{{ amountError }}</p>
+                <p v-else class="flex items-center gap-2 text-sm font-semibold text-gray-500 dark:text-gray-400">
+                  <Icon name="document" size="sm" />
+                  <span>{{ rechargeEstimateText }}</span>
+                </p>
+              </div>
+
+              <div class="space-y-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.quickAmounts') }}</h3>
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                  <button
+                    v-for="option in quickRechargeOptions"
+                    :key="option.amount"
+                    type="button"
+                    :class="[
+                      'flex h-24 flex-col items-center justify-center rounded-lg border text-center transition-colors',
+                      amount === option.amount
+                        ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:border-primary-400 dark:text-primary-300'
+                        : 'border-gray-300 bg-transparent text-gray-900 hover:border-primary-400 dark:border-dark-600 dark:text-white dark:hover:border-primary-500',
+                    ]"
+                    @click="selectRechargeAmount(option.amount)"
+                  >
+                    <span class="text-lg font-bold">{{ formatQuickAmount(option.amount) }}</span>
+                    <span
+                      v-if="option.badge"
+                      class="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                    >
+                      {{ option.badge }}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="enabledMethods.length >= 1" class="space-y-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.paymentMethod') }}</h3>
+                <div class="flex flex-wrap gap-3">
+                  <button
+                    v-for="method in methodOptions"
+                    :key="method.type"
+                    type="button"
+                    :disabled="!method.available"
+                    :class="[
+                      'flex h-14 items-center gap-3 rounded-lg border px-4 transition-colors',
+                      !method.available
+                        ? 'cursor-not-allowed border-gray-200 opacity-50 dark:border-dark-700'
+                        : selectedMethod === method.type
+                          ? 'border-orange-500 bg-orange-500/10 text-gray-900 dark:text-white'
+                          : 'border-gray-300 text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:text-gray-200 dark:hover:border-dark-500',
+                    ]"
+                    @click="method.available && (selectedMethod = method.type)"
+                  >
+                    <span
+                      class="flex h-4 w-4 items-center justify-center rounded-full border-2"
+                      :class="selectedMethod === method.type ? 'border-orange-500' : 'border-gray-400 dark:border-dark-500'"
+                    >
+                      <span v-if="selectedMethod === method.type" class="h-2 w-2 rounded-full bg-orange-500"></span>
+                    </span>
+                    <img :src="paymentMethodIcon(method.type)" :alt="t(`payment.methods.${method.type}`)" class="h-8 w-8 object-contain" />
+                    <span class="text-base font-bold">{{ t(`payment.methods.${method.type}`) }}</span>
+                  </button>
+                </div>
+              </div>
+              <div v-else class="space-y-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.paymentMethod') }}</h3>
+                <div class="rounded-lg border border-dashed border-gray-300 px-4 py-4 text-sm font-semibold text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ t('payment.noPaymentMethodsConfigured') }}
+                </div>
+              </div>
+
+              <div v-if="validAmount > 0 && (feeRate > 0 || balanceRechargeMultiplier !== 1)" class="max-w-xl space-y-2 rounded-lg border border-gray-200 p-4 text-sm dark:border-dark-700">
                 <div class="flex justify-between">
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.paymentAmount') }}</span>
                   <span class="text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(validAmount) }}</span>
@@ -75,19 +140,20 @@
                   <span class="text-gray-500 dark:text-gray-400">{{ t('payment.creditedBalance') }}</span>
                   <span class="text-gray-900 dark:text-white">${{ creditedAmount.toFixed(2) }}</span>
                 </div>
-                <p v-if="balanceRechargeMultiplier !== 1" class="border-t border-gray-200 pt-2 text-xs text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                  {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
-                </p>
               </div>
-            </div>
-            <button :class="['btn w-full py-3 text-base font-medium', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
-              <span v-if="submitting" class="flex items-center justify-center gap-2">
-                <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                {{ t('common.processing') }}
-              </span>
-              <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
-            </button>
-            </template>
+
+              <button
+                :class="['btn min-w-28 px-6 py-3 text-base font-bold', paymentButtonClass]"
+                :disabled="!canSubmit || submitting"
+                @click="handleSubmitRecharge"
+              >
+                <span v-if="submitting" class="flex items-center justify-center gap-2">
+                  <span class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                  {{ t('common.processing') }}
+                </span>
+                <span v-else>{{ t('payment.payNow') }}</span>
+              </button>
+            </section>
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
@@ -205,8 +271,12 @@
               </div>
             </template>
           </template>
+          <!-- Redeem Tab -->
+          <template v-else-if="activeTab === 'redeem'">
+            <RedeemView embedded />
+          </template>
         </template>
-        <div v-if="(checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan" class="card p-4">
+        <div v-if="activeTab !== 'redeem' && (checkout.help_text || checkout.help_image_url) && paymentPhase === 'select' && !selectedPlan" class="card p-4">
           <div class="flex flex-col items-center gap-3">
             <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
               class="h-40 max-w-full cursor-pointer rounded-lg object-contain transition-opacity hover:opacity-80"
@@ -257,7 +327,6 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
-import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import {
@@ -275,10 +344,16 @@ import { platformAccentBarClass, platformBadgeLightClass, platformBadgeClass, pl
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import PaymentStatusPanel from '@/components/payment/PaymentStatusPanel.vue'
 import Icon from '@/components/icons/Icon.vue'
+import RedeemView from './RedeemView.vue'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import alipayIcon from '@/assets/icons/alipay.svg'
+import wxpayIcon from '@/assets/icons/wxpay.svg'
+import stripeIcon from '@/assets/icons/stripe.svg'
+import airwallexIcon from '@/assets/icons/airwallex.svg'
+import easypayIcon from '@/assets/icons/easypay.svg'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -289,7 +364,6 @@ const paymentStore = usePaymentStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
 
-const user = computed(() => authStore.user)
 const activeSubscriptions = computed(() => subscriptionStore.activeSubscriptions)
 
 function getDaysRemaining(expiresAt: string): number {
@@ -301,7 +375,7 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+const activeTab = ref<'recharge' | 'subscription' | 'redeem'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
@@ -428,7 +502,7 @@ function buildWechatOAuthAuthorizeUrl(
 
   try {
     const targetUrl = new URL(normalizedUrl, window.location.origin)
-    const redirectPath = targetUrl.searchParams.get('redirect') || '/purchase'
+    const redirectPath = targetUrl.searchParams.get('redirect') || route.fullPath || '/recharge'
     const redirectUrl = new URL(redirectPath, window.location.origin)
     const paymentType = normalizeVisibleMethod(context.paymentType) || context.paymentType.trim() || 'wxpay'
 
@@ -478,13 +552,15 @@ function onPaymentSettled() {
 // All checkout data from single API call
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
+  min_amount: 5, max_amount: 0,
   plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
-  const result: { key: 'recharge' | 'subscription'; label: string }[] = []
+  const result: { key: 'recharge' | 'subscription' | 'redeem'; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
+  result.push({ key: 'redeem', label: t('payment.tabRedeem') })
   return result
 })
 
@@ -514,20 +590,6 @@ function amountFitsMethod(amt: number, methodType: string): boolean {
   return true
 }
 
-// Visible methods decide the amount range shown to users.
-const globalMinAmount = computed(() => {
-  const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_min <= 0)) return 0
-  return Math.min(...limits.map(limit => limit.single_min))
-})
-const globalMaxAmount = computed(() => {
-  const limits = Object.values(visibleMethods.value)
-  if (limits.length === 0) return 0
-  if (limits.some(limit => limit.single_max <= 0)) return 0
-  return Math.max(...limits.map(limit => limit.single_max))
-})
-
 // Selected method's limits (for validation and error messages)
 const selectedLimit = computed(() => visibleMethods.value[selectedMethod.value])
 const selectedCurrency = computed(() => normalizePaymentCurrency(selectedLimit.value?.currency))
@@ -550,8 +612,13 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
+      available: ml?.available !== false,
     }
+  }).sort((a, b) => {
+    const order: readonly string[] = METHOD_ORDER
+    const ai = order.indexOf(a.type)
+    const bi = order.indexOf(b.type)
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
   })
 )
 
@@ -569,22 +636,82 @@ const totalAmount = computed(() =>
 
 const amountError = computed(() => {
   if (validAmount.value <= 0) return ''
-  // No method can handle this amount
-  if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
-    return t('payment.amountNoMethod')
-  }
-  // Selected method can't handle this amount (but others can)
-  const ml = selectedLimit.value
-  if (ml) {
-    if (ml.single_min > 0 && validAmount.value < ml.single_min) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(ml.single_min) })
-    if (ml.single_max > 0 && validAmount.value > ml.single_max) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(ml.single_max) })
-  }
+  if (validAmount.value < rechargeMinAmount.value) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(rechargeMinAmount.value) })
+  if (rechargeMaxAmount.value > 0 && validAmount.value > rechargeMaxAmount.value) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(rechargeMaxAmount.value) })
   return ''
 })
 
+const minimumRechargeAmount = 5
+
+const rechargeMinAmount = computed(() => Math.max(minimumRechargeAmount, checkout.value.min_amount || 0))
+const rechargeMaxAmount = computed(() => checkout.value.max_amount || 0)
+
+const quickRechargeAmounts = [5, 10, 50, 100, 200, 500, 1000]
+
+const amountInputText = computed(() => amount.value == null ? '' : String(amount.value))
+
+const amountPlaceholder = computed(() => {
+  if (rechargeMinAmount.value > 0 && rechargeMaxAmount.value > 0) return `${t('payment.minimumAmountShort', { amount: rechargeMinAmount.value })}`
+  if (rechargeMinAmount.value > 0) return t('payment.minimumAmountShort', { amount: rechargeMinAmount.value })
+  if (rechargeMaxAmount.value > 0) return t('payment.maximumAmountShort', { amount: rechargeMaxAmount.value })
+  return t('payment.enterAmount')
+})
+
+const quickRechargeOptions = computed(() =>
+  quickRechargeAmounts
+    .filter((value) =>
+      value >= rechargeMinAmount.value &&
+      (rechargeMaxAmount.value <= 0 || value <= rechargeMaxAmount.value),
+    )
+    .map((value) => ({ amount: value, badge: rechargeBonusBadge.value })),
+)
+
+const rechargeBonusBadge = computed(() => {
+  if (balanceRechargeMultiplier.value <= 1) return ''
+  return t('payment.rechargeBonusBadge', { multiplier: balanceRechargeMultiplier.value.toFixed(2) })
+})
+
+const rechargeEstimateText = computed(() => {
+  if (validAmount.value <= 0) return t('payment.rechargeAutoEstimate')
+  if (feeRate.value > 0) {
+    return t('payment.rechargePayEstimate', { amount: formatSelectedPaymentAmount(totalAmount.value) })
+  }
+  if (balanceRechargeMultiplier.value !== 1) {
+    return t('payment.rechargeCreditEstimate', { amount: creditedAmount.value.toFixed(2) })
+  }
+  return t('payment.rechargeAutoEstimate')
+})
+
+function handleRechargeAmountInput(event: Event) {
+  const raw = (event.target as HTMLInputElement).value
+  if (raw === '') {
+    amount.value = null
+    return
+  }
+  const parsed = Number(raw)
+  amount.value = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null
+}
+
+function selectRechargeAmount(value: number) {
+  amount.value = value
+}
+
+function formatQuickAmount(value: number) {
+  return formatSelectedPaymentAmount(value).replace(/\.00(?=\D*$)/, '')
+}
+
+function paymentMethodIcon(type: string): string {
+  if (type.includes('alipay')) return alipayIcon
+  if (type.includes('wxpay')) return wxpayIcon
+  if (type === 'stripe') return stripeIcon
+  if (type === 'airwallex') return airwallexIcon
+  if (type === 'easypay') return easypayIcon
+  return alipayIcon
+}
+
 const canSubmit = computed(() =>
   validAmount.value > 0
-    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && amountError.value === ''
     && selectedLimit.value?.available !== false
 )
 

@@ -22,7 +22,7 @@ const messages: Record<string, string> = {
   'admin.usage.cacheReadCost': 'Cache Read Cost',
   'usage.inputTokenPrice': 'Input price',
   'usage.outputTokenPrice': 'Output price',
-  'usage.perMillionTokens': '/ 1M tokens',
+  'usage.perMillionTokens': '/ 1M',
   'usage.serviceTier': 'Service tier',
   'usage.serviceTierPriority': 'Fast',
   'usage.serviceTierFlex': 'Flex',
@@ -212,8 +212,8 @@ describe('user UsageView tooltip', () => {
     expect(text).toContain('1.00x')
     expect(text).toContain('Billed')
     expect(text).toContain('$0.092883')
-    expect(text).toContain('$5.0000 / 1M tokens')
-    expect(text).toContain('$30.0000 / 1M tokens')
+    expect(text).toContain('$5.0000 / 1M')
+    expect(text).toContain('$30.0000 / 1M')
   })
 
   it('exports csv with input and output unit price columns', async () => {
