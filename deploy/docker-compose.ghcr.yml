@@ -13,4 +13,4 @@
 
 services:
   sub2api:
-    image: ghcr.io/diminglucky/sub2api:main
+    image: ghcr.io/diminglucky/superai:main
