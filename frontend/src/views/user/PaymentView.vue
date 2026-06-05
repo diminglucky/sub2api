@@ -31,7 +31,7 @@
         <template v-else>
           <!-- Top-up Tab -->
           <template v-if="activeTab === 'recharge'">
-            <section class="card space-y-8 p-6 sm:p-8">
+            <section class="card mx-auto max-w-5xl space-y-6 p-4 sm:p-5">
               <header class="flex items-center gap-3">
                 <Icon name="creditCard" size="lg" class="text-orange-500" />
                 <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('payment.onlineRecharge') }}</h2>
@@ -50,7 +50,7 @@
                     :max="rechargeMaxAmount || undefined"
                     step="0.01"
                     :placeholder="amountPlaceholder"
-                    class="input h-14 w-full rounded-lg border-gray-300 bg-transparent pr-4 text-base font-semibold dark:border-dark-600"
+                    class="input h-11 w-full rounded-lg border-gray-300 bg-transparent pr-4 text-base font-semibold dark:border-dark-600"
                     @input="handleRechargeAmountInput"
                   />
                 </div>
@@ -63,20 +63,20 @@
 
               <div class="space-y-3">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.quickAmounts') }}</h3>
-                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+                <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   <button
                     v-for="option in quickRechargeOptions"
                     :key="option.amount"
                     type="button"
                     :class="[
-                      'flex h-24 flex-col items-center justify-center rounded-lg border text-center transition-colors',
+                      'flex h-16 flex-col items-center justify-center rounded-lg border text-center transition-colors',
                       amount === option.amount
                         ? 'border-primary-500 bg-primary-500/10 text-primary-600 dark:border-primary-400 dark:text-primary-300'
                         : 'border-gray-300 bg-transparent text-gray-900 hover:border-primary-400 dark:border-dark-600 dark:text-white dark:hover:border-primary-500',
                     ]"
                     @click="selectRechargeAmount(option.amount)"
                   >
-                    <span class="text-lg font-bold">{{ formatQuickAmount(option.amount) }}</span>
+                    <span class="text-base font-bold">{{ formatQuickAmount(option.amount) }}</span>
                     <span
                       v-if="option.badge"
                       class="mt-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
