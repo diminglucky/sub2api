@@ -1,18 +1,18 @@
 <template>
   <div
     v-if="mode === 'checkbox' && documents.length > 0"
-    class="px-0.5"
+    class="rounded-xl border border-gray-200 bg-white/50 p-4 dark:border-dark-700 dark:bg-dark-900/30"
   >
     <div class="flex items-start gap-2">
       <input
         id="login-agreement-consent"
         type="checkbox"
         :checked="accepted"
-        class="mt-[2px] h-4 w-4 flex-shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-900"
+        class="mt-0.5 h-4 w-4 flex-shrink-0 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-900"
         @change="handleCheckboxChange"
       />
       <div class="min-w-0 flex-1">
-        <p class="text-[13px] leading-5 text-gray-600 dark:text-dark-300">
+        <p class="text-sm leading-6 text-gray-600 dark:text-dark-300">
           <label
             for="login-agreement-consent"
             class="cursor-pointer text-gray-700 dark:text-dark-200"

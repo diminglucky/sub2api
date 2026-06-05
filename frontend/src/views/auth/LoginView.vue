@@ -1,13 +1,13 @@
 <template>
-  <AuthLayout>
+  <AuthLayout :show-brand="false" :show-copyright="false">
     <div class="space-y-6">
       <!-- Title -->
       <div class="text-center">
-        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
-          {{ t('auth.welcomeBack') }}
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">
+          登录账号
         </h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-dark-400">
-          {{ t('auth.signInToAccount') }}
+        <p class="mt-3 text-sm text-gray-500 dark:text-dark-400">
+          请输入账号信息继续访问控制台
         </p>
       </div>
       <!-- Login Form -->
@@ -78,6 +78,18 @@
           </div>
         </div>
 
+        <LoginAgreementPrompt
+          v-if="loginAgreementEnabled"
+          :accepted="agreementAccepted"
+          :documents="loginAgreementDocuments"
+          :mode="loginAgreementMode"
+          :updated-at="loginAgreementUpdatedAt"
+          :visible="showAgreementModal"
+          @accept="acceptLoginAgreement"
+          @reject="rejectLoginAgreement"
+          @open="showAgreementModal = true"
+        />
+
         <!-- Turnstile Widget -->
         <div v-if="turnstileEnabled && turnstileSiteKey">
           <TurnstileWidget
@@ -119,55 +131,42 @@
           {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
 
-        <LoginAgreementPrompt
-          v-if="loginAgreementEnabled"
-          :accepted="agreementAccepted"
-          :documents="loginAgreementDocuments"
-          :mode="loginAgreementMode"
-          :updated-at="loginAgreementUpdatedAt"
-          :visible="showAgreementModal"
-          @accept="acceptLoginAgreement"
-          @reject="rejectLoginAgreement"
-          @open="showAgreementModal = true"
-        />
-
         <div v-if="showOAuthLogin" class="space-y-3 pt-1">
-          <div class="flex items-center gap-3">
-            <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
-            <span class="text-xs text-gray-500 dark:text-dark-400">
-              {{ t('auth.oauthOrContinue') }}
-            </span>
+          <div class="flex items-center gap-3 pt-2">
             <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
           </div>
 
           <EmailOAuthButtons
+            variant="icon"
             :disabled="authActionDisabled"
             :github-enabled="githubOAuthEnabled"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
           />
 
-          <LinuxDoOAuthSection
-            v-if="linuxdoOAuthEnabled"
-            :disabled="authActionDisabled"
-            :show-divider="false"
-          />
-          <DingTalkOAuthSection
-            v-if="dingtalkOAuthEnabled"
-            :disabled="authActionDisabled"
-            :show-divider="false"
-          />
-          <WechatOAuthSection
-            v-if="wechatOAuthEnabled"
-            :disabled="authActionDisabled"
-            :show-divider="false"
-          />
-          <OidcOAuthSection
-            v-if="oidcOAuthEnabled"
-            :disabled="authActionDisabled"
-            :provider-name="oidcOAuthProviderName"
-            :show-divider="false"
-          />
+          <div class="space-y-3" v-if="linuxdoOAuthEnabled || dingtalkOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled">
+            <LinuxDoOAuthSection
+              v-if="linuxdoOAuthEnabled"
+              :disabled="authActionDisabled"
+              :show-divider="false"
+            />
+            <DingTalkOAuthSection
+              v-if="dingtalkOAuthEnabled"
+              :disabled="authActionDisabled"
+              :show-divider="false"
+            />
+            <WechatOAuthSection
+              v-if="wechatOAuthEnabled"
+              :disabled="authActionDisabled"
+              :show-divider="false"
+            />
+            <OidcOAuthSection
+              v-if="oidcOAuthEnabled"
+              :disabled="authActionDisabled"
+              :provider-name="oidcOAuthProviderName"
+              :show-divider="false"
+            />
+          </div>
         </div>
       </form>
     </div>

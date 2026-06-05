@@ -25,27 +25,27 @@
     </div>
 
     <!-- Content Container -->
-    <div class="relative z-10 w-full max-w-md">
+    <div class="relative z-10 w-full max-w-md py-4 sm:py-6">
       <!-- Logo/Brand -->
-      <div class="mb-8 text-center">
+      <div v-if="showBrand" class="auth-brand mb-4 text-center sm:mb-5">
         <!-- Custom Logo or Default Logo -->
         <template v-if="settingsLoaded">
           <div
-            class="mb-4 inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl shadow-lg shadow-primary-500/30"
+            class="auth-logo mb-2 inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-primary-500/25"
           >
             <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
           </div>
-          <h1 class="text-gradient mb-2 text-3xl font-bold">
+          <h1 class="text-gradient text-2xl font-bold leading-tight">
             {{ siteName }}
           </h1>
-          <p class="text-sm text-gray-500 dark:text-dark-400">
+          <p class="auth-subtitle mt-1 text-xs text-gray-500 dark:text-dark-400">
             {{ siteSubtitle }}
           </p>
         </template>
       </div>
 
       <!-- Card Container -->
-      <div class="card-glass rounded-2xl p-8 shadow-glass">
+      <div class="card-glass rounded-2xl p-6 shadow-glass sm:p-7">
         <slot />
       </div>
 
@@ -55,7 +55,7 @@
       </div>
 
       <!-- Copyright -->
-      <div class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
+      <div v-if="showCopyright" class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
         &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
       </div>
     </div>
@@ -66,6 +66,14 @@
 import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
+
+withDefaults(defineProps<{
+  showBrand?: boolean
+  showCopyright?: boolean
+}>(), {
+  showBrand: true,
+  showCopyright: true
+})
 
 const appStore = useAppStore()
 
@@ -84,5 +92,22 @@ onMounted(() => {
 <style scoped>
 .text-gradient {
   @apply bg-gradient-to-r from-primary-600 to-primary-500 bg-clip-text text-transparent;
+}
+
+@media (max-height: 820px) {
+  .auth-logo,
+  .auth-subtitle {
+    display: none;
+  }
+
+  .auth-brand {
+    margin-bottom: 0.75rem;
+  }
+}
+
+@media (max-height: 720px) {
+  .auth-brand {
+    display: none;
+  }
 }
 </style>

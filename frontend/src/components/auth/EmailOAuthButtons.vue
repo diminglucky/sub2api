@@ -14,12 +14,14 @@
         :key="provider"
         type="button"
         :disabled="disabled"
-        class="btn btn-secondary h-12 w-full justify-center gap-2"
+        :class="buttonClass"
+        :aria-label="providerLabel(provider)"
+        :title="providerLabel(provider)"
         @click="startLogin(provider)"
       >
         <GitHubMark v-if="provider === 'github'" class="h-5 w-5 text-gray-800 dark:text-gray-100" />
         <GoogleMark v-else class="h-5 w-5" />
-        <span class="font-medium">{{ providerLabel(provider) }}</span>
+        <span v-if="variant !== 'icon'" class="font-medium">{{ providerLabel(provider) }}</span>
       </button>
     </div>
   </div>
@@ -42,8 +44,10 @@ const props = withDefaults(defineProps<{
   githubEnabled?: boolean
   googleEnabled?: boolean
   showDivider?: boolean
+  variant?: 'default' | 'icon'
 }>(), {
-  showDivider: true
+  showDivider: true,
+  variant: 'default'
 })
 
 const route = useRoute()
@@ -60,9 +64,17 @@ const hasProviders = computed(() => visibleProviders.value.length > 0)
 const hasMultipleProviders = computed(() => visibleProviders.value.length > 1)
 const providerGridClass = computed(() => [
   'grid',
-  'grid-cols-1',
+  props.variant === 'icon' ? 'grid-cols-2' : 'grid-cols-1',
   'gap-3',
-  hasMultipleProviders.value ? 'sm:grid-cols-2' : ''
+  props.variant !== 'icon' && hasMultipleProviders.value ? 'sm:grid-cols-2' : ''
+])
+
+const buttonClass = computed(() => [
+  'btn',
+  'btn-secondary',
+  'w-full',
+  'justify-center',
+  props.variant === 'icon' ? 'h-12 rounded-xl' : 'h-12 gap-2'
 ])
 
 function providerLabel(provider: EmailOAuthProvider): string {
