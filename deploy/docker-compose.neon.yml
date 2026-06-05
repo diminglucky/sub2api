@@ -1,0 +1,38 @@
+# =============================================================================
+# Neon PostgreSQL Override
+# =============================================================================
+# Use this together with docker-compose.local.yml and docker-compose.ghcr.yml
+# when PostgreSQL is hosted on Neon instead of the local postgres container.
+#
+# Required .env values:
+#   DATABASE_HOST
+#   DATABASE_PORT
+#   DATABASE_USER
+#   DATABASE_PASSWORD
+#   DATABASE_DBNAME
+#   DATABASE_SSLMODE=require
+#
+# Usage from the repository root on the server:
+#   docker compose --env-file .env \
+#     -f deploy/docker-compose.local.yml \
+#     -f deploy/docker-compose.ghcr.yml \
+#     -f deploy/docker-compose.neon.yml \
+#     up -d --pull always
+# =============================================================================
+
+services:
+  sub2api:
+    environment:
+      - DATABASE_HOST=${DATABASE_HOST:?DATABASE_HOST is required}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_USER=${DATABASE_USER:?DATABASE_USER is required}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}
+      - DATABASE_DBNAME=${DATABASE_DBNAME:?DATABASE_DBNAME is required}
+      - DATABASE_SSLMODE=${DATABASE_SSLMODE:-require}
+      - DATABASE_MAX_OPEN_CONNS=${DATABASE_MAX_OPEN_CONNS:-20}
+      - DATABASE_MAX_IDLE_CONNS=${DATABASE_MAX_IDLE_CONNS:-5}
+      - DATABASE_CONN_MAX_LIFETIME_MINUTES=${DATABASE_CONN_MAX_LIFETIME_MINUTES:-30}
+      - DATABASE_CONN_MAX_IDLE_TIME_MINUTES=${DATABASE_CONN_MAX_IDLE_TIME_MINUTES:-5}
+    depends_on:
+      redis:
+        condition: service_healthy
