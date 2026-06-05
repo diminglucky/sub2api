@@ -1,0 +1,16 @@
+# =============================================================================
+# SuperAI GHCR Image Override
+# =============================================================================
+# Use this together with docker-compose.local.yml when the image is built by
+# GitHub Actions and pushed to GitHub Container Registry.
+#
+# Usage from the repository root on the server:
+#   docker compose --env-file .env \
+#     -f deploy/docker-compose.local.yml \
+#     -f deploy/docker-compose.ghcr.yml \
+#     up -d --pull always
+# =============================================================================
+
+services:
+  sub2api:
+    image: ghcr.io/diminglucky/sub2api:main
