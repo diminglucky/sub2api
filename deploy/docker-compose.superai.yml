@@ -15,5 +15,5 @@ services:
   sub2api:
     image: superai/sub2api:local
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
