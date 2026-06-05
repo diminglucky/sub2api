@@ -71,9 +71,6 @@
             <div class="font-semibold text-gray-900 dark:text-white">
               {{ t('models.resultCount', { count: filteredRows.length }) }}
             </div>
-            <div class="text-xs text-gray-500 dark:text-gray-400">
-              {{ t('models.priceHint') }}
-            </div>
           </div>
 
           <div v-if="loading" class="py-20 text-center">
