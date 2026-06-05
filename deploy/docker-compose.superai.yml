@@ -1,0 +1,19 @@
+# =============================================================================
+# SuperAI Docker Compose Override
+# =============================================================================
+# Use this together with docker-compose.local.yml to build the application image
+# from the current Git checkout instead of pulling weishaw/sub2api:latest.
+#
+# Usage from the repository root:
+#   docker compose --env-file .env \
+#     -f deploy/docker-compose.local.yml \
+#     -f deploy/docker-compose.superai.yml \
+#     up -d --build
+# =============================================================================
+
+services:
+  sub2api:
+    image: superai/sub2api:local
+    build:
+      context: .
+      dockerfile: Dockerfile
