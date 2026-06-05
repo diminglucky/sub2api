@@ -1,5 +1,5 @@
 <template>
-  <div class="relative flex min-h-screen items-center justify-center overflow-hidden p-4">
+  <div class="relative flex min-h-screen items-center justify-center overflow-hidden p-3 sm:p-4">
     <!-- Background -->
     <div
       class="absolute inset-0 bg-gradient-to-br from-gray-50 via-primary-50/30 to-gray-100 dark:from-dark-950 dark:via-dark-900 dark:to-dark-950"
@@ -25,7 +25,7 @@
     </div>
 
     <!-- Content Container -->
-    <div class="relative z-10 w-full max-w-md py-4 sm:py-6">
+    <div :class="contentClass">
       <!-- Logo/Brand -->
       <div v-if="showBrand" class="auth-brand mb-4 text-center sm:mb-5">
         <!-- Custom Logo or Default Logo -->
@@ -45,17 +45,17 @@
       </div>
 
       <!-- Card Container -->
-      <div class="card-glass rounded-2xl p-6 shadow-glass sm:p-7">
+      <div :class="cardClass">
         <slot />
       </div>
 
       <!-- Footer Links -->
-      <div class="mt-6 text-center text-sm">
+      <div :class="footerClass">
         <slot name="footer" />
       </div>
 
       <!-- Copyright -->
-      <div v-if="showCopyright" class="mt-8 text-center text-xs text-gray-400 dark:text-dark-500">
+      <div v-if="showCopyright" :class="copyrightClass">
         &copy; {{ currentYear }} {{ siteName }}. All rights reserved.
       </div>
     </div>
@@ -67,12 +67,14 @@ import { computed, onMounted } from 'vue'
 import { useAppStore } from '@/stores'
 import { sanitizeUrl } from '@/utils/url'
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   showBrand?: boolean
   showCopyright?: boolean
+  compact?: boolean
 }>(), {
   showBrand: true,
-  showCopyright: true
+  showCopyright: true,
+  compact: false
 })
 
 const appStore = useAppStore()
@@ -83,6 +85,22 @@ const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle
 const settingsLoaded = computed(() => appStore.publicSettingsLoaded)
 
 const currentYear = computed(() => new Date().getFullYear())
+const contentClass = computed(() => [
+  'relative z-10 w-full',
+  props.compact ? 'max-w-[390px] py-2 sm:py-3' : 'max-w-md py-4 sm:py-6'
+])
+const cardClass = computed(() => [
+  'card-glass rounded-2xl shadow-glass',
+  props.compact ? 'p-4 sm:p-5' : 'p-6 sm:p-7'
+])
+const footerClass = computed(() => [
+  'text-center text-sm',
+  props.compact ? 'mt-3' : 'mt-6'
+])
+const copyrightClass = computed(() => [
+  'text-center text-xs text-gray-400 dark:text-dark-500',
+  props.compact ? 'mt-4' : 'mt-8'
+])
 
 onMounted(() => {
   appStore.fetchPublicSettings()

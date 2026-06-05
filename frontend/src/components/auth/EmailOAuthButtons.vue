@@ -1,5 +1,5 @@
 <template>
-  <div v-if="hasProviders" class="space-y-4">
+  <div v-if="hasProviders" :class="variant === 'icon' ? 'space-y-2' : 'space-y-4'">
     <div v-if="showDivider" class="flex items-center gap-3">
       <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
       <span class="text-xs text-gray-500 dark:text-dark-400">
@@ -74,7 +74,7 @@ const buttonClass = computed(() => [
   'btn-secondary',
   'w-full',
   'justify-center',
-  props.variant === 'icon' ? 'h-12 rounded-xl' : 'h-12 gap-2'
+  props.variant === 'icon' ? 'h-10 rounded-xl' : 'h-12 gap-2'
 ])
 
 function providerLabel(provider: EmailOAuthProvider): string {

@@ -1,6 +1,6 @@
 <template>
-  <AuthLayout>
-    <div class="space-y-6">
+  <AuthLayout :show-brand="false" :show-copyright="false" compact>
+    <div class="space-y-4">
       <!-- Title -->
       <div class="text-center">
         <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
@@ -11,7 +11,7 @@
       <!-- Registration Disabled Message -->
       <div
         v-if="!registrationEnabled && settingsLoaded"
-        class="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/50 dark:bg-amber-900/20"
+        class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800/50 dark:bg-amber-900/20"
       >
         <div class="flex items-start gap-3">
           <div class="flex-shrink-0">
@@ -24,7 +24,7 @@
       </div>
 
       <!-- Registration Form -->
-      <form v-else @submit.prevent="handleRegister" class="space-y-5">
+      <form v-else @submit.prevent="handleRegister" class="space-y-3.5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -42,7 +42,7 @@
               autofocus
               autocomplete="email"
               :disabled="registrationActionDisabled"
-              class="input pl-11"
+              class="input h-10 pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
@@ -65,7 +65,7 @@
               required
               autocomplete="new-password"
               :disabled="registrationActionDisabled"
-              class="input pl-11 pr-11"
+              class="input h-10 pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.createPasswordPlaceholder')"
             />
@@ -98,7 +98,7 @@
               v-model="formData.invitation_code"
               type="text"
               :disabled="registrationActionDisabled"
-              class="input pl-11 pr-10"
+              class="input h-10 pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': invitationValidation.valid,
                 'border-red-500 focus:border-red-500 focus:ring-red-500': invitationValidation.invalid || errors.invitation_code
@@ -122,7 +122,7 @@
           </div>
           <!-- Invitation code validation result -->
           <transition name="fade">
-            <div v-if="invitationValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
+            <div v-if="invitationValidation.valid" class="mt-1.5 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-1.5 dark:bg-green-900/20">
               <Icon name="checkCircle" size="sm" class="text-green-600 dark:text-green-400" />
               <span class="text-sm text-green-700 dark:text-green-400">
                 {{ t('auth.invitationCodeValid') }}
@@ -146,7 +146,7 @@
               v-model="formData.promo_code"
               type="text"
               :disabled="registrationActionDisabled"
-              class="input pl-11 pr-10"
+              class="input h-10 pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
                 'border-red-500 focus:border-red-500 focus:ring-red-500': promoValidation.invalid
@@ -170,7 +170,7 @@
           </div>
           <!-- Promo code validation result -->
           <transition name="fade">
-            <div v-if="promoValidation.valid" class="mt-2 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20">
+            <div v-if="promoValidation.valid" class="mt-1.5 flex items-center gap-2 rounded-lg bg-green-50 px-3 py-1.5 dark:bg-green-900/20">
               <Icon name="gift" size="sm" class="text-green-600 dark:text-green-400" />
               <span class="text-sm text-green-700 dark:text-green-400">
                 {{ t('auth.promoCodeValid', { amount: promoValidation.bonusAmount?.toFixed(2) }) }}
@@ -180,7 +180,7 @@
         </div>
 
         <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
+        <div v-if="turnstileEnabled && turnstileSiteKey" class="-my-0.5">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
@@ -206,7 +206,7 @@
         <button
           type="submit"
           :disabled="registrationActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn btn-primary h-10 w-full"
         >
           <svg
             v-if="isLoading"
@@ -240,7 +240,7 @@
 
       </form>
 
-      <div v-if="showOAuthLogin" class="space-y-3 pt-1">
+      <div v-if="showOAuthLogin" class="space-y-2 pt-0">
         <div class="flex items-center gap-3">
           <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
           <span class="text-xs text-gray-500 dark:text-dark-400">
@@ -250,6 +250,7 @@
         </div>
 
         <EmailOAuthButtons
+          variant="icon"
           :disabled="registrationActionDisabled"
           :aff-code="formData.aff_code"
           :github-enabled="githubOAuthEnabled"

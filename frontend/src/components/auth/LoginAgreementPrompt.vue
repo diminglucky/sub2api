@@ -1,7 +1,7 @@
 <template>
   <div
     v-if="mode === 'checkbox' && documents.length > 0"
-    class="rounded-xl border border-gray-200 bg-white/50 p-4 dark:border-dark-700 dark:bg-dark-900/30"
+    class="rounded-xl border border-gray-200 bg-white/50 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-900/30"
   >
     <div class="flex items-start gap-2">
       <input
@@ -12,7 +12,7 @@
         @change="handleCheckboxChange"
       />
       <div class="min-w-0 flex-1">
-        <p class="text-sm leading-6 text-gray-600 dark:text-dark-300">
+        <p class="text-sm leading-5 text-gray-600 dark:text-dark-300">
           <label
             for="login-agreement-consent"
             class="cursor-pointer text-gray-700 dark:text-dark-200"

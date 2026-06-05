@@ -1,17 +1,17 @@
 <template>
-  <AuthLayout :show-brand="false" :show-copyright="false">
-    <div class="space-y-6">
+  <AuthLayout :show-brand="false" :show-copyright="false" compact>
+    <div class="space-y-4">
       <!-- Title -->
       <div class="text-center">
-        <h2 class="text-3xl font-bold text-gray-900 dark:text-white">
+        <h2 class="text-2xl font-bold text-gray-900 dark:text-white">
           登录账号
         </h2>
-        <p class="mt-3 text-sm text-gray-500 dark:text-dark-400">
+        <p class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">
           请输入账号信息继续访问控制台
         </p>
       </div>
       <!-- Login Form -->
-      <form @submit.prevent="handleLogin" class="space-y-5">
+      <form @submit.prevent="handleLogin" class="space-y-3.5">
         <!-- Email Input -->
         <div>
           <label for="email" class="input-label">
@@ -29,7 +29,7 @@
               autofocus
               autocomplete="email"
               :disabled="authActionDisabled"
-              class="input pl-11"
+              class="input h-10 pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
             />
@@ -52,7 +52,7 @@
               required
               autocomplete="current-password"
               :disabled="authActionDisabled"
-              class="input pl-11 pr-11"
+              class="input h-10 pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.passwordPlaceholder')"
             />
@@ -66,12 +66,12 @@
               <Icon v-else name="eye" size="md" />
             </button>
           </div>
-          <div class="mt-1 flex items-center justify-between">
+          <div class="mt-0.5 flex items-center justify-between">
             <span></span>
             <router-link
               v-if="passwordResetEnabled && !backendModeEnabled"
               to="/forgot-password"
-              class="text-sm font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
+              class="text-xs font-medium text-primary-600 transition-colors hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300"
             >
               {{ t('auth.forgotPassword') }}
             </router-link>
@@ -91,7 +91,7 @@
         />
 
         <!-- Turnstile Widget -->
-        <div v-if="turnstileEnabled && turnstileSiteKey">
+        <div v-if="turnstileEnabled && turnstileSiteKey" class="-my-0.5">
           <TurnstileWidget
             ref="turnstileRef"
             :site-key="turnstileSiteKey"
@@ -105,7 +105,7 @@
         <button
           type="submit"
           :disabled="authActionDisabled || (turnstileEnabled && !turnstileToken)"
-          class="btn btn-primary w-full"
+          class="btn btn-primary h-10 w-full"
         >
           <svg
             v-if="isLoading"
@@ -131,8 +131,8 @@
           {{ isLoading ? t('auth.signingIn') : t('auth.signIn') }}
         </button>
 
-        <div v-if="showOAuthLogin" class="space-y-3 pt-1">
-          <div class="flex items-center gap-3 pt-2">
+        <div v-if="showOAuthLogin" class="space-y-2 pt-0">
+          <div class="flex items-center gap-3 pt-1">
             <div class="h-px flex-1 bg-gray-200 dark:bg-dark-700"></div>
           </div>
 
@@ -144,7 +144,7 @@
             :show-divider="false"
           />
 
-          <div class="space-y-3" v-if="linuxdoOAuthEnabled || dingtalkOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled">
+          <div class="space-y-2" v-if="linuxdoOAuthEnabled || dingtalkOAuthEnabled || wechatOAuthEnabled || oidcOAuthEnabled">
             <LinuxDoOAuthSection
               v-if="linuxdoOAuthEnabled"
               :disabled="authActionDisabled"
