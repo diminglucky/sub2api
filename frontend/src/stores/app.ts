@@ -287,12 +287,19 @@ export const useAppStore = defineStore('app', () => {
   /**
    * Apply settings to store state (internal helper to avoid code duplication)
    */
+  function normalizeSiteName(name?: string): string {
+    const trimmed = typeof name === 'string' ? name.trim() : ''
+    if (!trimmed) return 'SuperAI'
+    if (['sub2api', 'sub2 api', 'sub2-api'].includes(trimmed.toLowerCase())) return 'SuperAI'
+    return trimmed
+  }
+
   function applySettings(config: PublicSettings): void {
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config }
     }
     cachedPublicSettings.value = config
-    siteName.value = config.site_name || 'SuperAI'
+    siteName.value = normalizeSiteName(config.site_name)
     siteLogo.value = config.site_logo || ''
     siteVersion.value = config.version || ''
     contactInfo.value = config.contact_info || ''
