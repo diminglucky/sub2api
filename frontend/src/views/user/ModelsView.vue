@@ -73,6 +73,62 @@
             </div>
           </div>
 
+          <section
+            v-if="selectedRow"
+            class="rounded-xl border border-primary-200 bg-white p-5 shadow-sm dark:border-primary-500/30 dark:bg-dark-900/80"
+          >
+            <div class="flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-dark-700 sm:flex-row sm:items-start sm:justify-between">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-600 dark:text-primary-300">
+                  <PlatformIcon :platform="selectedRow.platform as GroupPlatform" size="xs" />
+                  <span>{{ selectedRow.platform }}</span>
+                </div>
+                <h2 class="mt-1 break-words text-xl font-bold text-gray-900 dark:text-white">
+                  {{ selectedRow.name }}
+                </h2>
+              </div>
+              <span class="w-fit rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-500 dark:text-gray-200">
+                {{ billingLabel(selectedRow.model.pricing?.billing_mode) }}
+              </span>
+            </div>
+
+            <div class="mt-4">
+              <div class="mb-3 flex items-center justify-between gap-3">
+                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('models.groupPrices') }}</h3>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.groupPricesHint') }}</span>
+              </div>
+
+              <div v-if="selectedGroupPrices.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                {{ t('models.noGroupPrices') }}
+              </div>
+
+              <div v-else class="grid gap-3">
+                <div
+                  v-for="item in selectedGroupPrices"
+                  :key="item.group.id"
+                  class="grid gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700 md:grid-cols-[minmax(11rem,1fr)_7rem_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)] md:items-center"
+                >
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.group.name }}</div>
+                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ item.group.subscription_type === 'subscription' ? t('models.subscriptionGroup') : t('models.standardGroup') }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.multiplier') }}</div>
+                    <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ formatMultiplier(item.multiplier) }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.secondaryLabel }}</div>
+                    <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.secondaryPrice }}</div>
+                  </div>
+                  <div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.tertiaryLabel }}</div>
+                    <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.tertiaryPrice }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
           <div v-if="loading" class="py-20 text-center">
             <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
           </div>
@@ -86,7 +142,13 @@
             <article
               v-for="row in filteredRows"
               :key="`${row.platform}-${row.name}`"
-              class="card flex min-h-[224px] flex-col border border-gray-200 p-6 transition-colors hover:border-primary-400 dark:border-dark-700 dark:hover:border-primary-500"
+              role="button"
+              tabindex="0"
+              class="card flex min-h-[224px] cursor-pointer flex-col border border-gray-200 p-6 transition-colors hover:border-primary-400 dark:border-dark-700 dark:hover:border-primary-500"
+              :class="selectedModelKey === modelKey(row) ? 'border-primary-400 ring-1 ring-primary-300 dark:border-primary-400 dark:ring-primary-500/40' : ''"
+              @click="selectModel(row)"
+              @keydown.enter.prevent="selectModel(row)"
+              @keydown.space.prevent="selectModel(row)"
             >
               <div class="flex items-start gap-4">
                 <div class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 dark:border-dark-600 dark:text-gray-300">
@@ -142,12 +204,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import userChannelsAPI, { type UserAvailableGroup, type UserSupportedModel } from '@/api/channels'
+import userGroupsAPI from '@/api/groups'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN, type BillingMode } from '@/constants/channel'
@@ -169,6 +232,8 @@ const loading = ref(false)
 const searchQuery = ref('')
 const billingFilter = ref<'all' | BillingMode>('all')
 const platformFilter = ref('all')
+const selectedModelKey = ref('')
+const userGroupRates = ref<Record<number, number>>({})
 
 const billingFilterOptions = computed(() => [
   { value: 'all' as const, label: t('models.filters.allBilling') },
@@ -197,10 +262,33 @@ const filteredRows = computed(() => {
   })
 })
 
+const selectedRow = computed(() =>
+  filteredRows.value.find((row) => modelKey(row) === selectedModelKey.value) || filteredRows.value[0] || null
+)
+
+const selectedGroupPrices = computed(() => {
+  const row = selectedRow.value
+  if (!row?.model.pricing) return []
+  return row.groups
+    .map((group) => {
+      const multiplier = effectiveGroupMultiplier(group)
+      return {
+        group,
+        multiplier,
+        ...groupPriceColumns(row, multiplier)
+      }
+    })
+    .sort((a, b) => a.multiplier - b.multiplier || a.group.name.localeCompare(b.group.name))
+})
+
 async function loadModels() {
   loading.value = true
   try {
-    const channels = await userChannelsAPI.getAvailableModels()
+    const [channels, rates] = await Promise.all([
+      userChannelsAPI.getAvailableModels(),
+      userGroupsAPI.getUserGroupRates().catch(() => ({} as Record<number, number>)),
+    ])
+    userGroupRates.value = rates
 
     const byModel = new Map<string, ModelRow>()
     for (const channel of channels) {
@@ -245,6 +333,54 @@ function mergeGroups(target: UserAvailableGroup[], incoming: UserAvailableGroup[
   }
 }
 
+function modelKey(row: ModelRow) {
+  return `${row.platform}\u0000${row.name}`
+}
+
+function selectModel(row: ModelRow) {
+  selectedModelKey.value = modelKey(row)
+}
+
+function effectiveGroupMultiplier(group: UserAvailableGroup) {
+  const custom = userGroupRates.value[group.id]
+  const value = typeof custom === 'number' ? custom : group.rate_multiplier
+  return Number.isFinite(value) ? value : 1
+}
+
+function groupPriceColumns(row: ModelRow, multiplier: number) {
+  const pricing = row.model.pricing
+  if (!pricing) {
+    return {
+      secondaryLabel: t('models.input'),
+      secondaryPrice: '-',
+      tertiaryLabel: t('models.output'),
+      tertiaryPrice: '-'
+    }
+  }
+  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) {
+    return {
+      secondaryLabel: t('models.requestPrice'),
+      secondaryPrice: scaledPriceText(pricing.per_request_price, multiplier, t('availableChannels.pricing.unitPerRequest')),
+      tertiaryLabel: t('models.billingType'),
+      tertiaryPrice: billingLabel(pricing.billing_mode)
+    }
+  }
+  if (pricing.billing_mode === BILLING_MODE_IMAGE) {
+    return {
+      secondaryLabel: t('models.imagePrice'),
+      secondaryPrice: scaledPriceText(pricing.image_output_price, multiplier, t('availableChannels.pricing.unitPerRequest')),
+      tertiaryLabel: t('models.billingType'),
+      tertiaryPrice: billingLabel(pricing.billing_mode)
+    }
+  }
+  return {
+    secondaryLabel: t('models.input'),
+    secondaryPrice: scaledPriceText(pricing.input_price, multiplier, t('availableChannels.pricing.unitPerMillion')),
+    tertiaryLabel: t('models.output'),
+    tertiaryPrice: scaledPriceText(pricing.output_price, multiplier, t('availableChannels.pricing.unitPerMillion'))
+  }
+}
+
 function billingLabel(mode?: BillingMode) {
   if (mode === BILLING_MODE_PER_REQUEST) return t('availableChannels.pricing.billingModePerRequest')
   if (mode === BILLING_MODE_IMAGE) return t('availableChannels.pricing.billingModeImage')
@@ -274,6 +410,16 @@ function priceText(value: number | null | undefined, unit: string) {
   return `$${(value * scale).toFixed(2)} ${unit}`
 }
 
+function scaledPriceText(value: number | null | undefined, multiplier: number, unit: string) {
+  if (value == null) return '-'
+  const scale = unit === t('availableChannels.pricing.unitPerMillion') ? 1_000_000 : 1
+  return `$${(value * multiplier * scale).toFixed(2)} ${unit}`
+}
+
+function formatMultiplier(value: number) {
+  return `x${Number(value.toPrecision(10))}`
+}
+
 function modelTags(row: ModelRow) {
   const name = row.name.toLowerCase()
   const tags = ['text']
@@ -282,6 +428,16 @@ function modelTags(row: ModelRow) {
   if (name.includes('tool') || name.includes('codex')) tags.push('tools')
   return Array.from(new Set(tags))
 }
+
+watch(filteredRows, (rows) => {
+  if (rows.length === 0) {
+    selectedModelKey.value = ''
+    return
+  }
+  if (!rows.some((row) => modelKey(row) === selectedModelKey.value)) {
+    selectedModelKey.value = modelKey(rows[0])
+  }
+})
 
 onMounted(loadModels)
 </script>
