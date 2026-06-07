@@ -126,6 +126,41 @@ func (h *AvailableChannelHandler) ListModels(c *gin.Context) {
 	h.list(c, false)
 }
 
+// ListPublicModels 列出未登录用户可见的公开模型来源数据。
+// GET /api/v1/public/models/available
+//
+// 公开页只展示非专属分组下的活跃渠道模型和公开倍率价格，不依赖用户身份，
+// 也不暴露任何专属分组、内部渠道字段或账号信息。
+func (h *AvailableChannelHandler) ListPublicModels(c *gin.Context) {
+	channels, err := h.channelService.ListAvailable(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	out := make([]userAvailableChannel, 0, len(channels))
+	for _, ch := range channels {
+		if ch.Status != service.StatusActive {
+			continue
+		}
+		visibleGroups := filterPublicGroups(ch.Groups)
+		if len(visibleGroups) == 0 {
+			continue
+		}
+		sections := buildPlatformSections(ch, visibleGroups)
+		if len(sections) == 0 {
+			continue
+		}
+		out = append(out, userAvailableChannel{
+			Name:        ch.Name,
+			Description: ch.Description,
+			Platforms:   sections,
+		})
+	}
+
+	response.Success(c, out)
+}
+
 func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
 	if !ok {
@@ -223,6 +258,24 @@ func filterUserVisibleGroups(
 	visible := make([]userAvailableGroup, 0, len(groups))
 	for _, g := range groups {
 		if _, ok := allowed[g.ID]; !ok {
+			continue
+		}
+		visible = append(visible, userAvailableGroup{
+			ID:               g.ID,
+			Name:             g.Name,
+			Platform:         g.Platform,
+			SubscriptionType: g.SubscriptionType,
+			RateMultiplier:   g.RateMultiplier,
+			IsExclusive:      g.IsExclusive,
+		})
+	}
+	return visible
+}
+
+func filterPublicGroups(groups []service.AvailableGroupRef) []userAvailableGroup {
+	visible := make([]userAvailableGroup, 0, len(groups))
+	for _, g := range groups {
+		if g.IsExclusive {
 			continue
 		}
 		visible = append(visible, userAvailableGroup{

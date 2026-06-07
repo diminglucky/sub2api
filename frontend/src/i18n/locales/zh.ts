@@ -8,8 +8,17 @@ export default {
     switchToDark: '切换到深色模式',
     dashboard: '控制台',
     login: '登录',
+    models: '模型',
     getStarted: '立即开始',
     goToDashboard: '进入控制台',
+    publicModels: {
+      eyebrow: '模型价格',
+      title: '公开模型价格',
+      description: '无需登录即可查看当前公开分组可用的模型和价格。点击模型卡片可查看不同分组倍率下的实际价格。',
+      groups: '个公开分组',
+      publicOnly: '仅公开分组',
+      priceHint: '公开展示价格按分组默认倍率计算，登录后可能看到你的专属分组或专属倍率。'
+    },
     // 新增：面向用户的价值主张
     heroSubtitle: '一个密钥，畅用多个 AI 模型',
     heroDescription: '无需管理多个订阅账号，一站式接入 Claude、GPT、Gemini 等主流 AI 服务',
@@ -4498,7 +4507,7 @@ export default {
       generatedSuccessfully: '生成成功',
       codesCreated: '已创建 {count} 个兑换码',
       codeType: '类型',
-      amount: '金额 ($)',
+      amount: '金额 (¥)',
       value: '面值',
       count: '数量',
       generate: '生成',
@@ -4667,7 +4676,7 @@ export default {
       code: '优惠码',
       autoGenerate: '留空自动生成',
       codePlaceholder: '输入优惠码或留空',
-      bonusAmount: '赠送金额 ($)',
+      bonusAmount: '赠送金额 (¥)',
       maxUses: '最大使用次数',
       zeroUnlimited: '0 = 无限制',
       expiresAt: '过期时间',
@@ -6865,7 +6874,7 @@ export default {
       groupMultiplier: {
         title: '💰 3. 费率倍数',
         description:
-          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 $1，扣除 $1.5</li><li><b>2.0</b> - 用户消耗 $1，扣除 $2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
+          '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">设置该分组的计费倍率，控制用户的实际扣费。</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ 计费规则：</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - 原价计费（成本价）</li><li><b>1.5</b> - 用户消耗 ¥1，扣除 ¥1.5</li><li><b>2.0</b> - 用户消耗 ¥1，扣除 ¥2</li><li><b>0.8</b> - 补贴模式（亏本运营）</li></ul></div><p style="font-size: 13px; color: #6b7280;">建议测试分组设置为 1.0</p></div>',
         nextBtn: '下一步'
       },
       groupExclusive: {
@@ -7248,7 +7257,7 @@ export default {
       deductBalanceHint: '从用户余额中扣回充值金额',
       userBalance: '用户余额',
       orderAmount: '订单金额',
-      insufficientBalance: '余额不足，将扣至 $0',
+      insufficientBalance: '余额不足，将扣至 ¥0',
       noDeduction: '将不扣除用户余额',
       forceRefund: '强制退款（忽略余额检查）',
       orderCancelled: '订单已取消',

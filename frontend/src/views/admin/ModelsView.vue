@@ -255,7 +255,7 @@ function priceText(value: number | null | undefined, row: AdminModelRow) {
     ? t('availableChannels.pricing.unitPerMillion')
     : t('availableChannels.pricing.unitPerRequest')
   const scale = row.billingMode === BILLING_MODE_TOKEN ? 1_000_000 : 1
-  return `$${(value * scale).toFixed(2)} ${unit}`
+  return `¥${(value * scale).toFixed(2)} ${unit}`
 }
 
 function outputPriceText(row: AdminModelRow) {

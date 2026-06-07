@@ -173,7 +173,7 @@
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ summary.label }}</span>
                 <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">
-                  {{ summary.count }} / {{ accounts.length }} · {{ summary.active }} {{ t('admin.accounts.status.active') }}
+                  {{ summary.count }} / {{ summary.total }} · {{ summary.active }} {{ t('admin.accounts.status.active') }}
                 </span>
               </span>
               <span class="text-lg font-bold text-gray-900 dark:text-white">{{ summary.percent }}%</span>
@@ -783,6 +783,42 @@ const {
     sort_order: sortState.sort_order
   }
 })
+const summaryAccounts = ref<Account[]>([])
+const platformSummaryReqSeq = ref(0)
+
+const buildPlatformSummaryFilters = () => ({
+  platform: '',
+  type: params.type || '',
+  status: params.status || '',
+  group: params.group || '',
+  privacy_mode: params.privacy_mode || '',
+  search: params.search || '',
+  lite: '1',
+  sort_by: sortState.sort_by,
+  sort_order: sortState.sort_order
+})
+
+const refreshPlatformSummaries = async () => {
+  const reqSeq = ++platformSummaryReqSeq.value
+  try {
+    const pageSize = 1000
+    const filters = buildPlatformSummaryFilters()
+    const firstPage = await adminAPI.accounts.list(1, pageSize, filters)
+    const items = [...(firstPage.items || [])]
+    const total = firstPage.total || items.length
+    const pageCount = Math.ceil(total / pageSize)
+    for (let page = 2; page <= pageCount; page += 1) {
+      if (reqSeq !== platformSummaryReqSeq.value) return
+      const result = await adminAPI.accounts.list(page, pageSize, filters)
+      items.push(...(result.items || []))
+    }
+    if (reqSeq !== platformSummaryReqSeq.value) return
+    summaryAccounts.value = items
+  } catch (error) {
+    if (reqSeq !== platformSummaryReqSeq.value) return
+    console.error('Failed to refresh account platform summaries:', error)
+  }
+}
 
 const {
   selectedIds: selIds,
@@ -830,6 +866,7 @@ const load = async () => {
     requestParams.lite = '1'
   }
   await baseLoad()
+  await refreshPlatformSummaries()
   if (isFirstLoad.value) {
     isFirstLoad.value = false
     delete requestParams.lite
@@ -842,6 +879,7 @@ const reload = async () => {
   resetAutoRefreshCache()
   pendingTodayStatsRefresh.value = false
   await baseReload()
+  await refreshPlatformSummaries()
   await refreshTodayStatsBatch()
 }
 
@@ -882,6 +920,9 @@ const handleSort = (key: string, order: AccountSortOrder) => {
 watch(loading, (isLoading, wasLoading) => {
   if (wasLoading && !isLoading && pendingTodayStatsRefresh.value) {
     pendingTodayStatsRefresh.value = false
+    refreshPlatformSummaries().catch((error) => {
+      console.error('Failed to refresh account platform summaries after table load:', error)
+    })
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to refresh account today stats after table load:', error)
     })
@@ -1051,9 +1092,10 @@ const syncPendingListChanges = async () => {
 }
 
 const platformSummaries = computed(() => {
-  const total = accounts.value.length
+  const rowsForSummary = summaryAccounts.value.length > 0 ? summaryAccounts.value : accounts.value
+  const total = rowsForSummary.length
   return (Object.keys(platformDisplayMeta) as AccountPlatform[]).map((platform) => {
-    const rows = accounts.value.filter(account => account.platform === platform)
+    const rows = rowsForSummary.filter(account => account.platform === platform)
     const active = rows.filter(account => account.status === 'active').length
     const meta = platformDisplayMeta[platform]
     return {
@@ -1062,6 +1104,7 @@ const platformSummaries = computed(() => {
       dotClass: meta.dotClass,
       count: rows.length,
       active,
+      total,
       percent: total > 0 ? Math.round((rows.length / total) * 100) : 0
     }
   })

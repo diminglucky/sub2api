@@ -79,6 +79,14 @@ export async function getAvailableModels(options?: { signal?: AbortSignal }): Pr
   return data
 }
 
-export const userChannelsAPI = { getAvailable, getAvailableModels }
+/** 列出未登录用户可见的公开模型来源数据，仅包含公开分组。 */
+export async function getPublicAvailableModels(options?: { signal?: AbortSignal }): Promise<UserAvailableChannel[]> {
+  const { data } = await apiClient.get<UserAvailableChannel[]>('/public/models/available', {
+    signal: options?.signal
+  })
+  return data
+}
+
+export const userChannelsAPI = { getAvailable, getAvailableModels, getPublicAvailableModels }
 
 export default userChannelsAPI

@@ -157,7 +157,7 @@ describe('admin AccountsView bulk edit scope', () => {
     expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-target-mode')).toBe('filtered')
   })
 
-  it('renders the created_at column by default', async () => {
+  it('hides the created_at column by default', async () => {
     listAccounts.mockResolvedValue({
       items: [
         {
@@ -217,11 +217,8 @@ describe('admin AccountsView bulk edit scope', () => {
     await flushPromises()
 
     const columnKeys = wrapper.findAll('[data-test="column-key"]').map(node => node.text())
-    expect(columnKeys).toContain('created_at')
+    expect(columnKeys).not.toContain('created_at')
     const columns = wrapper.getComponent(DataTableStub).props('columns') as Array<{ key: string; label: string; sortable: boolean }>
-    expect(columns.find(column => column.key === 'created_at')).toMatchObject({
-      label: 'admin.accounts.columns.createdAt',
-      sortable: true
-    })
+    expect(columns.find(column => column.key === 'created_at')).toBeUndefined()
   })
 })

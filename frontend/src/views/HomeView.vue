@@ -48,6 +48,13 @@
 
         <!-- Nav Actions -->
         <div class="flex items-center gap-3">
+          <router-link
+            to="/public-models"
+            class="hidden rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-white/70 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white sm:inline-flex"
+          >
+            {{ t('home.models') }}
+          </router-link>
+
           <!-- Language Switcher -->
           <LocaleSwitcher />
 

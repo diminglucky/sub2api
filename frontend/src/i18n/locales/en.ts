@@ -8,8 +8,17 @@ export default {
     switchToDark: 'Switch to Dark Mode',
     dashboard: 'Dashboard',
     login: 'Login',
+    models: 'Models',
     getStarted: 'Get Started',
     goToDashboard: 'Go to Dashboard',
+    publicModels: {
+      eyebrow: 'Model Pricing',
+      title: 'Public Model Pricing',
+      description: 'View publicly available models and prices without signing in. Click a model card to see effective prices under each public group multiplier.',
+      groups: 'public groups',
+      publicOnly: 'Public groups only',
+      priceHint: 'Public prices are calculated with default group multipliers. After signing in, you may see dedicated groups or user-specific rates.'
+    },
     // User-focused value proposition
     heroSubtitle: 'One Key, All AI Models',
     heroDescription: 'No need to manage multiple subscriptions. Access Claude, GPT, Gemini and more with a single API key',
@@ -4370,7 +4379,7 @@ export default {
       generatedSuccessfully: 'Generated Successfully',
       codesCreated: '{count} redeem code(s) created',
       codeType: 'Code Type',
-      amount: 'Amount ($)',
+      amount: 'Amount (¥)',
       value: 'Value',
       count: 'Count',
       generating: 'Generating...',
@@ -4514,7 +4523,7 @@ export default {
       code: 'Promo Code',
       autoGenerate: 'auto-generate if empty',
       codePlaceholder: 'Enter promo code or leave empty',
-      bonusAmount: 'Bonus Amount ($)',
+      bonusAmount: 'Bonus Amount (¥)',
       maxUses: 'Max Uses',
       zeroUnlimited: '0 = unlimited',
       expiresAt: 'Expires At',
@@ -6706,7 +6715,7 @@ export default {
       },
       groupMultiplier: {
         title: '💰 3. Rate Multiplier',
-        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Set the billing multiplier to control user charges.</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ Billing Rules:</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - Original price (cost price)</li><li><b>1.5</b> - User consumes $1, charged $1.5</li><li><b>2.0</b> - User consumes $1, charged $2</li><li><b>0.8</b> - Subsidy mode (loss-making)</li></ul></div><p style="font-size: 13px; color: #6b7280;">Recommend setting test group to 1.0</p></div>',
+        description: '<div style="line-height: 1.7;"><p style="margin-bottom: 12px;">Set the billing multiplier to control user charges.</p><div style="padding: 8px 12px; background: #fef3c7; border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 13px; margin-bottom: 12px;"><b>⚙️ Billing Rules:</b><ul style="margin: 8px 0 0 16px;"><li><b>1.0</b> - Original price (cost price)</li><li><b>1.5</b> - User consumes ¥1, charged ¥1.5</li><li><b>2.0</b> - User consumes ¥1, charged ¥2</li><li><b>0.8</b> - Subsidy mode (loss-making)</li></ul></div><p style="font-size: 13px; color: #6b7280;">Recommend setting test group to 1.0</p></div>',
         nextBtn: 'Next'
       },
       groupExclusive: {
@@ -7069,7 +7078,7 @@ export default {
       deductBalanceHint: 'Subtract recharged amount from user balance',
       userBalance: 'User Balance',
       orderAmount: 'Order Amount',
-      insufficientBalance: 'Insufficient balance — will deduct to $0',
+      insufficientBalance: 'Insufficient balance — will deduct to ¥0',
       noDeduction: 'Will NOT deduct user balance',
       forceRefund: 'Force refund (ignore balance check)',
       orderCancelled: 'Order Cancelled',

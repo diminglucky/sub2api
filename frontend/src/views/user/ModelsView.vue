@@ -469,13 +469,13 @@ function outputPriceText(row: ModelRow) {
 function priceText(value: number | null | undefined, unit: string) {
   if (value == null) return '-'
   const scale = unit === t('availableChannels.pricing.unitPerMillion') ? 1_000_000 : 1
-  return `$${(value * scale).toFixed(2)} ${unit}`
+  return `¥${(value * scale).toFixed(2)} ${unit}`
 }
 
 function scaledPriceText(value: number | null | undefined, multiplier: number, unit: string) {
   if (value == null) return '-'
   const scale = unit === t('availableChannels.pricing.unitPerMillion') ? 1_000_000 : 1
-  return `$${(value * multiplier * scale).toFixed(2)} ${unit}`
+  return `¥${(value * multiplier * scale).toFixed(2)} ${unit}`
 }
 
 function formatMultiplier(value: number) {
