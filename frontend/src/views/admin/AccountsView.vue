@@ -2,7 +2,8 @@
   <AppLayout>
     <TablePageLayout>
       <template #filters>
-        <div class="flex flex-wrap-reverse items-start justify-between gap-3">
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
           <AccountTableFilters
             v-model:searchQuery="params.search"
             :filters="params"
@@ -11,152 +12,173 @@
             @change="debouncedReload"
             @update:searchQuery="debouncedReload"
           />
-          <AccountTableActions
-            :loading="loading"
-            @refresh="handleManualRefresh"
-            @create="showCreate = true"
-          >
-            <template #after>
-              <!-- Auto Refresh Dropdown -->
-              <div class="relative" ref="autoRefreshDropdownRef">
-                <button
-                  @click="
-                    showAutoRefreshDropdown = !showAutoRefreshDropdown;
-                    showAccountToolsDropdown = false
-                  "
-                  class="btn btn-secondary px-2 md:px-3"
-                  :title="t('admin.accounts.autoRefresh')"
-                >
-                  <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
-                  <span class="hidden md:inline">
-                    {{
-                      autoRefreshEnabled
-                        ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown })
-                        : t('admin.accounts.autoRefresh')
-                    }}
-                  </span>
-                </button>
-                <div
-                  v-if="showAutoRefreshDropdown"
-                  class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
-                >
-                  <div class="p-2">
-                    <button
-                      @click="setAutoRefreshEnabled(!autoRefreshEnabled)"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                    >
-                      <span>{{ t('admin.accounts.enableAutoRefresh') }}</span>
-                      <Icon v-if="autoRefreshEnabled" name="check" size="sm" class="text-primary-500" />
-                    </button>
-                    <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-                    <button
-                      v-for="sec in autoRefreshIntervals"
-                      :key="sec"
-                      @click="setAutoRefreshInterval(sec)"
-                      class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
-                    >
-                      <span>{{ autoRefreshIntervalLabel(sec) }}</span>
-                      <Icon v-if="autoRefreshIntervalSeconds === sec" name="check" size="sm" class="text-primary-500" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- More Tools Dropdown -->
-              <div class="relative" ref="accountToolsDropdownRef">
-                <button
-                  @click="
-                    showAccountToolsDropdown = !showAccountToolsDropdown;
-                    showAutoRefreshDropdown = false
-                  "
-                  class="btn btn-secondary px-2 md:px-3"
-                  :title="t('admin.accounts.moreActions')"
-                >
-                  <Icon name="more" size="sm" class="md:mr-1.5" />
-                  <span class="hidden md:inline">{{ t('admin.accounts.moreActions') }}</span>
-                  <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
-                </button>
-                <div
-                  v-if="showAccountToolsDropdown"
-                  class="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
-                >
-                  <div class="max-h-[70vh] overflow-y-auto p-2">
-                    <div class="px-2 py-2">
-                      <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        {{ t('admin.accounts.dataActions') }}
-                      </div>
-                    </div>
-                    <button class="account-tools-menu-item" @click="openSyncFromCrs">
-                      <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
-                        <Icon name="sync" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openImportData">
-                      <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                        <Icon name="upload" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
-                      <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                        <Icon name="download" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">
-                        {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
-                      </span>
-                      <span
-                        v-if="selIds.length"
-                        class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
-                      >
-                        {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
-                      </span>
-                    </button>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="px-2 py-2">
-                      <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                        {{ t('admin.accounts.toolActions') }}
-                      </div>
-                    </div>
-                    <button class="account-tools-menu-item" @click="openErrorPassthrough">
-                      <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                        <Icon name="shield" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
-                    </button>
-                    <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
-                      <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
-                        <Icon name="lock" size="sm" />
-                      </span>
-                      <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
-                    </button>
-
-                    <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
-                    <div class="px-2 py-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                          {{ t('admin.accounts.viewColumns') }}
-                        </span>
-                        <Icon name="grid" size="sm" class="text-gray-400" />
-                      </div>
-                    </div>
-                    <div class="grid grid-cols-1 gap-1">
+            <AccountTableActions
+              :loading="loading"
+              class="xl:flex-shrink-0"
+              @refresh="handleManualRefresh"
+              @create="showCreate = true"
+            >
+              <template #after>
+                <!-- Auto Refresh Dropdown -->
+                <div class="relative" ref="autoRefreshDropdownRef">
+                  <button
+                    @click="
+                      showAutoRefreshDropdown = !showAutoRefreshDropdown;
+                      showAccountToolsDropdown = false
+                    "
+                    class="btn btn-secondary px-2 md:px-3"
+                    :title="t('admin.accounts.autoRefresh')"
+                  >
+                    <Icon name="refresh" size="sm" :class="[autoRefreshEnabled ? 'animate-spin' : '']" />
+                    <span class="hidden md:inline">
+                      {{
+                        autoRefreshEnabled
+                          ? t('admin.accounts.autoRefreshCountdown', { seconds: autoRefreshCountdown })
+                          : t('admin.accounts.autoRefresh')
+                      }}
+                    </span>
+                  </button>
+                  <div
+                    v-if="showAutoRefreshDropdown"
+                    class="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <div class="p-2">
                       <button
-                        v-for="col in toggleableColumns"
-                        :key="col.key"
-                        @click="toggleColumn(col.key)"
-                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                        @click="setAutoRefreshEnabled(!autoRefreshEnabled)"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
                       >
-                        <span class="truncate">{{ col.label }}</span>
-                        <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                        <span>{{ t('admin.accounts.enableAutoRefresh') }}</span>
+                        <Icon v-if="autoRefreshEnabled" name="check" size="sm" class="text-primary-500" />
+                      </button>
+                      <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                      <button
+                        v-for="sec in autoRefreshIntervals"
+                        :key="sec"
+                        @click="setAutoRefreshInterval(sec)"
+                        class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        <span>{{ autoRefreshIntervalLabel(sec) }}</span>
+                        <Icon v-if="autoRefreshIntervalSeconds === sec" name="check" size="sm" class="text-primary-500" />
                       </button>
                     </div>
                   </div>
                 </div>
-              </div>
-            </template>
-          </AccountTableActions>
+
+                <!-- More Tools Dropdown -->
+                <div class="relative" ref="accountToolsDropdownRef">
+                  <button
+                    @click="
+                      showAccountToolsDropdown = !showAccountToolsDropdown;
+                      showAutoRefreshDropdown = false
+                    "
+                    class="btn btn-secondary px-2 md:px-3"
+                    :title="t('admin.accounts.moreActions')"
+                  >
+                    <Icon name="more" size="sm" class="md:mr-1.5" />
+                    <span class="hidden md:inline">{{ t('admin.accounts.moreActions') }}</span>
+                    <Icon name="chevronDown" size="xs" class="ml-1 hidden md:inline" />
+                  </button>
+                  <div
+                    v-if="showAccountToolsDropdown"
+                    class="absolute right-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-xl dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    <div class="max-h-[70vh] overflow-y-auto p-2">
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.dataActions') }}
+                        </div>
+                      </div>
+                      <button class="account-tools-menu-item" @click="openSyncFromCrs">
+                        <span class="account-tools-menu-icon bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                          <Icon name="sync" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.syncFromCrs') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openImportData">
+                        <span class="account-tools-menu-icon bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          <Icon name="upload" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.accounts.dataImport') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openExportDataDialogFromMenu">
+                        <span class="account-tools-menu-icon bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
+                          <Icon name="download" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">
+                          {{ selIds.length ? t('admin.accounts.dataExportSelected') : t('admin.accounts.dataExport') }}
+                        </span>
+                        <span
+                          v-if="selIds.length"
+                          class="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-900/40 dark:text-primary-300"
+                        >
+                          {{ t('admin.accounts.selectedCount', { count: selIds.length }) }}
+                        </span>
+                      </button>
+
+                      <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+                      <div class="px-2 py-2">
+                        <div class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                          {{ t('admin.accounts.toolActions') }}
+                        </div>
+                      </div>
+                      <button class="account-tools-menu-item" @click="openErrorPassthrough">
+                        <span class="account-tools-menu-icon bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
+                          <Icon name="shield" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.errorPassthrough.title') }}</span>
+                      </button>
+                      <button class="account-tools-menu-item" @click="openTLSFingerprintProfiles">
+                        <span class="account-tools-menu-icon bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200">
+                          <Icon name="lock" size="sm" />
+                        </span>
+                        <span class="flex-1 text-left">{{ t('admin.tlsFingerprintProfiles.title') }}</span>
+                      </button>
+
+                      <div class="my-2 border-t border-gray-100 dark:border-gray-700"></div>
+                      <div class="px-2 py-2">
+                        <div class="flex items-center justify-between gap-3">
+                          <span class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                            {{ t('admin.accounts.viewColumns') }}
+                          </span>
+                          <Icon name="grid" size="sm" class="text-gray-400" />
+                        </div>
+                      </div>
+                      <div class="grid grid-cols-1 gap-1">
+                        <button
+                          v-for="col in toggleableColumns"
+                          :key="col.key"
+                          @click="toggleColumn(col.key)"
+                          class="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                        >
+                          <span class="truncate">{{ col.label }}</span>
+                          <Icon v-if="isColumnVisible(col.key)" name="check" size="sm" class="text-primary-500" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </AccountTableActions>
+          </div>
+          <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <button
+              v-for="summary in platformSummaries"
+              :key="summary.key"
+              type="button"
+              class="account-platform-card"
+              :class="{ 'account-platform-card-active': params.platform === summary.key }"
+              @click="applyPlatformFilter(summary.key)"
+            >
+              <span :class="['account-platform-dot', summary.dotClass]"></span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ summary.label }}</span>
+                <span class="mt-1 block text-xs text-gray-500 dark:text-dark-400">
+                  {{ summary.count }} / {{ accounts.length }} · {{ summary.active }} {{ t('admin.accounts.status.active') }}
+                </span>
+              </span>
+              <span class="text-lg font-bold text-gray-900 dark:text-white">{{ summary.percent }}%</span>
+            </button>
+          </div>
         </div>
         <div
           v-if="hasPendingListSync"
@@ -502,8 +524,16 @@ const exportingData = ref(false)
 const showAccountToolsDropdown = ref(false)
 const accountToolsDropdownRef = ref<HTMLElement | null>(null)
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'priority', 'rate_multiplier', 'last_used_at', 'created_at', 'expires_at']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
+const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
+const HIDDEN_COLUMNS_VERSION = 2
+const platformDisplayMeta: Record<AccountPlatform, { label: string; dotClass: string }> = {
+  anthropic: { label: 'Anthropic', dotClass: 'bg-orange-500' },
+  openai: { label: 'OpenAI', dotClass: 'bg-emerald-500' },
+  gemini: { label: 'Gemini', dotClass: 'bg-blue-500' },
+  antigravity: { label: 'Antigravity', dotClass: 'bg-violet-500' }
+}
 
 // Sorting settings
 const ACCOUNT_SORT_STORAGE_KEY = 'account-table-sort'
@@ -628,16 +658,26 @@ const loadSavedColumns = () => {
       parsed.forEach(key => {
         hiddenColumns.add(key)
       })
+      const version = Number(localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) || '1')
+      if (version < HIDDEN_COLUMNS_VERSION) {
+        DEFAULT_HIDDEN_COLUMNS.forEach(key => {
+          hiddenColumns.add(key)
+        })
+        saveColumnsToStorage()
+        localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, String(HIDDEN_COLUMNS_VERSION))
+      }
     } else {
       DEFAULT_HIDDEN_COLUMNS.forEach(key => {
         hiddenColumns.add(key)
       })
+      localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, String(HIDDEN_COLUMNS_VERSION))
     }
   } catch (e) {
     console.error('Failed to load saved columns:', e)
     DEFAULT_HIDDEN_COLUMNS.forEach(key => {
       hiddenColumns.add(key)
     })
+    localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, String(HIDDEN_COLUMNS_VERSION))
   }
 }
 
@@ -1008,6 +1048,29 @@ const syncPendingListChanges = async () => {
   await load()
   // Keep behavior consistent with manual refresh.
   usageManualRefreshToken.value += 1
+}
+
+const platformSummaries = computed(() => {
+  const total = accounts.value.length
+  return (Object.keys(platformDisplayMeta) as AccountPlatform[]).map((platform) => {
+    const rows = accounts.value.filter(account => account.platform === platform)
+    const active = rows.filter(account => account.status === 'active').length
+    const meta = platformDisplayMeta[platform]
+    return {
+      key: platform,
+      label: meta.label,
+      dotClass: meta.dotClass,
+      count: rows.length,
+      active,
+      percent: total > 0 ? Math.round((rows.length / total) * 100) : 0
+    }
+  })
+})
+
+const applyPlatformFilter = (platform: AccountPlatform) => {
+  params.platform = params.platform === platform ? '' : platform
+  pagination.page = 1
+  debouncedReload()
 }
 
 const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
@@ -1683,6 +1746,18 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.account-platform-card {
+  @apply flex h-20 min-w-0 items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40 dark:border-dark-700 dark:bg-dark-900/70 dark:hover:border-primary-500/50 dark:hover:bg-primary-500/10;
+}
+
+.account-platform-card-active {
+  @apply border-primary-400 bg-primary-50 ring-1 ring-primary-300 dark:border-primary-400 dark:bg-primary-500/15 dark:ring-primary-500/40;
+}
+
+.account-platform-dot {
+  @apply h-2.5 w-2.5 flex-shrink-0 rounded-full shadow-sm;
+}
+
 .account-tools-menu-item {
   @apply flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700;
 }

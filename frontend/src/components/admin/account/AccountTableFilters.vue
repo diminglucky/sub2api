@@ -1,17 +1,19 @@
 <template>
-  <div class="flex flex-wrap items-center gap-3">
+  <div class="w-full space-y-3">
     <SearchInput
       :model-value="searchQuery"
       :placeholder="t('admin.accounts.searchAccounts')"
-      class="w-full sm:w-64"
+      class="w-full md:w-[28rem]"
       @update:model-value="$emit('update:searchQuery', $event)"
       @search="$emit('change')"
     />
-    <Select :model-value="filters.platform" class="w-40" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
-    <Select :model-value="filters.type" class="w-40" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
-    <Select :model-value="filters.status" class="w-40" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
-    <Select :model-value="filters.privacy_mode" class="w-40" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
-    <Select :model-value="filters.group" class="w-40" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <Select :model-value="filters.platform" class="min-w-0" :options="pOpts" @update:model-value="updatePlatform" @change="$emit('change')" />
+      <Select :model-value="filters.type" class="min-w-0" :options="tOpts" @update:model-value="updateType" @change="$emit('change')" />
+      <Select :model-value="filters.status" class="min-w-0" :options="sOpts" @update:model-value="updateStatus" @change="$emit('change')" />
+      <Select :model-value="filters.privacy_mode" class="min-w-0" :options="privacyOpts" @update:model-value="updatePrivacyMode" @change="$emit('change')" />
+      <Select :model-value="filters.group" class="col-span-2 min-w-0 md:col-span-1" :options="gOpts" @update:model-value="updateGroup" @change="$emit('change')" />
+    </div>
   </div>
 </template>
 
