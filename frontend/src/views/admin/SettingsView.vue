@@ -6143,6 +6143,125 @@
                     ></textarea>
                   </div>
                 </div>
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <label class="input-label">{{
+                        t("admin.settings.payment.rechargeCardProducts")
+                      }}</label>
+                      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        {{ t("admin.settings.payment.rechargeCardProductsHint") }}
+                      </p>
+                    </div>
+                    <button type="button" class="btn btn-secondary" @click="addRechargeCardProduct">
+                      {{ t("admin.settings.payment.addRechargeCardProduct") }}
+                    </button>
+                  </div>
+                  <div
+                    v-if="form.payment_recharge_card_products.length === 0"
+                    class="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.payment.noRechargeCardProducts") }}
+                  </div>
+                  <div v-else class="space-y-3">
+                    <div
+                      v-for="(product, index) in form.payment_recharge_card_products"
+                      :key="index"
+                      class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                    >
+                      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                        <div class="lg:col-span-2">
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardName")
+                          }}</label>
+                          <input
+                            v-model="product.name"
+                            type="text"
+                            class="input"
+                            :placeholder="t('admin.settings.payment.rechargeCardNamePlaceholder')"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardAmount")
+                          }}</label>
+                          <input
+                            v-model.number="product.amount"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="input"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardPrice")
+                          }}</label>
+                          <input
+                            v-model.number="product.price"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="input"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardSort")
+                          }}</label>
+                          <input
+                            v-model.number="product.sort_order"
+                            type="number"
+                            step="1"
+                            class="input"
+                          />
+                        </div>
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardEnabled")
+                          }}</label>
+                          <button
+                            type="button"
+                            :class="[
+                              'relative inline-flex h-9 w-16 items-center rounded-full transition-colors',
+                              product.enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600',
+                            ]"
+                            @click="product.enabled = !product.enabled"
+                          >
+                            <span
+                              :class="[
+                                'inline-block h-7 w-7 transform rounded-full bg-white shadow transition-transform',
+                                product.enabled ? 'translate-x-8' : 'translate-x-1',
+                              ]"
+                            />
+                          </button>
+                        </div>
+                      </div>
+                      <div class="mt-3 grid gap-3 lg:grid-cols-[1fr_auto]">
+                        <div>
+                          <label class="input-label">{{
+                            t("admin.settings.payment.rechargeCardUrl")
+                          }}</label>
+                          <input
+                            v-model="product.url"
+                            type="url"
+                            class="input"
+                            placeholder="https://pay.ldxp.cn/item/8y6tk7"
+                          />
+                        </div>
+                        <div class="flex items-end">
+                          <button
+                            type="button"
+                            class="btn btn-secondary text-red-600 hover:text-red-700 dark:text-red-400"
+                            @click="removeRechargeCardProduct(index)"
+                          >
+                            {{ t("common.delete") }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </template>
             </div>
           </div>
@@ -6696,7 +6815,7 @@ import type {
   NotifyEmailEntry,
   Proxy,
 } from "@/types";
-import type { ProviderInstance } from "@/types/payment";
+import type { ProviderInstance, RechargeCardProduct } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
@@ -7027,6 +7146,7 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  payment_recharge_card_products: [],
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -7735,6 +7855,56 @@ function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
     .filter((doc) => doc.title || doc.content_md);
 }
 
+function addRechargeCardProduct(): void {
+  const maxSortOrder = form.payment_recharge_card_products.reduce(
+    (max, product) => Math.max(max, Number(product.sort_order) || 0),
+    0,
+  );
+
+  form.payment_recharge_card_products.push({
+    name: "",
+    amount: 10,
+    price: 9.9,
+    url: "",
+    enabled: true,
+    sort_order: maxSortOrder + 1,
+  });
+}
+
+function removeRechargeCardProduct(index: number): void {
+  form.payment_recharge_card_products.splice(index, 1);
+}
+
+function normalizeRechargeCardProductsForSave(): RechargeCardProduct[] | null {
+  const normalized = form.payment_recharge_card_products
+    .map((product) => ({
+      name: String(product.name || "").trim(),
+      amount: Number(product.amount) || 0,
+      price: Number(product.price) || 0,
+      url: String(product.url || "").trim(),
+      enabled: product.enabled !== false,
+      sort_order: Number(product.sort_order) || 0,
+    }))
+    .filter(
+      (product) =>
+        product.name ||
+        product.url ||
+        product.amount > 0 ||
+        product.price > 0,
+    );
+
+  for (const product of normalized) {
+    if (!product.name || !product.url) {
+      appStore.showError(
+        t("admin.settings.payment.rechargeCardProductsIncomplete"),
+      );
+      return null;
+    }
+  }
+
+  return normalized;
+}
+
 function findDuplicateLoginAgreementDocumentId(
   documents: LoginAgreementDocument[],
 ): string | null {
@@ -7792,6 +7962,18 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.payment_recharge_card_products = Array.isArray(
+      settings.payment_recharge_card_products,
+    )
+      ? settings.payment_recharge_card_products.map((product) => ({
+          name: product.name || "",
+          amount: Number(product.amount) || 0,
+          price: Number(product.price) || 0,
+          url: product.url || "",
+          enabled: product.enabled !== false,
+          sort_order: Number(product.sort_order) || 0,
+        }))
+      : [];
     form.login_agreement_mode =
       settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
     form.login_agreement_updated_at =
@@ -8017,6 +8199,12 @@ async function saveSettings() {
 
     form.table_default_page_size = normalizedTableDefaultPageSize;
     form.table_page_size_options = normalizedTablePageSizeOptions;
+
+    const normalizedRechargeCardProducts = normalizeRechargeCardProductsForSave();
+    if (normalizedRechargeCardProducts === null) {
+      return;
+    }
+    form.payment_recharge_card_products = normalizedRechargeCardProducts;
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -8301,6 +8489,7 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_recharge_card_products: normalizedRechargeCardProducts,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

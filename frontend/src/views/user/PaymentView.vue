@@ -155,6 +155,42 @@
               </button>
             </section>
           </template>
+          <!-- Recharge Card Tab -->
+          <template v-else-if="activeTab === 'rechargeCard'">
+            <section class="card mx-auto max-w-5xl space-y-6 p-4 sm:p-5">
+              <header class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <Icon name="gift" size="lg" class="text-primary-500" />
+                  <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('payment.buyRechargeCard') }}</h2>
+                </div>
+                <button type="button" class="btn btn-secondary" @click="activeTab = 'redeem'">
+                  {{ t('payment.goRedeem') }}
+                </button>
+              </header>
+
+              <div v-if="rechargeCardProducts.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm font-semibold text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                {{ t('payment.noRechargeCardProducts') }}
+              </div>
+              <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  v-for="product in rechargeCardProducts"
+                  :key="`${product.name}-${product.url}`"
+                  type="button"
+                  class="flex min-h-24 items-center justify-between gap-3 rounded-lg border border-gray-300 px-4 py-3 text-left transition-colors hover:border-primary-400 hover:bg-primary-50/50 dark:border-dark-600 dark:hover:border-primary-500 dark:hover:bg-primary-950/20"
+                  @click="openRechargeCardDialog(product)"
+                >
+                  <span class="min-w-0">
+                    <span class="block truncate text-lg font-bold text-gray-900 dark:text-white">{{ product.name }}</span>
+                    <span class="mt-1 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {{ rechargeCardProductMeta(product) }}
+                    </span>
+                  </span>
+                  <Icon name="externalLink" size="sm" class="shrink-0 text-primary-500" />
+                </button>
+              </div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCardRedeemHint') }}</p>
+            </section>
+          </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
             <!-- Subscription confirm (inline, replaces plan list) -->
@@ -303,6 +339,95 @@
         </div>
       </Transition>
     </Teleport>
+    <!-- Recharge Card Purchase Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="selectedRechargeCardProduct"
+          class="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          @click.self="closeRechargeCardDialog"
+        >
+          <div class="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-dark-700 dark:bg-dark-900">
+            <button
+              type="button"
+              class="absolute right-4 top-4 z-10 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              :aria-label="t('common.close')"
+              @click="closeRechargeCardDialog"
+            >
+              <Icon name="x" size="md" />
+            </button>
+            <div class="grid gap-0 md:grid-cols-[1fr_280px]">
+              <section class="space-y-6 p-6 pr-14 md:p-8 md:pr-8">
+                <div class="flex items-center gap-4">
+                  <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-500">
+                    <Icon name="gift" size="xl" />
+                  </span>
+                  <div class="min-w-0">
+                    <h3 class="truncate text-2xl font-bold text-gray-900 dark:text-white">
+                      {{ selectedRechargeCardProduct.name }}
+                    </h3>
+                    <p class="mt-1 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('payment.rechargeCardDialogSubtitle') }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCardAmountLabel') }}</div>
+                    <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">
+                      ¥{{ selectedRechargeCardProduct.amount || '-' }}
+                    </div>
+                  </div>
+                  <div class="rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900/40 dark:bg-primary-950/30">
+                    <div class="text-sm text-primary-600 dark:text-primary-300">{{ t('payment.rechargeCardPriceLabel') }}</div>
+                    <div class="mt-1 text-3xl font-bold text-primary-600 dark:text-primary-300">
+                      ¥{{ selectedRechargeCardProduct.price || '-' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                    <Icon name="document" size="sm" class="text-primary-500" />
+                    {{ t('payment.rechargeCardHowToUse') }}
+                  </div>
+                  <p class="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                    {{ t('payment.rechargeCardRedeemHint') }}
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-primary" @click="activeTab = 'redeem'; closeRechargeCardDialog()">
+                    {{ t('payment.goRedeem') }}
+                  </button>
+                  <a
+                    :href="selectedRechargeCardProduct.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-secondary"
+                  >
+                    {{ t('payment.openRechargeCardPurchase') }}
+                  </a>
+                </div>
+              </section>
+
+              <aside class="flex flex-col items-center justify-center gap-4 border-t border-gray-200 bg-gray-50 p-6 dark:border-dark-700 dark:bg-dark-950/50 md:border-l md:border-t-0">
+                <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-white">
+                  <canvas ref="rechargeCardQrCanvas" class="block h-52 w-52"></canvas>
+                </div>
+                <div class="space-y-1 text-center">
+                  <div class="text-base font-bold text-gray-900 dark:text-white">{{ t('payment.scanRechargeCardQr') }}</div>
+                  <p class="text-sm leading-5 text-gray-500 dark:text-gray-400">
+                    {{ t('payment.scanRechargeCardQrHint') }}
+                  </p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
     <!-- Image Preview Overlay -->
     <Teleport to="body">
       <Transition name="modal">
@@ -315,7 +440,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -325,7 +450,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargeCardProduct } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
@@ -349,6 +474,7 @@ import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/paym
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
@@ -375,10 +501,12 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription' | 'redeem'>('recharge')
+const activeTab = ref<'recharge' | 'rechargeCard' | 'subscription' | 'redeem'>('recharge')
 const amount = ref<number | null>(null)
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const selectedRechargeCardProduct = ref<RechargeCardProduct | null>(null)
+const rechargeCardQrCanvas = ref<HTMLCanvasElement | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -553,12 +681,13 @@ function onPaymentSettled() {
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
   min_amount: 5, max_amount: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', recharge_card_products: [], stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
-  const result: { key: 'recharge' | 'subscription' | 'redeem'; label: string }[] = []
+  const result: { key: 'recharge' | 'rechargeCard' | 'subscription' | 'redeem'; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
+  if (rechargeCardProducts.value.length > 0) result.push({ key: 'rechargeCard', label: t('payment.tabRechargeCard') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   result.push({ key: 'redeem', label: t('payment.tabRedeem') })
   return result
@@ -666,6 +795,12 @@ const quickRechargeOptions = computed(() =>
     .map((value) => ({ amount: value, badge: rechargeBonusBadge.value })),
 )
 
+const rechargeCardProducts = computed(() =>
+  [...(checkout.value.recharge_card_products || [])]
+    .filter((product) => product.enabled !== false && product.url)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+)
+
 const rechargeBonusBadge = computed(() => {
   if (balanceRechargeMultiplier.value <= 1) return ''
   return t('payment.rechargeBonusBadge', { multiplier: balanceRechargeMultiplier.value.toFixed(2) })
@@ -699,6 +834,46 @@ function selectRechargeAmount(value: number) {
 function formatQuickAmount(value: number) {
   return formatSelectedPaymentAmount(value).replace(/\.00(?=\D*$)/, '')
 }
+
+function rechargeCardProductMeta(product: { amount?: number; price?: number }) {
+  const parts: string[] = []
+  if (product.amount && product.amount > 0) {
+    parts.push(t('payment.cardAmount', { amount: product.amount }))
+  }
+  if (product.price && product.price > 0) {
+    parts.push(t('payment.cardPrice', { price: product.price }))
+  }
+  return parts.join(' · ') || t('payment.cardExternalPurchase')
+}
+
+function openRechargeCardDialog(product: RechargeCardProduct) {
+  selectedRechargeCardProduct.value = product
+}
+
+function closeRechargeCardDialog() {
+  selectedRechargeCardProduct.value = null
+}
+
+async function renderRechargeCardQr() {
+  if (!selectedRechargeCardProduct.value?.url) return
+  await nextTick()
+  if (!rechargeCardQrCanvas.value) return
+  await QRCode.toCanvas(rechargeCardQrCanvas.value, selectedRechargeCardProduct.value.url, {
+    width: 208,
+    margin: 2,
+    color: {
+      dark: '#111827',
+      light: '#ffffff',
+    },
+  })
+}
+
+watch(
+  () => selectedRechargeCardProduct.value?.url,
+  () => {
+    renderRechargeCardQr().catch(() => {})
+  },
+)
 
 function paymentMethodIcon(type: string): string {
   if (type.includes('alipay')) return alipayIcon

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strconv"
@@ -14,27 +15,28 @@ import (
 )
 
 const (
-	SettingPaymentEnabled      = "payment_enabled"
-	SettingMinRechargeAmount   = "MIN_RECHARGE_AMOUNT"
-	SettingMaxRechargeAmount   = "MAX_RECHARGE_AMOUNT"
-	SettingDailyRechargeLimit  = "DAILY_RECHARGE_LIMIT"
-	SettingOrderTimeoutMinutes = "ORDER_TIMEOUT_MINUTES"
-	SettingMaxPendingOrders    = "MAX_PENDING_ORDERS"
-	SettingEnabledPaymentTypes = "ENABLED_PAYMENT_TYPES"
-	SettingLoadBalanceStrategy = "LOAD_BALANCE_STRATEGY"
-	SettingBalancePayDisabled  = "BALANCE_PAYMENT_DISABLED"
-	SettingBalanceRechargeMult = "BALANCE_RECHARGE_MULTIPLIER"
-	SettingRechargeFeeRate     = "RECHARGE_FEE_RATE"
-	SettingProductNamePrefix   = "PRODUCT_NAME_PREFIX"
-	SettingProductNameSuffix   = "PRODUCT_NAME_SUFFIX"
-	SettingHelpImageURL        = "PAYMENT_HELP_IMAGE_URL"
-	SettingHelpText            = "PAYMENT_HELP_TEXT"
-	SettingCancelRateLimitOn   = "CANCEL_RATE_LIMIT_ENABLED"
-	SettingCancelRateLimitMax  = "CANCEL_RATE_LIMIT_MAX"
-	SettingCancelWindowSize    = "CANCEL_RATE_LIMIT_WINDOW"
-	SettingCancelWindowUnit    = "CANCEL_RATE_LIMIT_UNIT"
-	SettingCancelWindowMode    = "CANCEL_RATE_LIMIT_WINDOW_MODE"
-	SettingAlipayForceQRCode   = "ALIPAY_FORCE_QRCODE"
+	SettingPaymentEnabled       = "payment_enabled"
+	SettingMinRechargeAmount    = "MIN_RECHARGE_AMOUNT"
+	SettingMaxRechargeAmount    = "MAX_RECHARGE_AMOUNT"
+	SettingDailyRechargeLimit   = "DAILY_RECHARGE_LIMIT"
+	SettingOrderTimeoutMinutes  = "ORDER_TIMEOUT_MINUTES"
+	SettingMaxPendingOrders     = "MAX_PENDING_ORDERS"
+	SettingEnabledPaymentTypes  = "ENABLED_PAYMENT_TYPES"
+	SettingLoadBalanceStrategy  = "LOAD_BALANCE_STRATEGY"
+	SettingBalancePayDisabled   = "BALANCE_PAYMENT_DISABLED"
+	SettingBalanceRechargeMult  = "BALANCE_RECHARGE_MULTIPLIER"
+	SettingRechargeFeeRate      = "RECHARGE_FEE_RATE"
+	SettingProductNamePrefix    = "PRODUCT_NAME_PREFIX"
+	SettingProductNameSuffix    = "PRODUCT_NAME_SUFFIX"
+	SettingHelpImageURL         = "PAYMENT_HELP_IMAGE_URL"
+	SettingHelpText             = "PAYMENT_HELP_TEXT"
+	SettingRechargeCardProducts = "RECHARGE_CARD_PRODUCTS"
+	SettingCancelRateLimitOn    = "CANCEL_RATE_LIMIT_ENABLED"
+	SettingCancelRateLimitMax   = "CANCEL_RATE_LIMIT_MAX"
+	SettingCancelWindowSize     = "CANCEL_RATE_LIMIT_WINDOW"
+	SettingCancelWindowUnit     = "CANCEL_RATE_LIMIT_UNIT"
+	SettingCancelWindowMode     = "CANCEL_RATE_LIMIT_WINDOW_MODE"
+	SettingAlipayForceQRCode    = "ALIPAY_FORCE_QRCODE"
 )
 
 // Default values for payment configuration settings.
@@ -45,22 +47,23 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           float64  `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       string   `json:"load_balance_strategy"`
-	ProductNamePrefix         string   `json:"product_name_prefix"`
-	ProductNameSuffix         string   `json:"product_name_suffix"`
-	HelpImageURL              string   `json:"help_image_url"`
-	HelpText                  string   `json:"help_text"`
-	StripePublishableKey      string   `json:"stripe_publishable_key,omitempty"`
+	Enabled                   bool                  `json:"enabled"`
+	MinAmount                 float64               `json:"min_amount"`
+	MaxAmount                 float64               `json:"max_amount"`
+	DailyLimit                float64               `json:"daily_limit"`
+	OrderTimeoutMin           int                   `json:"order_timeout_minutes"`
+	MaxPendingOrders          int                   `json:"max_pending_orders"`
+	EnabledTypes              []string              `json:"enabled_payment_types"`
+	BalanceDisabled           bool                  `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64               `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           float64               `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       string                `json:"load_balance_strategy"`
+	ProductNamePrefix         string                `json:"product_name_prefix"`
+	ProductNameSuffix         string                `json:"product_name_suffix"`
+	HelpImageURL              string                `json:"help_image_url"`
+	HelpText                  string                `json:"help_text"`
+	RechargeCardProducts      []RechargeCardProduct `json:"recharge_card_products"`
+	StripePublishableKey      string                `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -73,23 +76,33 @@ type PaymentConfig struct {
 	AlipayForceQRCode bool `json:"alipay_force_qrcode"`
 }
 
+type RechargeCardProduct struct {
+	Name      string  `json:"name"`
+	Amount    float64 `json:"amount"`
+	Price     float64 `json:"price"`
+	URL       string  `json:"url"`
+	Enabled   bool    `json:"enabled"`
+	SortOrder int     `json:"sort_order,omitempty"`
+}
+
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool                  `json:"enabled"`
+	MinAmount                 *float64               `json:"min_amount"`
+	MaxAmount                 *float64               `json:"max_amount"`
+	DailyLimit                *float64               `json:"daily_limit"`
+	OrderTimeoutMin           *int                   `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int                   `json:"max_pending_orders"`
+	EnabledTypes              []string               `json:"enabled_payment_types"`
+	BalanceDisabled           *bool                  `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64               `json:"balance_recharge_multiplier"`
+	RechargeFeeRate           *float64               `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       *string                `json:"load_balance_strategy"`
+	ProductNamePrefix         *string                `json:"product_name_prefix"`
+	ProductNameSuffix         *string                `json:"product_name_suffix"`
+	HelpImageURL              *string                `json:"help_image_url"`
+	HelpText                  *string                `json:"help_text"`
+	RechargeCardProducts      *[]RechargeCardProduct `json:"recharge_card_products"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -206,7 +219,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
-		SettingHelpImageURL, SettingHelpText,
+		SettingHelpImageURL, SettingHelpText, SettingRechargeCardProducts,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode,
@@ -239,6 +252,7 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
+		RechargeCardProducts:      parseRechargeCardProducts(vals[SettingRechargeCardProducts]),
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -304,6 +318,11 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	if req.RechargeCardProducts != nil {
+		if _, err := normalizeRechargeCardProducts(*req.RechargeCardProducts); err != nil {
+			return err
+		}
+	}
 	m := map[string]string{
 		SettingPaymentEnabled:                    formatBoolOrEmpty(req.Enabled),
 		SettingMinRechargeAmount:                 formatPositiveFloat(req.MinAmount),
@@ -335,7 +354,68 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	} else {
 		m[SettingEnabledPaymentTypes] = ""
 	}
+	if req.RechargeCardProducts != nil {
+		m[SettingRechargeCardProducts] = formatRechargeCardProducts(req.RechargeCardProducts)
+	}
 	return s.settingRepo.SetMultiple(ctx, m)
+}
+
+func parseRechargeCardProducts(raw string) []RechargeCardProduct {
+	if strings.TrimSpace(raw) == "" {
+		return []RechargeCardProduct{}
+	}
+	var products []RechargeCardProduct
+	if err := json.Unmarshal([]byte(raw), &products); err != nil {
+		return []RechargeCardProduct{}
+	}
+	normalized, err := normalizeRechargeCardProducts(products)
+	if err != nil {
+		return []RechargeCardProduct{}
+	}
+	return normalized
+}
+
+func normalizeRechargeCardProducts(products []RechargeCardProduct) ([]RechargeCardProduct, error) {
+	normalized := make([]RechargeCardProduct, 0, len(products))
+	for _, p := range products {
+		p.Name = strings.TrimSpace(p.Name)
+		p.URL = strings.TrimSpace(p.URL)
+		if p.Name == "" && p.URL == "" && p.Amount <= 0 && p.Price <= 0 {
+			continue
+		}
+		if p.URL == "" {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_CARD_PRODUCT", "recharge card product url is required")
+		}
+		if !strings.HasPrefix(p.URL, "http://") && !strings.HasPrefix(p.URL, "https://") {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_CARD_PRODUCT_URL", "recharge card product url must start with http:// or https://")
+		}
+		if p.Name == "" {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_CARD_PRODUCT", "recharge card product name is required")
+		}
+		if math.IsNaN(p.Amount) || math.IsInf(p.Amount, 0) || p.Amount < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_CARD_PRODUCT_AMOUNT", "recharge card product amount must be non-negative")
+		}
+		if math.IsNaN(p.Price) || math.IsInf(p.Price, 0) || p.Price < 0 {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_CARD_PRODUCT_PRICE", "recharge card product price must be non-negative")
+		}
+		normalized = append(normalized, p)
+	}
+	return normalized, nil
+}
+
+func formatRechargeCardProducts(v *[]RechargeCardProduct) string {
+	if v == nil {
+		return ""
+	}
+	normalized, err := normalizeRechargeCardProducts(*v)
+	if err != nil || len(normalized) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(normalized)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 func formatBoolOrEmpty(v *bool) string {

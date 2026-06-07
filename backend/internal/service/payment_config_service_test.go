@@ -159,6 +159,27 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("recharge card products are parsed and normalized", func(t *testing.T) {
+		t.Parallel()
+		vals := map[string]string{
+			SettingRechargeCardProducts: `[{"name":" 9.9 buy 10 ","amount":10,"price":9.9,"url":" https://pay.ldxp.cn/item/8y6tk7 ","enabled":true,"sort_order":2}]`,
+		}
+		cfg := svc.parsePaymentConfig(vals)
+		if len(cfg.RechargeCardProducts) != 1 {
+			t.Fatalf("RechargeCardProducts len = %d, want 1", len(cfg.RechargeCardProducts))
+		}
+		product := cfg.RechargeCardProducts[0]
+		if product.Name != "9.9 buy 10" {
+			t.Fatalf("Name = %q, want %q", product.Name, "9.9 buy 10")
+		}
+		if product.URL != "https://pay.ldxp.cn/item/8y6tk7" {
+			t.Fatalf("URL = %q, want configured URL", product.URL)
+		}
+		if product.Amount != 10 || product.Price != 9.9 || !product.Enabled || product.SortOrder != 2 {
+			t.Fatalf("unexpected product fields: %+v", product)
+		}
+	})
+
 	t.Run("enabled types with spaces are trimmed", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
@@ -429,6 +450,49 @@ func TestUpdatePaymentConfig_PersistsVisibleMethodRouting(t *testing.T) {
 	}
 	if repo.values[SettingPaymentVisibleMethodWxpaySource] != VisibleMethodSourceOfficialWechat {
 		t.Fatalf("wxpay source = %q, want %q", repo.values[SettingPaymentVisibleMethodWxpaySource], VisibleMethodSourceOfficialWechat)
+	}
+}
+
+func TestUpdatePaymentConfig_PersistsRechargeCardProducts(t *testing.T) {
+	t.Parallel()
+
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	products := []RechargeCardProduct{{
+		Name:      "9.9 buy 10",
+		Amount:    10,
+		Price:     9.9,
+		URL:       "https://pay.ldxp.cn/item/8y6tk7",
+		Enabled:   true,
+		SortOrder: 1,
+	}}
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		RechargeCardProducts: &products,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+	if !strings.Contains(repo.values[SettingRechargeCardProducts], "https://pay.ldxp.cn/item/8y6tk7") {
+		t.Fatalf("stored products = %q, want configured URL", repo.values[SettingRechargeCardProducts])
+	}
+}
+
+func TestUpdatePaymentConfig_SkipsRechargeCardProductsWhenOmitted(t *testing.T) {
+	t.Parallel()
+
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+
+	enabled := true
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		Enabled: &enabled,
+	})
+	if err != nil {
+		t.Fatalf("UpdatePaymentConfig returned error: %v", err)
+	}
+	if _, ok := repo.updates[SettingRechargeCardProducts]; ok {
+		t.Fatalf("unexpected recharge card products update when field is omitted: %q", repo.updates[SettingRechargeCardProducts])
 	}
 }
 

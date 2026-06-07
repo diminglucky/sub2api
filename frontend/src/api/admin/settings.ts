@@ -10,6 +10,7 @@ import type {
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
+import type { RechargeCardProduct } from "@/types/payment";
 
 export interface DefaultSubscriptionSetting {
   group_id: number;
@@ -580,6 +581,7 @@ export interface SystemSettings {
   payment_product_name_suffix: string;
   payment_help_image_url: string;
   payment_help_text: string;
+  payment_recharge_card_products: RechargeCardProduct[];
   payment_cancel_rate_limit_enabled: boolean;
   payment_cancel_rate_limit_max: number;
   payment_cancel_rate_limit_window: number;
@@ -811,6 +813,7 @@ export interface UpdateSettingsRequest {
   payment_product_name_suffix?: string;
   payment_help_image_url?: string;
   payment_help_text?: string;
+  payment_recharge_card_products?: RechargeCardProduct[];
   payment_cancel_rate_limit_enabled?: boolean;
   payment_cancel_rate_limit_max?: number;
   payment_cancel_rate_limit_window?: number;
