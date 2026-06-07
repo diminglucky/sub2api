@@ -41,7 +41,7 @@
               required
               autofocus
               autocomplete="email"
-              :disabled="registrationActionDisabled"
+              :disabled="registrationFormControlsDisabled"
               class="input h-10 pl-11"
               :class="{ 'input-error': errors.email }"
               :placeholder="t('auth.emailPlaceholder')"
@@ -64,14 +64,14 @@
               :type="showPassword ? 'text' : 'password'"
               required
               autocomplete="new-password"
-              :disabled="registrationActionDisabled"
+              :disabled="registrationFormControlsDisabled"
               class="input h-10 pl-11 pr-11"
               :class="{ 'input-error': errors.password }"
               :placeholder="t('auth.createPasswordPlaceholder')"
             />
             <button
               type="button"
-              :disabled="registrationActionDisabled"
+              :disabled="registrationFormControlsDisabled"
               @click="showPassword = !showPassword"
               class="absolute inset-y-0 right-0 flex items-center pr-3.5 text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-dark-300"
             >
@@ -97,7 +97,7 @@
               id="invitation_code"
               v-model="formData.invitation_code"
               type="text"
-              :disabled="registrationActionDisabled"
+              :disabled="registrationFormControlsDisabled"
               class="input h-10 pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': invitationValidation.valid,
@@ -145,7 +145,7 @@
               id="promo_code"
               v-model="formData.promo_code"
               type="text"
-              :disabled="registrationActionDisabled"
+              :disabled="registrationFormControlsDisabled"
               class="input h-10 pl-11 pr-10"
               :class="{
                 'border-green-500 focus:border-green-500 focus:ring-green-500': promoValidation.valid,
@@ -426,6 +426,10 @@ const showOAuthLogin = computed(
 
 const agreementGateActive = computed(
   () => loginAgreementEnabled.value && !agreementAccepted.value
+)
+
+const registrationFormControlsDisabled = computed(
+  () => isLoading.value || !settingsLoaded.value
 )
 
 const registrationActionDisabled = computed(
