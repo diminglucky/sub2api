@@ -73,62 +73,6 @@
             </div>
           </div>
 
-          <section
-            v-if="selectedRow"
-            class="rounded-xl border border-primary-200 bg-white p-5 shadow-sm dark:border-primary-500/30 dark:bg-dark-900/80"
-          >
-            <div class="flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-dark-700 sm:flex-row sm:items-start sm:justify-between">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-600 dark:text-primary-300">
-                  <PlatformIcon :platform="selectedRow.platform as GroupPlatform" size="xs" />
-                  <span>{{ selectedRow.platform }}</span>
-                </div>
-                <h2 class="mt-1 break-words text-xl font-bold text-gray-900 dark:text-white">
-                  {{ selectedRow.name }}
-                </h2>
-              </div>
-              <span class="w-fit rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-500 dark:text-gray-200">
-                {{ billingLabel(selectedRow.model.pricing?.billing_mode) }}
-              </span>
-            </div>
-
-            <div class="mt-4">
-              <div class="mb-3 flex items-center justify-between gap-3">
-                <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('models.groupPrices') }}</h3>
-                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.groupPricesHint') }}</span>
-              </div>
-
-              <div v-if="selectedGroupPrices.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-6 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
-                {{ t('models.noGroupPrices') }}
-              </div>
-
-              <div v-else class="grid gap-3">
-                <div
-                  v-for="item in selectedGroupPrices"
-                  :key="item.group.id"
-                  class="grid gap-3 rounded-lg border border-gray-200 p-4 dark:border-dark-700 md:grid-cols-[minmax(11rem,1fr)_7rem_minmax(8rem,0.8fr)_minmax(8rem,0.8fr)] md:items-center"
-                >
-                  <div class="min-w-0">
-                    <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.group.name }}</div>
-                    <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ item.group.subscription_type === 'subscription' ? t('models.subscriptionGroup') : t('models.standardGroup') }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.multiplier') }}</div>
-                    <div class="mt-1 font-semibold text-gray-900 dark:text-white">{{ formatMultiplier(item.multiplier) }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.secondaryLabel }}</div>
-                    <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.secondaryPrice }}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.tertiaryLabel }}</div>
-                    <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.tertiaryPrice }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
           <div v-if="loading" class="py-20 text-center">
             <Icon name="refresh" size="lg" class="inline-block animate-spin text-gray-400" />
           </div>
@@ -200,6 +144,118 @@
         </main>
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition-opacity duration-200"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition-opacity duration-150"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="isModelDrawerOpen && selectedRow"
+          class="fixed inset-0 z-50 flex justify-end bg-gray-950/45 backdrop-blur-[2px] dark:bg-black/60"
+          @click.self="closeModelDrawer"
+        >
+          <Transition
+            appear
+            enter-active-class="transition-transform duration-200 ease-out"
+            enter-from-class="translate-x-full"
+            enter-to-class="translate-x-0"
+            leave-active-class="transition-transform duration-150 ease-in"
+            leave-from-class="translate-x-0"
+            leave-to-class="translate-x-full"
+          >
+            <aside
+              class="flex h-full w-full max-w-[34rem] flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl dark:border-dark-700 dark:bg-dark-900"
+              role="dialog"
+              aria-modal="true"
+              :aria-label="selectedRow.name"
+            >
+              <header class="flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-5 dark:border-dark-700">
+                <div class="flex min-w-0 gap-3">
+                  <div class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-gray-200 text-gray-500 dark:border-dark-600 dark:text-gray-300">
+                    <PlatformIcon :platform="selectedRow.platform as GroupPlatform" size="md" />
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-primary-600 dark:text-primary-300">
+                      <span>{{ selectedRow.platform }}</span>
+                    </div>
+                    <h2 class="mt-1 break-words text-xl font-bold leading-tight text-gray-900 dark:text-white">
+                      {{ selectedRow.name }}
+                    </h2>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
+                  :aria-label="t('common.close')"
+                  @click="closeModelDrawer"
+                >
+                  <Icon name="x" size="md" />
+                </button>
+              </header>
+
+              <div class="flex-1 overflow-y-auto px-6 py-5">
+                <div class="mb-5 flex flex-wrap gap-2">
+                  <span class="rounded-full border border-gray-300 px-3 py-1 text-xs font-semibold text-gray-700 dark:border-dark-500 dark:text-gray-200">
+                    {{ billingLabel(selectedRow.model.pricing?.billing_mode) }}
+                  </span>
+                  <span
+                    v-for="tag in modelTags(selectedRow)"
+                    :key="`drawer-${selectedRow.platform}-${selectedRow.name}-${tag}`"
+                    class="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold uppercase text-gray-600 dark:bg-dark-800 dark:text-gray-300"
+                  >
+                    {{ tag }}
+                  </span>
+                </div>
+
+                <div class="mb-4 flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('models.groupPrices') }}</h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('models.groupPricesHint') }}</p>
+                  </div>
+                </div>
+
+                <div v-if="selectedGroupPrices.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-10 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                  {{ t('models.noGroupPrices') }}
+                </div>
+
+                <div v-else class="grid gap-3">
+                  <div
+                    v-for="item in selectedGroupPrices"
+                    :key="item.group.id"
+                    class="rounded-lg border border-gray-200 p-4 dark:border-dark-700"
+                  >
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div class="min-w-0">
+                        <div class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.group.name }}</div>
+                        <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ item.group.subscription_type === 'subscription' ? t('models.subscriptionGroup') : t('models.standardGroup') }}</div>
+                      </div>
+                      <span class="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-500/10 dark:text-primary-300">
+                        {{ formatMultiplier(item.multiplier) }}
+                      </span>
+                    </div>
+                    <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                      <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+                        <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.secondaryLabel }}</div>
+                        <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.secondaryPrice }}</div>
+                      </div>
+                      <div class="rounded-lg bg-gray-50 p-3 dark:bg-dark-800">
+                        <div class="text-xs text-gray-500 dark:text-gray-400">{{ item.tertiaryLabel }}</div>
+                        <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ item.tertiaryPrice }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
   </AppLayout>
 </template>
 
@@ -233,6 +289,7 @@ const searchQuery = ref('')
 const billingFilter = ref<'all' | BillingMode>('all')
 const platformFilter = ref('all')
 const selectedModelKey = ref('')
+const isModelDrawerOpen = ref(false)
 const userGroupRates = ref<Record<number, number>>({})
 
 const billingFilterOptions = computed(() => [
@@ -263,7 +320,7 @@ const filteredRows = computed(() => {
 })
 
 const selectedRow = computed(() =>
-  filteredRows.value.find((row) => modelKey(row) === selectedModelKey.value) || filteredRows.value[0] || null
+  filteredRows.value.find((row) => modelKey(row) === selectedModelKey.value) || null
 )
 
 const selectedGroupPrices = computed(() => {
@@ -339,6 +396,11 @@ function modelKey(row: ModelRow) {
 
 function selectModel(row: ModelRow) {
   selectedModelKey.value = modelKey(row)
+  isModelDrawerOpen.value = true
+}
+
+function closeModelDrawer() {
+  isModelDrawerOpen.value = false
 }
 
 function effectiveGroupMultiplier(group: UserAvailableGroup) {
@@ -432,10 +494,12 @@ function modelTags(row: ModelRow) {
 watch(filteredRows, (rows) => {
   if (rows.length === 0) {
     selectedModelKey.value = ''
+    isModelDrawerOpen.value = false
     return
   }
   if (!rows.some((row) => modelKey(row) === selectedModelKey.value)) {
-    selectedModelKey.value = modelKey(rows[0])
+    selectedModelKey.value = ''
+    isModelDrawerOpen.value = false
   }
 })
 
