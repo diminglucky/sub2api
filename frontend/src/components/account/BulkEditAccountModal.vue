@@ -2,7 +2,7 @@
   <BaseDialog
     :show="show"
     :title="t('admin.accounts.bulkEdit.title')"
-    width="wide"
+    width="full"
     @close="handleClose"
   >
     <form id="bulk-edit-account-form" class="space-y-5" @submit.prevent="() => handleSubmit()">

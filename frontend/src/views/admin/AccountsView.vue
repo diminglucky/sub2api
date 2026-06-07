@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <TablePageLayout>
+    <TablePageLayout class="accounts-table-page">
       <template #filters>
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -217,7 +217,7 @@
           default-sort-key="name"
           default-sort-order="asc"
           :sort-storage-key="ACCOUNT_SORT_STORAGE_KEY"
-          :estimate-row-height="72"
+          :estimate-row-height="56"
           :overscan="5"
         >
           <template #header-select>
@@ -1764,5 +1764,38 @@ onUnmounted(() => {
 
 .account-tools-menu-icon {
   @apply inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md;
+}
+
+.accounts-table-page {
+  margin-inline: -0.5rem;
+  height: calc(100vh - 64px - 2rem);
+}
+
+@media (min-width: 768px) {
+  .accounts-table-page {
+    margin-inline: -1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .accounts-table-page {
+    margin-inline: -1.5rem;
+  }
+}
+
+.accounts-table-page :deep(.table-scroll-container) {
+  @apply rounded-xl;
+}
+
+.accounts-table-page :deep(.table-scroll-container th) {
+  @apply px-3 py-3;
+}
+
+.accounts-table-page :deep(.table-scroll-container td) {
+  @apply px-3 py-2.5;
+}
+
+.accounts-table-page :deep(.table-wrapper) {
+  scrollbar-gutter: stable both-edges;
 }
 </style>
