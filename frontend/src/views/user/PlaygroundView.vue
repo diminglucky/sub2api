@@ -149,11 +149,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { authAPI, keysAPI, userChannelsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import type { UserAvailableChannel } from '@/api/channels'
 import type { ApiKey } from '@/types'
 import { maskApiKey } from '@/utils/maskApiKey'
 
@@ -168,7 +169,7 @@ const { t } = useI18n()
 const keys = ref<ApiKey[]>([])
 const selectedKeyId = ref('')
 const model = ref('')
-const modelOptions = ref<string[]>([])
+const availableChannels = ref<UserAvailableChannel[]>([])
 const systemPrompt = ref('你是一个友好、准确、简洁的中文助手。请优先使用中文回答用户的问题。')
 const temperature = ref(0.7)
 const maxTokens = ref(1024)
@@ -184,6 +185,8 @@ let nextMessageId = 1
 
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
+const selectedGroupId = computed(() => selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null)
+const modelOptions = computed(() => collectModelOptions(selectedGroupId.value))
 const canSend = computed(() => Boolean(apiBaseUrl.value && selectedKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 
 function resolveDefaultEndpoint(configured: string): string {
@@ -208,21 +211,36 @@ async function loadKeys() {
 async function loadModels() {
   loadingModels.value = true
   try {
-    const channels = await userChannelsAPI.getAvailableModels()
+    availableChannels.value = await userChannelsAPI.getAvailableModels()
+    applyDefaultModelForSelectedKey()
+  } finally {
+    loadingModels.value = false
+  }
+}
+
+function collectModelOptions(groupId: number | null): string[] {
     const names = new Set<string>()
-    for (const channel of channels) {
-      for (const platform of channel.platforms || []) {
-        for (const supported of platform.supported_models || []) {
+    for (const channel of availableChannels.value) {
+      for (const section of channel.platforms || []) {
+        if (groupId && !section.groups.some((group) => group.id === groupId)) continue
+        for (const supported of section.supported_models || []) {
           if (supported.name) names.add(supported.name)
         }
       }
     }
-    modelOptions.value = Array.from(names).sort((a, b) => a.localeCompare(b))
-    if (!model.value && modelOptions.value.length > 0) {
-      model.value = modelOptions.value[0]
-    }
-  } finally {
-    loadingModels.value = false
+    return sortModelNames(Array.from(names))
+}
+
+function sortModelNames(names: string[]): string[] {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+  return names.sort((a, b) => collator.compare(b, a))
+}
+
+function applyDefaultModelForSelectedKey() {
+  const options = modelOptions.value
+  if (options.length === 0) return
+  if (!options.includes(model.value)) {
+    model.value = options[0]
   }
 }
 
@@ -320,5 +338,9 @@ function clearChat() {
 
 onMounted(() => {
   loadInitialData()
+})
+
+watch(selectedKeyId, () => {
+  applyDefaultModelForSelectedKey()
 })
 </script>
