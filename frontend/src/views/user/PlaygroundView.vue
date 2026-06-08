@@ -227,7 +227,7 @@ const fallbackModelsByPlatform: Record<string, string[]> = {
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
 const selectedGroupId = computed(() => selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null)
-const selectedPlatform = computed(() => selectedKey.value?.group?.platform || '')
+const selectedPlatform = computed(() => selectedKey.value?.group?.platform || findPlatformByGroupId(selectedGroupId.value))
 const modelOptions = computed(() => collectModelOptions(selectedPlatform.value, selectedGroupId.value))
 const canSend = computed(() => Boolean(apiBaseUrl.value && selectedKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 
@@ -265,11 +265,34 @@ function collectModelOptions(platform: string, groupId: number | null): string[]
   for (const name of fallbackModelsByPlatform[platform] || []) {
     names.add(name)
   }
+
+  addChannelModelOptions(names, platform, groupId)
+  if (names.size === 0) {
+    addChannelModelOptions(names, '', null)
+  }
+
+  return sortModelNames(Array.from(names))
+}
+
+function findPlatformByGroupId(groupId: number | null): string {
+  if (!groupId) return ''
   for (const channel of availableChannels.value) {
     for (const section of channel.platforms || []) {
-      if (platform) {
-        if (section.platform !== platform) continue
-      } else if (groupId && !section.groups.some((group) => group.id === groupId)) {
+      if (section.groups.some((group) => group.id === groupId)) {
+        return section.platform
+      }
+    }
+  }
+  return ''
+}
+
+function addChannelModelOptions(names: Set<string>, platform: string, groupId: number | null) {
+  for (const channel of availableChannels.value) {
+    for (const section of channel.platforms || []) {
+      if (platform && section.platform !== platform) {
+        continue
+      }
+      if (!platform && groupId && !section.groups.some((group) => group.id === groupId)) {
         continue
       }
 
@@ -280,7 +303,6 @@ function collectModelOptions(platform: string, groupId: number | null): string[]
       }
     }
   }
-  return sortModelNames(Array.from(names))
 }
 
 function sortModelNames(names: string[]): string[] {
