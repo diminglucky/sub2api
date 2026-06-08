@@ -139,7 +139,7 @@
           <EmailOAuthButtons
             variant="icon"
             :disabled="authActionDisabled"
-            :github-enabled="false"
+            :github-enabled="githubOAuthEnabled"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
           />
