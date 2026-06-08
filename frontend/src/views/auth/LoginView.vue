@@ -139,7 +139,7 @@
           <EmailOAuthButtons
             variant="icon"
             :disabled="authActionDisabled"
-            :github-enabled="githubOAuthEnabled"
+            :github-enabled="false"
             :google-enabled="googleOAuthEnabled"
             :show-divider="false"
           />
@@ -296,7 +296,6 @@ const showOAuthLogin = computed(
       dingtalkOAuthEnabled.value ||
       wechatOAuthEnabled.value ||
       oidcOAuthEnabled.value ||
-      githubOAuthEnabled.value ||
       googleOAuthEnabled.value)
 )
 
