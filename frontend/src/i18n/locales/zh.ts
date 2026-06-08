@@ -429,6 +429,7 @@ export default {
     loadFailed: '加载 Playground 数据失败',
     sendFailed: '发送请求失败',
     insufficientBalance: '账户余额不足，请先充值或换一个有余额的 API 密钥。',
+    serviceUnavailable: '当前模型暂时不可用，请换一个模型或稍后再试。',
     emptyResponse: '模型返回了空内容',
   },
 

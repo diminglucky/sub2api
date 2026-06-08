@@ -429,6 +429,7 @@ export default {
     loadFailed: 'Failed to load Playground data',
     sendFailed: 'Failed to send request',
     insufficientBalance: 'Account balance is insufficient. Please recharge or choose another API key with balance.',
+    serviceUnavailable: 'This model is temporarily unavailable. Please choose another model or try again later.',
     emptyResponse: 'The model returned an empty response',
   },
 

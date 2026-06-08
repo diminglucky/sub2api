@@ -35,15 +35,19 @@
 
             <label class="block">
               <span class="input-label">{{ t('playground.model') }}</span>
-              <input
+              <select
+                v-if="modelOptions.length > 0"
                 v-model="model"
                 class="input mt-1 font-mono text-sm"
-                list="playground-models"
+              >
+                <option v-for="name in modelOptions" :key="name" :value="name">{{ name }}</option>
+              </select>
+              <input
+                v-else
+                v-model="model"
+                class="input mt-1 font-mono text-sm"
                 :placeholder="t('playground.modelPlaceholder')"
               />
-              <datalist id="playground-models">
-                <option v-for="name in modelOptions" :key="name" :value="name" />
-              </datalist>
             </label>
 
             <label class="block">
@@ -177,6 +181,49 @@ const apiBaseUrl = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
 let nextMessageId = 1
 
+const fallbackModelsByPlatform: Record<string, string[]> = {
+  openai: [
+    'gpt-5.5',
+    'gpt-5.4',
+    'gpt-5.4-mini',
+    'gpt-5.3-codex',
+    'gpt-5.3-codex-spark',
+    'gpt-5.2',
+  ],
+  anthropic: [
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-opus-4-6',
+    'claude-sonnet-4-6',
+    'claude-opus-4-5-20251101',
+    'claude-sonnet-4-5-20250929',
+    'claude-haiku-4-5-20251001',
+  ],
+  gemini: [
+    'gemini-3.1-pro-preview',
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+  ],
+  antigravity: [
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-opus-4-6',
+    'claude-opus-4-6-thinking',
+    'claude-sonnet-4-6',
+    'claude-sonnet-4-5',
+    'claude-sonnet-4-5-thinking',
+    'gemini-3.1-pro-high',
+    'gemini-3.1-pro-low',
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-preview',
+    'gemini-2.5-flash',
+  ],
+}
+
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
 const selectedGroupId = computed(() => selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null)
@@ -215,6 +262,9 @@ async function loadModels() {
 
 function collectModelOptions(platform: string, groupId: number | null): string[] {
   const names = new Set<string>()
+  for (const name of fallbackModelsByPlatform[platform] || []) {
+    names.add(name)
+  }
   for (const channel of availableChannels.value) {
     for (const section of channel.platforms || []) {
       if (platform) {
@@ -275,6 +325,9 @@ function normalizePlaygroundError(message: string): string {
   const normalized = message.toLowerCase()
   if (normalized.includes('insufficient account balance')) {
     return t('playground.insufficientBalance')
+  }
+  if (normalized.includes('service temporarily unavailable') || normalized.includes('upstream service temporarily unavailable')) {
+    return t('playground.serviceUnavailable')
   }
   return message || t('playground.sendFailed')
 }
