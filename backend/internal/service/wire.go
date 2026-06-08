@@ -572,6 +572,8 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
+	NewLotteryService,
+	ProvideLotteryDrawRunner,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,
@@ -592,6 +594,13 @@ func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache
 	svc := NewUserPlatformQuotaUsageFlusher(cfg, cache, quotaRepo, tw)
 	svc.Start()
 	return svc
+}
+
+// ProvideLotteryDrawRunner creates and starts the due lottery draw runner.
+func ProvideLotteryDrawRunner(lotterySvc *LotteryService) *LotteryDrawRunner {
+	runner := NewLotteryDrawRunner(lotterySvc, 10*time.Second)
+	runner.Start()
+	return runner
 }
 
 // ProvidePaymentConfigService wraps NewPaymentConfigService to accept the named

@@ -360,6 +360,8 @@ export default {
     apiKeys: 'API 密钥',
     playground: 'Playground',
     usage: '使用记录',
+    lottery: '抽奖',
+    lotteryManagement: '抽奖管理',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -1203,6 +1205,11 @@ export default {
       line3: '返利额度可随时转入账户余额。',
       line4: '新产生的返利需要经过冻结期后才能提现。'
     }
+  },
+
+  lottery: {
+    title: '抽奖',
+    description: '参与平台抽奖活动'
   },
 
   // Redeem
@@ -4631,6 +4638,11 @@ export default {
       failedToGenerate: '生成兑换码失败',
       failedToUpdate: '更新兑换码失败',
       failedToDelete: '删除兑换码失败'
+    },
+
+    lottery: {
+      title: '抽奖管理',
+      description: '创建活动并配置余额或卡密奖品'
     },
 
     // Announcements

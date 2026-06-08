@@ -32,6 +32,9 @@ func RegisterAdminRoutes(
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
+		// 抽奖管理
+		registerLotteryRoutes(admin, h)
+
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
 
@@ -97,6 +100,18 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerLotteryRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	lotteries := admin.Group("/lotteries")
+	{
+		lotteries.GET("", h.Admin.Lottery.List)
+		lotteries.GET("/:id", h.Admin.Lottery.GetByID)
+		lotteries.POST("", h.Admin.Lottery.Create)
+		lotteries.PUT("/:id", h.Admin.Lottery.Update)
+		lotteries.DELETE("/:id", h.Admin.Lottery.Delete)
+		lotteries.POST("/:id/draw", h.Admin.Lottery.Draw)
 	}
 }
 

@@ -360,6 +360,8 @@ export default {
     apiKeys: 'API Keys',
     playground: 'Playground',
     usage: 'Usage',
+    lottery: 'Lottery',
+    lotteryManagement: 'Lottery',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -1199,6 +1201,11 @@ export default {
       line3: 'Transfer rebate quota to balance at any time.',
       line4: 'Newly earned rebates may have a waiting period before they can be transferred.'
     }
+  },
+
+  lottery: {
+    title: 'Lottery',
+    description: 'Join platform lottery events'
   },
 
   // Redeem
@@ -4478,6 +4485,11 @@ export default {
         expired: 'Expired',
         disabled: 'Disabled'
       }
+    },
+
+    lottery: {
+      title: 'Lottery Management',
+      description: 'Create events and configure balance or card prizes'
     },
 
     // Announcements
