@@ -429,6 +429,7 @@ export default {
     you: 'You',
     assistant: 'Assistant',
     loadFailed: 'Failed to load Playground data',
+    loadModelsFailed: 'Failed to load models for the selected API key',
     sendFailed: 'Failed to send request',
     insufficientBalance: 'Account balance is insufficient. Please recharge or choose another API key with balance.',
     serviceUnavailable: 'This model is temporarily unavailable. Please choose another model or try again later.',

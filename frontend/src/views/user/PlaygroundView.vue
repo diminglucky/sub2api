@@ -1,73 +1,126 @@
 <template>
   <AppLayout>
-    <div class="grid min-h-[calc(100vh-9rem)] gap-5 xl:grid-cols-[320px_minmax(0,1fr)]">
+    <div class="grid min-h-[calc(100vh-9rem)] gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
       <aside class="space-y-4">
-        <section class="rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <div>
-              <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('playground.setup') }}</h2>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('playground.setupHint') }}</p>
+        <section class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
+          <div class="border-b border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-dark-800 dark:bg-dark-950/40">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex min-w-0 items-center gap-3">
+                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-300">
+                  <Icon name="beaker" size="sm" />
+                </div>
+                <div class="min-w-0">
+                  <h2 class="text-sm font-semibold text-gray-950 dark:text-white">{{ t('playground.setup') }}</h2>
+                  <p class="mt-0.5 text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('playground.setupHint') }}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-500 shadow-sm transition-colors hover:border-primary-200 hover:text-primary-600 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-500/40 dark:hover:text-primary-300"
+                :title="t('common.refresh')"
+                @click="loadInitialData"
+              >
+                <Icon name="refresh" size="sm" :class="loadingKeys || loadingModels ? 'animate-spin' : ''" />
+              </button>
             </div>
-            <button
-              type="button"
-              class="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white"
-              :title="t('common.refresh')"
-              @click="loadInitialData"
-            >
-              <Icon name="refresh" size="sm" :class="loadingKeys || loadingModels ? 'animate-spin' : ''" />
-            </button>
           </div>
 
-          <div class="space-y-4">
-            <label class="block">
-              <span class="input-label">{{ t('playground.apiKey') }}</span>
-              <select v-model="selectedKeyId" class="input mt-1">
-                <option :value="''">{{ t('playground.selectKey') }}</option>
-                <option
-                  v-for="key in activeKeys"
-                  :key="key.id"
-                  :value="String(key.id)"
+          <div class="space-y-3 p-4">
+            <label class="block rounded-md border border-gray-200 bg-gray-50/60 p-3 transition-colors focus-within:border-primary-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/10 dark:border-dark-700 dark:bg-dark-950/30 dark:focus-within:border-primary-500/60 dark:focus-within:bg-dark-900">
+              <span class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                <Icon name="key" size="xs" />
+                {{ t('playground.apiKey') }}
+              </span>
+              <div class="relative mt-2">
+                <select
+                  v-model="selectedKeyId"
+                  class="h-10 w-full appearance-none rounded-md border border-gray-200 bg-white px-3 pr-9 text-sm font-medium text-gray-900 outline-none transition-colors focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
                 >
-                  {{ key.name }} · {{ maskApiKey(key.key) }}
-                </option>
-              </select>
+                  <option :value="''">{{ t('playground.selectKey') }}</option>
+                  <option
+                    v-for="key in activeKeys"
+                    :key="key.id"
+                    :value="String(key.id)"
+                  >
+                    {{ key.name }} · {{ maskApiKey(key.key) }}
+                  </option>
+                </select>
+                <Icon name="chevronDown" size="xs" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
             </label>
 
-            <label class="block">
-              <span class="input-label">{{ t('playground.model') }}</span>
-              <select
-                v-if="modelOptions.length > 0"
-                v-model="model"
-                class="input mt-1 font-mono text-sm"
-              >
-                <option v-for="name in modelOptions" :key="name" :value="name">{{ name }}</option>
-              </select>
-              <input
-                v-else
-                v-model="model"
-                class="input mt-1 font-mono text-sm"
-                :placeholder="t('playground.modelPlaceholder')"
-              />
+            <label class="block rounded-md border border-gray-200 bg-gray-50/60 p-3 transition-colors focus-within:border-primary-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/10 dark:border-dark-700 dark:bg-dark-950/30 dark:focus-within:border-primary-500/60 dark:focus-within:bg-dark-900">
+              <span class="flex items-center justify-between gap-2">
+                <span class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <Icon name="brain" size="xs" />
+                  {{ t('playground.model') }}
+                </span>
+                <span
+                  v-if="loadingModels"
+                  class="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-600 dark:bg-primary-500/10 dark:text-primary-300"
+                >
+                  Loading
+                </span>
+              </span>
+              <div class="relative mt-2">
+                <select
+                  v-if="modelOptions.length > 0"
+                  v-model="model"
+                  class="h-10 w-full appearance-none rounded-md border border-gray-200 bg-white px-3 pr-9 font-mono text-sm text-gray-900 outline-none transition-colors focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
+                >
+                  <option v-for="name in modelOptions" :key="name" :value="name">{{ name }}</option>
+                </select>
+                <input
+                  v-else
+                  v-model="model"
+                  class="h-10 w-full rounded-md border border-gray-200 bg-white px-3 font-mono text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
+                  :placeholder="t('playground.modelPlaceholder')"
+                />
+                <Icon v-if="modelOptions.length > 0" name="chevronDown" size="xs" class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
             </label>
 
-            <label class="block">
-              <span class="input-label">{{ t('playground.systemPrompt') }}</span>
+            <label class="block rounded-md border border-gray-200 bg-gray-50/60 p-3 transition-colors focus-within:border-primary-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/10 dark:border-dark-700 dark:bg-dark-950/30 dark:focus-within:border-primary-500/60 dark:focus-within:bg-dark-900">
+              <span class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                <Icon name="terminal" size="xs" />
+                {{ t('playground.systemPrompt') }}
+              </span>
               <textarea
                 v-model="systemPrompt"
-                rows="4"
-                class="input mt-1 resize-none text-sm"
+                rows="5"
+                class="mt-2 min-h-[132px] w-full resize-none rounded-md border border-gray-200 bg-white px-3 py-2 text-sm leading-6 text-gray-900 outline-none transition-colors placeholder:text-gray-400 focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
                 :placeholder="t('playground.systemPromptPlaceholder')"
               />
             </label>
 
             <div class="grid grid-cols-2 gap-3">
-              <label class="block">
-                <span class="input-label">{{ t('playground.temperature') }}</span>
-                <input v-model.number="temperature" type="number" min="0" max="2" step="0.1" class="input mt-1" />
+              <label class="block rounded-md border border-gray-200 bg-gray-50/60 p-3 transition-colors focus-within:border-primary-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/10 dark:border-dark-700 dark:bg-dark-950/30 dark:focus-within:border-primary-500/60 dark:focus-within:bg-dark-900">
+                <span class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <Icon name="bolt" size="xs" />
+                  {{ t('playground.temperature') }}
+                </span>
+                <input
+                  v-model.number="temperature"
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  class="mt-2 h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none transition-colors focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
+                />
               </label>
-              <label class="block">
-                <span class="input-label">{{ t('playground.maxTokens') }}</span>
-                <input v-model.number="maxTokens" type="number" min="1" max="8192" step="1" class="input mt-1" />
+              <label class="block rounded-md border border-gray-200 bg-gray-50/60 p-3 transition-colors focus-within:border-primary-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-primary-500/10 dark:border-dark-700 dark:bg-dark-950/30 dark:focus-within:border-primary-500/60 dark:focus-within:bg-dark-900">
+                <span class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  <Icon name="cpu" size="xs" />
+                  {{ t('playground.maxTokens') }}
+                </span>
+                <input
+                  v-model.number="maxTokens"
+                  type="number"
+                  min="1"
+                  max="8192"
+                  step="1"
+                  class="mt-2 h-10 w-full rounded-md border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-900 outline-none transition-colors focus:border-primary-400 dark:border-dark-700 dark:bg-dark-800 dark:text-white"
+                />
               </label>
             </div>
           </div>
@@ -75,23 +128,30 @@
 
       </aside>
 
-      <main class="flex min-h-[620px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4 dark:border-dark-700">
-          <div>
-            <h1 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('playground.title') }}</h1>
-            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('playground.description') }}</p>
+      <main class="flex min-h-[620px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
+        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 dark:border-dark-700 dark:bg-dark-900">
+          <div class="flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-md bg-gray-900 text-white dark:bg-white dark:text-gray-950">
+              <Icon name="chat" size="sm" />
+            </div>
+            <div>
+              <h1 class="text-base font-semibold text-gray-950 dark:text-white">{{ t('playground.title') }}</h1>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('playground.description') }}</p>
+            </div>
           </div>
-          <button type="button" class="btn btn-secondary" :disabled="sending || messages.length === 0" @click="clearChat">
-            <Icon name="trash" size="sm" class="mr-2" />
+          <button type="button" class="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 shadow-sm transition-colors hover:border-red-200 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-red-500/40 dark:hover:text-red-300" :disabled="sending || messages.length === 0" @click="clearChat">
+            <Icon name="trash" size="xs" />
             {{ t('playground.clear') }}
           </button>
         </header>
 
-        <div ref="messagesEl" class="flex-1 space-y-4 overflow-y-auto bg-gray-50/70 px-5 py-5 dark:bg-dark-950/40">
+        <div ref="messagesEl" class="flex-1 space-y-4 overflow-y-auto bg-gray-50 px-5 py-5 dark:bg-dark-950/50">
           <div v-if="messages.length === 0" class="flex h-full min-h-[360px] items-center justify-center text-center">
             <div>
-              <Icon name="chat" size="xl" class="mx-auto mb-3 text-gray-400" />
-              <p class="text-base font-semibold text-gray-700 dark:text-gray-200">{{ t('playground.emptyTitle') }}</p>
+              <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-md border border-gray-200 bg-white text-gray-400 shadow-sm dark:border-dark-700 dark:bg-dark-900">
+                <Icon name="chat" size="lg" />
+              </div>
+              <p class="text-base font-semibold text-gray-800 dark:text-gray-100">{{ t('playground.emptyTitle') }}</p>
               <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('playground.emptyDescription') }}</p>
             </div>
           </div>
@@ -105,7 +165,7 @@
             <div
               class="max-w-[min(48rem,88%)] rounded-lg px-4 py-3 text-sm shadow-sm"
               :class="message.role === 'user'
-                ? 'bg-primary-600 text-white'
+                ? 'bg-gray-900 text-white dark:bg-primary-600'
                 : 'border border-gray-200 bg-white text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100'"
             >
               <div class="mb-1 text-xs font-semibold opacity-75">
@@ -149,10 +209,9 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { authAPI, keysAPI, userChannelsAPI } from '@/api'
+import { authAPI, keysAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { UserAvailableChannel } from '@/api/channels'
 import type { ApiKey } from '@/types'
 import { maskApiKey } from '@/utils/maskApiKey'
 
@@ -167,7 +226,7 @@ const { t } = useI18n()
 const keys = ref<ApiKey[]>([])
 const selectedKeyId = ref('')
 const model = ref('')
-const availableChannels = ref<UserAvailableChannel[]>([])
+const gatewayModels = ref<string[]>([])
 const systemPrompt = ref('你是一个友好、准确、简洁的中文助手。请优先使用中文回答用户的问题。')
 const temperature = ref(0.7)
 const maxTokens = ref(1024)
@@ -181,54 +240,9 @@ const apiBaseUrl = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
 let nextMessageId = 1
 
-const fallbackModelsByPlatform: Record<string, string[]> = {
-  openai: [
-    'gpt-5.5',
-    'gpt-5.4',
-    'gpt-5.4-mini',
-    'gpt-5.3-codex',
-    'gpt-5.3-codex-spark',
-    'gpt-5.2',
-  ],
-  anthropic: [
-    'claude-opus-4-8',
-    'claude-opus-4-7',
-    'claude-opus-4-6',
-    'claude-sonnet-4-6',
-    'claude-opus-4-5-20251101',
-    'claude-sonnet-4-5-20250929',
-    'claude-haiku-4-5-20251001',
-  ],
-  gemini: [
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-flash-image',
-    'gemini-3-pro-preview',
-    'gemini-3-flash-preview',
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-  ],
-  antigravity: [
-    'claude-opus-4-8',
-    'claude-opus-4-7',
-    'claude-opus-4-6',
-    'claude-opus-4-6-thinking',
-    'claude-sonnet-4-6',
-    'claude-sonnet-4-5',
-    'claude-sonnet-4-5-thinking',
-    'gemini-3.1-pro-high',
-    'gemini-3.1-pro-low',
-    'gemini-3.1-flash-image',
-    'gemini-3-pro-preview',
-    'gemini-2.5-flash',
-  ],
-}
-
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
-const selectedGroupId = computed(() => selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null)
-const selectedPlatform = computed(() => selectedKey.value?.group?.platform || findPlatformByGroupId(selectedGroupId.value))
-const modelOptions = computed(() => collectModelOptions(selectedPlatform.value, selectedGroupId.value))
+const modelOptions = computed(() => gatewayModels.value)
 const canSend = computed(() => Boolean(apiBaseUrl.value && selectedKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 
 function resolveDefaultEndpoint(configured: string): string {
@@ -250,64 +264,54 @@ async function loadKeys() {
   }
 }
 
-async function loadModels() {
+async function loadModelsForSelectedKey() {
+  gatewayModels.value = []
+  if (!apiBaseUrl.value || !selectedKey.value) {
+    model.value = ''
+    return
+  }
+
   loadingModels.value = true
   try {
-    availableChannels.value = await userChannelsAPI.getAvailableModels()
+    const response = await fetch(`${apiBaseUrl.value}/models`, {
+      headers: {
+        Authorization: `Bearer ${selectedKey.value.key}`,
+      },
+    })
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      const { code, message } = extractPlaygroundError(payload, response)
+      throw new Error(normalizePlaygroundError(message, code))
+    }
+
+    const names = Array.isArray(payload?.data)
+      ? payload.data
+        .map((item: { id?: string }) => item?.id)
+        .filter((name: unknown): name is string => typeof name === 'string' && isChatModelOption(name))
+      : []
+    gatewayModels.value = sortModelNames(Array.from(new Set(names)))
     applyDefaultModelForSelectedKey()
+  } catch (error) {
+    console.error('Failed to load playground models:', error)
+    gatewayModels.value = []
+    model.value = ''
+    errorMessage.value = error instanceof Error ? error.message : t('playground.loadModelsFailed')
   } finally {
     loadingModels.value = false
-  }
-}
-
-function collectModelOptions(platform: string, groupId: number | null): string[] {
-  const names = new Set<string>()
-  for (const name of fallbackModelsByPlatform[platform] || []) {
-    names.add(name)
-  }
-
-  addChannelModelOptions(names, platform, groupId)
-  if (names.size === 0) {
-    addChannelModelOptions(names, '', null)
-  }
-
-  return sortModelNames(Array.from(names))
-}
-
-function findPlatformByGroupId(groupId: number | null): string {
-  if (!groupId) return ''
-  for (const channel of availableChannels.value) {
-    for (const section of channel.platforms || []) {
-      if (section.groups.some((group) => group.id === groupId)) {
-        return section.platform
-      }
-    }
-  }
-  return ''
-}
-
-function addChannelModelOptions(names: Set<string>, platform: string, groupId: number | null) {
-  for (const channel of availableChannels.value) {
-    for (const section of channel.platforms || []) {
-      if (platform && section.platform !== platform) {
-        continue
-      }
-      if (!platform && groupId && !section.groups.some((group) => group.id === groupId)) {
-        continue
-      }
-
-      for (const supported of section.supported_models || []) {
-        if (supported.name) {
-          names.add(supported.name)
-        }
-      }
-    }
   }
 }
 
 function sortModelNames(names: string[]): string[] {
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
   return names.sort((a, b) => collator.compare(b, a))
+}
+
+function isChatModelOption(name: string): boolean {
+  const normalized = name.trim().toLowerCase()
+  return Boolean(normalized) &&
+    !normalized.includes('image') &&
+    !normalized.includes('audio') &&
+    !normalized.includes('realtime')
 }
 
 function applyDefaultModelForSelectedKey() {
@@ -326,7 +330,8 @@ async function loadPublicSettings() {
 async function loadInitialData() {
   errorMessage.value = ''
   try {
-    await Promise.all([loadKeys(), loadModels(), loadPublicSettings()])
+    await Promise.all([loadKeys(), loadPublicSettings()])
+    await loadModelsForSelectedKey()
   } catch (error) {
     console.error('Failed to load playground data:', error)
     errorMessage.value = t('playground.loadFailed')
@@ -343,9 +348,16 @@ function buildRequestMessages() {
   return requestMessages
 }
 
-function normalizePlaygroundError(message: string): string {
+function extractPlaygroundError(payload: any, response: Response): { code: string; message: string } {
+  const code = String(payload?.error?.code || payload?.code || '')
+  const message = payload?.error?.message || payload?.message || `${response.status} ${response.statusText}`
+  return { code, message }
+}
+
+function normalizePlaygroundError(message: string, code = ''): string {
+  const normalizedCode = code.toUpperCase()
   const normalized = message.toLowerCase()
-  if (normalized.includes('insufficient account balance')) {
+  if (normalizedCode === 'INSUFFICIENT_BALANCE' || normalized.includes('insufficient account balance')) {
     return t('playground.insufficientBalance')
   }
   if (normalized.includes('service temporarily unavailable') || normalized.includes('upstream service temporarily unavailable')) {
@@ -382,8 +394,8 @@ async function sendMessage() {
 
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
-      const message = payload?.error?.message || payload?.message || `${response.status} ${response.statusText}`
-      throw new Error(message)
+      const { code, message } = extractPlaygroundError(payload, response)
+      throw new Error(normalizePlaygroundError(message, code))
     }
 
     const answer = payload?.choices?.[0]?.message?.content || ''
@@ -395,7 +407,7 @@ async function sendMessage() {
     await scrollToBottom()
   } catch (error) {
     console.error('Playground request failed:', error)
-    errorMessage.value = error instanceof Error ? normalizePlaygroundError(error.message) : t('playground.sendFailed')
+    errorMessage.value = error instanceof Error ? error.message : t('playground.sendFailed')
   } finally {
     sending.value = false
   }
@@ -418,6 +430,7 @@ onMounted(() => {
 })
 
 watch(selectedKeyId, () => {
-  applyDefaultModelForSelectedKey()
+  errorMessage.value = ''
+  loadModelsForSelectedKey()
 })
 </script>
