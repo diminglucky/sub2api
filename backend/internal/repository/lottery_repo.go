@@ -124,7 +124,7 @@ func (r *lotteryRepository) ListAdmin(ctx context.Context, params pagination.Pag
 	if err != nil {
 		return nil, nil, fmt.Errorf("list lottery events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items, err := scanLotteryEvents(rows)
 	if err != nil {
@@ -149,7 +149,7 @@ func (r *lotteryRepository) ListForUser(ctx context.Context, userID int64, now t
 	if err != nil {
 		return nil, fmt.Errorf("list user lottery events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items, err := scanLotteryEvents(rows)
 	if err != nil {
 		return nil, err
@@ -288,7 +288,7 @@ func (r *lotteryRepository) ListDue(ctx context.Context, now time.Time, limit in
 	if err != nil {
 		return nil, fmt.Errorf("list due lotteries: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []int64
 	for rows.Next() {
 		var id int64
@@ -375,7 +375,7 @@ func (r *lotteryRepository) listPrizes(ctx context.Context, eventID int64) ([]se
 	if err != nil {
 		return nil, fmt.Errorf("list lottery prizes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanLotteryPrizes(rows)
 }
 
@@ -395,7 +395,7 @@ func (r *lotteryRepository) listWinners(ctx context.Context, eventID int64, mask
 	if err != nil {
 		return nil, fmt.Errorf("list lottery winners: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanLotteryWinners(rows)
 }
 
@@ -415,7 +415,7 @@ func (r *lotteryRepository) listWinnersByUser(ctx context.Context, eventID, user
 	if err != nil {
 		return nil, fmt.Errorf("list user lottery winners: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanLotteryWinners(rows)
 }
 
@@ -429,7 +429,7 @@ func listLotteryPrizesTx(ctx context.Context, tx *sql.Tx, eventID int64) ([]serv
 	if err != nil {
 		return nil, fmt.Errorf("list lottery prizes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	return scanLotteryPrizes(rows)
 }
 
@@ -443,7 +443,7 @@ func listLotteryParticipantIDsTx(ctx context.Context, tx *sql.Tx, eventID int64)
 	if err != nil {
 		return nil, fmt.Errorf("list lottery participants: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var ids []int64
 	for rows.Next() {
 		var id int64
