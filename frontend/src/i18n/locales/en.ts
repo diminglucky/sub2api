@@ -417,7 +417,6 @@ export default {
     systemPromptPlaceholder: 'Optional, for example: You are a concise assistant.',
     temperature: 'Temperature',
     maxTokens: 'Max output',
-    endpointHint: 'Requests are sent to /v1/chat/completions on this site and billed to the selected API key.',
     clear: 'Clear',
     emptyTitle: 'Start a chat test',
     emptyDescription: 'Choose a key and model, then send a message to verify the model.',

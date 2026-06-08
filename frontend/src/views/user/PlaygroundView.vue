@@ -69,12 +69,6 @@
           </div>
         </section>
 
-        <section class="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm dark:border-dark-700 dark:bg-dark-900/70">
-          <div class="flex items-start gap-2 text-gray-600 dark:text-gray-300">
-            <Icon name="infoCircle" size="sm" class="mt-0.5 flex-shrink-0 text-primary-500" />
-            <p>{{ t('playground.endpointHint') }}</p>
-          </div>
-        </section>
       </aside>
 
       <main class="flex min-h-[620px] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
@@ -186,7 +180,8 @@ let nextMessageId = 1
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
 const selectedGroupId = computed(() => selectedKey.value?.group_id ?? selectedKey.value?.group?.id ?? null)
-const modelOptions = computed(() => collectModelOptions(selectedGroupId.value))
+const selectedPlatform = computed(() => selectedKey.value?.group?.platform || '')
+const modelOptions = computed(() => collectModelOptions(selectedPlatform.value, selectedGroupId.value))
 const canSend = computed(() => Boolean(apiBaseUrl.value && selectedKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 
 function resolveDefaultEndpoint(configured: string): string {
@@ -218,17 +213,24 @@ async function loadModels() {
   }
 }
 
-function collectModelOptions(groupId: number | null): string[] {
-    const names = new Set<string>()
-    for (const channel of availableChannels.value) {
-      for (const section of channel.platforms || []) {
-        if (groupId && !section.groups.some((group) => group.id === groupId)) continue
-        for (const supported of section.supported_models || []) {
-          if (supported.name) names.add(supported.name)
+function collectModelOptions(platform: string, groupId: number | null): string[] {
+  const names = new Set<string>()
+  for (const channel of availableChannels.value) {
+    for (const section of channel.platforms || []) {
+      if (platform) {
+        if (section.platform !== platform) continue
+      } else if (groupId && !section.groups.some((group) => group.id === groupId)) {
+        continue
+      }
+
+      for (const supported of section.supported_models || []) {
+        if (supported.name) {
+          names.add(supported.name)
         }
       }
     }
-    return sortModelNames(Array.from(names))
+  }
+  return sortModelNames(Array.from(names))
 }
 
 function sortModelNames(names: string[]): string[] {

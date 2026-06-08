@@ -417,7 +417,6 @@ export default {
     systemPromptPlaceholder: '可选，例如：你是一个简洁的助手。',
     temperature: '温度',
     maxTokens: '最大输出',
-    endpointHint: '请求会发送到当前站点的 /v1/chat/completions，并使用你选择的 API 密钥计费。',
     clear: '清空',
     emptyTitle: '开始一次聊天测试',
     emptyDescription: '选择密钥和模型后，输入消息即可验证模型是否可用。',
