@@ -24,8 +24,7 @@
             />
           </div>
           <EndpointPopover
-            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
-            :api-base-url="publicSettings?.api_base_url || ''"
+            :api-base-url="apiEndpointUrl"
             :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
         </div>
@@ -924,7 +923,7 @@
     <UseKeyModal
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
-      :base-url="publicSettings?.api_base_url || ''"
+      :base-url="apiEndpointUrl"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
       @close="closeUseKeyModal"
@@ -1153,6 +1152,14 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
+
+const apiEndpointUrl = computed(() => {
+  const configured = publicSettings.value?.api_base_url?.trim()
+  if (configured) return configured.replace(/\/+$/, '')
+
+  if (typeof window === 'undefined') return ''
+  return `${window.location.origin.replace(/\/+$/, '')}/v1`
+})
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -1705,12 +1712,12 @@ const importToCcswitch = (row: ApiKey) => {
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
-  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const baseUrl = apiEndpointUrl.value || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
   const usageScript = `({
     request: {
-      url: "{{baseUrl}}/v1/usage",
+      url: "{{baseUrl}}/usage",
       method: "GET",
       headers: { "Authorization": "Bearer {{apiKey}}" }
     },
