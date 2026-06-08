@@ -1222,7 +1222,7 @@ const statusOptions = computed(() => [
 const groupFilterOptions = computed(() => [
   { value: '', label: t('keys.allGroups') },
   { value: 0, label: t('keys.noGroup') },
-  ...groups.value.map((g) => ({ value: g.id, label: g.name }))
+  ...sortedGroups.value.map((g) => ({ value: g.id, label: g.name }))
 ])
 
 const statusFilterOptions = computed(() => [
@@ -1248,9 +1248,41 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
   onFilterChange()
 }
 
+const platformSortRank: Record<string, number> = {
+  openai: 0,
+  gpt: 0,
+  anthropic: 1,
+  claude: 1,
+  gemini: 2,
+  antigravity: 3
+}
+
+function groupPlatformRank(group: Pick<Group, 'platform'>): number {
+  const platform = String(group.platform || '').trim().toLowerCase()
+  return platformSortRank[platform] ?? 99
+}
+
+function effectiveGroupRate(group: Pick<Group, 'id' | 'rate_multiplier'>): number {
+  const userRate = userGroupRates.value[group.id]
+  return typeof userRate === 'number' ? userRate : group.rate_multiplier
+}
+
+const sortedGroups = computed(() => {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+  return [...groups.value].sort((a, b) => {
+    const platformDiff = groupPlatformRank(a) - groupPlatformRank(b)
+    if (platformDiff !== 0) return platformDiff
+
+    const rateDiff = effectiveGroupRate(a) - effectiveGroupRate(b)
+    if (rateDiff !== 0) return rateDiff
+
+    return collator.compare(a.name, b.name)
+  })
+})
+
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
-  groups.value.map((group) => ({
+  sortedGroups.value.map((group) => ({
     value: group.id,
     label: group.name,
     description: group.description,
