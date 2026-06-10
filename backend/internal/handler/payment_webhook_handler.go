@@ -67,6 +67,12 @@ func (h *PaymentWebhookHandler) AirwallexWebhook(c *gin.Context) {
 	h.handleNotify(c, payment.TypeAirwallex)
 }
 
+// CreemWebhook handles Creem webhook events.
+// POST /api/v1/payment/webhook/creem
+func (h *PaymentWebhookHandler) CreemWebhook(c *gin.Context) {
+	h.handleNotify(c, payment.TypeCreem)
+}
+
 // handleNotify is the shared logic for all provider webhook handlers.
 func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string) {
 	var rawBody string
@@ -163,6 +169,23 @@ func extractOutTradeNo(rawBody, providerKey string) string {
 		}
 		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
 			return strings.TrimSpace(payload.Data.Object.MerchantOrderID)
+		}
+	case payment.TypeCreem:
+		var payload struct {
+			Object struct {
+				Metadata map[string]string `json:"metadata"`
+			} `json:"object"`
+			Data struct {
+				Object struct {
+					Metadata map[string]string `json:"metadata"`
+				} `json:"object"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(rawBody), &payload); err == nil {
+			if orderID := strings.TrimSpace(payload.Object.Metadata["order_id"]); orderID != "" {
+				return orderID
+			}
+			return strings.TrimSpace(payload.Data.Object.Metadata["order_id"])
 		}
 	}
 	// For other providers (Stripe, Alipay direct, WxPay direct), the registry

@@ -171,7 +171,12 @@
               <div class="mb-1 text-xs font-semibold opacity-75">
                 {{ message.role === 'user' ? t('playground.you') : t('playground.assistant') }}
               </div>
-              <div class="whitespace-pre-wrap leading-6">{{ message.content }}</div>
+              <div
+                v-if="message.role === 'assistant'"
+                class="playground-markdown leading-6"
+                v-html="renderAssistantMessage(message.content)"
+              />
+              <div v-else class="whitespace-pre-wrap leading-6">{{ message.content }}</div>
             </div>
           </article>
 
@@ -214,6 +219,13 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { ApiKey } from '@/types'
 import { maskApiKey } from '@/utils/maskApiKey'
+import { marked } from 'marked'
+import DOMPurify from 'dompurify'
+
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+})
 
 interface ChatMessage {
   id: number
@@ -227,7 +239,7 @@ const keys = ref<ApiKey[]>([])
 const selectedKeyId = ref('')
 const model = ref('')
 const gatewayModels = ref<string[]>([])
-const systemPrompt = ref('你是一个友好、准确、简洁的中文助手。请优先使用中文回答用户的问题。')
+const systemPrompt = ref('你是 SuperAI Playground 的简洁中文测试助手。直接回答用户问题，不要介绍模型厂商、SDK 或内部实现。')
 const temperature = ref(0.7)
 const maxTokens = ref(1024)
 const draft = ref('')
@@ -366,6 +378,12 @@ function normalizePlaygroundError(message: string, code = ''): string {
   return message || t('playground.sendFailed')
 }
 
+function renderAssistantMessage(content: string): string {
+  if (!content) return ''
+  const html = marked.parse(content) as string
+  return DOMPurify.sanitize(html)
+}
+
 async function sendMessage() {
   if (!canSend.value || !selectedKey.value) return
 
@@ -434,3 +452,55 @@ watch(selectedKeyId, () => {
   loadModelsForSelectedKey()
 })
 </script>
+
+<style scoped>
+.playground-markdown {
+  overflow-wrap: anywhere;
+}
+
+.playground-markdown :deep(p) {
+  margin: 0 0 0.75rem;
+}
+
+.playground-markdown :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.playground-markdown :deep(ul),
+.playground-markdown :deep(ol) {
+  margin: 0.5rem 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.playground-markdown :deep(ul) {
+  list-style: disc;
+}
+
+.playground-markdown :deep(ol) {
+  list-style: decimal;
+}
+
+.playground-markdown :deep(li) {
+  margin: 0.25rem 0;
+}
+
+.playground-markdown :deep(strong) {
+  font-weight: 700;
+  color: rgb(17 24 39);
+}
+
+:global(.dark) .playground-markdown :deep(strong) {
+  color: rgb(243 244 246);
+}
+
+.playground-markdown :deep(code) {
+  border-radius: 0.25rem;
+  background: rgb(243 244 246);
+  padding: 0.1rem 0.3rem;
+  font-size: 0.88em;
+}
+
+:global(.dark) .playground-markdown :deep(code) {
+  background: rgb(31 41 55);
+}
+</style>

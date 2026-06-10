@@ -880,6 +880,7 @@ function paymentMethodIcon(type: string): string {
   if (type.includes('wxpay')) return wxpayIcon
   if (type === 'stripe') return stripeIcon
   if (type === 'airwallex') return airwallexIcon
+  if (type === 'creem') return stripeIcon
   if (type === 'easypay') return easypayIcon
   return alipayIcon
 }
@@ -936,6 +937,7 @@ const paymentButtonClass = computed(() => {
   if (m.includes('wxpay')) return 'btn-wxpay'
   if (m === 'stripe') return 'btn-stripe'
   if (m === 'airwallex') return 'btn-airwallex'
+  if (m === 'creem') return 'btn-creem'
   return 'btn-primary'
 })
 
