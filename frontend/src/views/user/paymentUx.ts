@@ -100,7 +100,10 @@ export function describePaymentScenarioError(
     }
   }
 
-  if (method === 'alipay' && code === 'UNHANDLED_PAYMENT_SCENARIO') {
+  if (
+    method === 'alipay' &&
+    (code === 'UNHANDLED_PAYMENT_SCENARIO' || code === 'PAYMENT_GATEWAY_ERROR')
+  ) {
     return {
       messageKey: context.isMobile
         ? 'payment.errors.alipayMobileUnavailable'
