@@ -73,12 +73,12 @@
 
             <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
               <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.input') }}</div>
-                <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ inputPriceText(row) }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ primaryPriceLabel(row) }}</div>
+                <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ primaryPriceText(row) }}</div>
               </div>
               <div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('models.output') }}</div>
-                <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ outputPriceText(row) }}</div>
+                <div class="text-xs text-gray-500 dark:text-gray-400">{{ secondaryPriceLabel(row) }}</div>
+                <div class="mt-1 whitespace-nowrap font-semibold text-gray-900 dark:text-white">{{ secondaryPriceText(row) }}</div>
               </div>
             </div>
 
@@ -317,7 +317,7 @@ function groupPriceColumns(row: ModelRow, multiplier: number) {
   if (pricing.billing_mode === BILLING_MODE_IMAGE) {
     return {
       secondaryLabel: t('models.imagePrice'),
-      secondaryPrice: scaledPriceText(pricing.image_output_price, multiplier, t('availableChannels.pricing.unitPerRequest')),
+      secondaryPrice: scaledPriceText(imageRequestPrice(pricing), multiplier, t('availableChannels.pricing.unitPerRequest')),
       tertiaryLabel: t('models.billingType'),
       tertiaryPrice: billingLabel(pricing.billing_mode)
     }
@@ -337,20 +337,38 @@ function billingLabel(mode?: BillingMode) {
   return t('availableChannels.noPricing')
 }
 
-function inputPriceText(row: ModelRow) {
+function primaryPriceLabel(row: ModelRow) {
+  const mode = row.model.pricing?.billing_mode
+  if (mode === BILLING_MODE_PER_REQUEST) return t('models.requestPrice')
+  if (mode === BILLING_MODE_IMAGE) return t('models.imagePrice')
+  return t('models.input')
+}
+
+function secondaryPriceLabel(row: ModelRow) {
+  const mode = row.model.pricing?.billing_mode
+  if (mode === BILLING_MODE_PER_REQUEST || mode === BILLING_MODE_IMAGE) return t('models.billingType')
+  return t('models.output')
+}
+
+function primaryPriceText(row: ModelRow) {
   const pricing = row.model.pricing
   if (!pricing) return '-'
   if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) return priceText(pricing.per_request_price, t('availableChannels.pricing.unitPerRequest'))
-  if (pricing.billing_mode === BILLING_MODE_IMAGE) return priceText(pricing.image_output_price, t('availableChannels.pricing.unitPerRequest'))
+  if (pricing.billing_mode === BILLING_MODE_IMAGE) return priceText(imageRequestPrice(pricing), t('availableChannels.pricing.unitPerRequest'))
   return priceText(pricing.input_price, t('availableChannels.pricing.unitPerMillion'))
 }
 
-function outputPriceText(row: ModelRow) {
+function secondaryPriceText(row: ModelRow) {
   const pricing = row.model.pricing
   if (!pricing) return '-'
-  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) return priceText(pricing.per_request_price, t('availableChannels.pricing.unitPerRequest'))
-  if (pricing.billing_mode === BILLING_MODE_IMAGE) return priceText(pricing.image_output_price, t('availableChannels.pricing.unitPerRequest'))
+  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST || pricing.billing_mode === BILLING_MODE_IMAGE) {
+    return billingLabel(pricing.billing_mode)
+  }
   return priceText(pricing.output_price, t('availableChannels.pricing.unitPerMillion'))
+}
+
+function imageRequestPrice(pricing: { per_request_price?: number | null; image_output_price?: number | null }) {
+  return pricing.per_request_price ?? pricing.image_output_price
 }
 
 function priceText(value: number | null | undefined, unit: string) {
