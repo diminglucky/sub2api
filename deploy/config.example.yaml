@@ -130,6 +130,34 @@ security:
     # Note: __CSP_NONCE__ will be replaced with 'nonce-xxx' at request time for inline script security
     # 注意：__CSP_NONCE__ 会在请求时被替换为 'nonce-xxx'，用于内联脚本安全
     policy: "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  region_block:
+    # Block page visits by CDN/proxy country code (requires headers such as CF-IPCountry).
+    # API routes are not affected.
+    # 按 CDN/反代国家码拦截网页访问（需要 CF-IPCountry 等 Header），不影响 API。
+    enabled: true
+    # Only apply the page block on these hostnames. Empty means all hosts.
+    # 仅对这些网页域名生效，留空表示所有域名。
+    hosts:
+      - "superai.dihappy.cfd"
+    # Default blocks China mainland, Hong Kong, Macao, and Taiwan.
+    # 默认拦截：中国大陆、中国香港、中国澳门、中国台湾。
+    blocked_countries:
+      - "CN"
+      - "HK"
+      - "MO"
+      - "TW"
+    # Header names checked in order.
+    # 按顺序检查的国家码 Header。
+    header_names:
+      - "CF-IPCountry"
+      - "CloudFront-Viewer-Country"
+      - "X-Vercel-IP-Country"
+      - "Fly-Client-IPCountry"
+      - "X-Country-Code"
+      - "X-Geo-Country"
+    # Optional support email shown on the blocked-region page.
+    # 拦截提示页显示的申诉邮箱，可留空。
+    support_email: ""
   proxy_probe:
     # Allow skipping TLS verification for proxy probe (debug only)
     # 允许代理探测时跳过 TLS 证书验证（仅用于调试）

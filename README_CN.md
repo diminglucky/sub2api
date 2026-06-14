@@ -519,6 +519,7 @@ gateway:
 - `security.url_allowlist.allow_private_hosts` 允许私有/本地 IP 地址
 - `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
 - `security.csp` 配置 Content-Security-Policy
+- `security.region_block` 按 CDN/反代国家码拦截网页访问（如 Cloudflare `CF-IPCountry`），API 路径不受影响
 - `billing.circuit_breaker` 计费异常时 fail-closed
 - `server.trusted_proxies` 启用可信代理解析 X-Forwarded-For
 - `turnstile.required` 在 release 模式强制启用 Turnstile
@@ -548,6 +549,17 @@ security:
 SECURITY_URL_ALLOWLIST_ENABLED=false
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
 ```
+
+地区拦截可通过环境变量配置：
+
+```bash
+SECURITY_REGION_BLOCK_ENABLED=true
+SECURITY_REGION_BLOCK_HOSTS=superai.dihappy.cfd
+SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES=CN,HK,MO,TW
+SECURITY_REGION_BLOCK_SUPPORT_EMAIL=support@example.com
+```
+
+该功能只拦截配置域名下的网页访问，不会限制 `/api/*`、`/v1/*`、`/responses`、`/chat/completions`、`/embeddings`、`/images` 等 API 路径。它依赖 Cloudflare/反向代理注入国家码 Header；如果源站 IP 可被直接访问，用户可能绕过 CDN，因此建议只允许 Cloudflare/反代回源。
 
 **允许 HTTP 的风险：**
 - API 密钥和数据以**明文传输**（可被截获）

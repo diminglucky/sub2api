@@ -485,6 +485,7 @@ Additional security-related options are available in `config.yaml`:
 - `security.url_allowlist.allow_private_hosts` to allow private/local IP addresses
 - `security.response_headers.enabled` to enable configurable response header filtering (disabled uses default allowlist)
 - `security.csp` to control Content-Security-Policy headers
+- `security.region_block` to block web page visits by CDN/proxy country code such as Cloudflare `CF-IPCountry`; API routes are not affected
 - `billing.circuit_breaker` to fail closed on billing errors
 - `server.trusted_proxies` to enable X-Forwarded-For parsing
 - `turnstile.required` to require Turnstile in release mode
@@ -506,6 +507,17 @@ security:
 SECURITY_URL_ALLOWLIST_ENABLED=false
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=true
 ```
+
+Region blocking can be configured with:
+
+```bash
+SECURITY_REGION_BLOCK_ENABLED=true
+SECURITY_REGION_BLOCK_HOSTS=superai.dihappy.cfd
+SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES=CN,HK,MO,TW
+SECURITY_REGION_BLOCK_SUPPORT_EMAIL=support@example.com
+```
+
+This feature only blocks web page visits for configured hosts. It does not restrict `/api/*`, `/v1/*`, `/responses`, `/chat/completions`, `/embeddings`, `/images`, or other API routes. It depends on Cloudflare/reverse-proxy country headers. If the origin IP is directly reachable, users may bypass the CDN, so keep the origin restricted to your CDN/proxy.
 
 **Risks of allowing HTTP:**
 - API keys and data transmitted in **plaintext** (vulnerable to interception)

@@ -577,6 +577,7 @@ type SecurityConfig struct {
 	URLAllowlist                     URLAllowlistConfig   `mapstructure:"url_allowlist"`
 	ResponseHeaders                  ResponseHeaderConfig `mapstructure:"response_headers"`
 	CSP                              CSPConfig            `mapstructure:"csp"`
+	RegionBlock                      RegionBlockConfig    `mapstructure:"region_block"`
 	ProxyFallback                    ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
 	ProxyProbe                       ProxyProbeConfig     `mapstructure:"proxy_probe"`
 	TrustForwardedIPForAPIKeyACL     bool                 `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
@@ -619,6 +620,14 @@ type ResponseHeaderConfig struct {
 	Enabled           bool     `mapstructure:"enabled"`
 	AdditionalAllowed []string `mapstructure:"additional_allowed"`
 	ForceRemove       []string `mapstructure:"force_remove"`
+}
+
+type RegionBlockConfig struct {
+	Enabled          bool     `mapstructure:"enabled"`
+	Hosts            []string `mapstructure:"hosts"`
+	BlockedCountries []string `mapstructure:"blocked_countries"`
+	HeaderNames      []string `mapstructure:"header_names"`
+	SupportEmail     string   `mapstructure:"support_email"`
 }
 
 type CSPConfig struct {
@@ -1451,6 +1460,13 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
+	cfg.Security.RegionBlock.BlockedCountries = envStringSlice("SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES", cfg.Security.RegionBlock.BlockedCountries)
+	cfg.Security.RegionBlock.HeaderNames = envStringSlice("SECURITY_REGION_BLOCK_HEADER_NAMES", cfg.Security.RegionBlock.HeaderNames)
+	cfg.Security.RegionBlock.Hosts = envStringSlice("SECURITY_REGION_BLOCK_HOSTS", cfg.Security.RegionBlock.Hosts)
+	cfg.Security.RegionBlock.BlockedCountries = normalizeUpperStringSlice(cfg.Security.RegionBlock.BlockedCountries)
+	cfg.Security.RegionBlock.HeaderNames = normalizeStringSlice(cfg.Security.RegionBlock.HeaderNames)
+	cfg.Security.RegionBlock.Hosts = normalizeLowerStringSlice(cfg.Security.RegionBlock.Hosts)
+	cfg.Security.RegionBlock.SupportEmail = strings.TrimSpace(cfg.Security.RegionBlock.SupportEmail)
 	cfg.Security.CSP.Policy = strings.TrimSpace(cfg.Security.CSP.Policy)
 	cfg.SetTrustForwardedIPForAPIKeyACL(cfg.Security.TrustForwardedIPForAPIKeyACL)
 	cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
@@ -1596,6 +1612,18 @@ func setDefaults() {
 	viper.SetDefault("security.response_headers.force_remove", []string{})
 	viper.SetDefault("security.csp.enabled", true)
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
+	viper.SetDefault("security.region_block.enabled", true)
+	viper.SetDefault("security.region_block.hosts", []string{"superai.dihappy.cfd"})
+	viper.SetDefault("security.region_block.blocked_countries", []string{"CN", "HK", "MO", "TW"})
+	viper.SetDefault("security.region_block.header_names", []string{
+		"CF-IPCountry",
+		"CloudFront-Viewer-Country",
+		"X-Vercel-IP-Country",
+		"Fly-Client-IPCountry",
+		"X-Country-Code",
+		"X-Geo-Country",
+	})
+	viper.SetDefault("security.region_block.support_email", "")
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
 	viper.SetDefault("security.trust_forwarded_ip_for_api_key_acl", false)
 
@@ -2820,6 +2848,30 @@ func normalizeStringSlice(values []string) []string {
 			continue
 		}
 		normalized = append(normalized, trimmed)
+	}
+	return normalized
+}
+
+func envStringSlice(name string, fallback []string) []string {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	return strings.Split(raw, ",")
+}
+
+func normalizeUpperStringSlice(values []string) []string {
+	normalized := normalizeStringSlice(values)
+	for i := range normalized {
+		normalized[i] = strings.ToUpper(normalized[i])
+	}
+	return normalized
+}
+
+func normalizeLowerStringSlice(values []string) []string {
+	normalized := normalizeStringSlice(values)
+	for i := range normalized {
+		normalized[i] = strings.ToLower(normalized[i])
 	}
 	return normalized
 }
