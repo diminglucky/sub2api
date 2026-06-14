@@ -36,6 +36,7 @@ export interface PaymentConfig {
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
+  recharge_packages: RechargePackage[]
   recharge_card_products: RechargeCardProduct[]
   stripe_publishable_key: string
 }
@@ -45,6 +46,15 @@ export interface RechargeCardProduct {
   amount: number
   price: number
   url: string
+  enabled: boolean
+  sort_order?: number
+}
+
+export interface RechargePackage {
+  id: string
+  name: string
+  amount: number
+  pay_amount: number
   enabled: boolean
   sort_order?: number
 }
@@ -80,6 +90,7 @@ export interface CheckoutInfoResponse {
   recharge_fee_rate: number
   help_text: string
   help_image_url: string
+  recharge_packages: RechargePackage[]
   recharge_card_products: RechargeCardProduct[]
   stripe_publishable_key: string
   /** When true, Alipay payments on mobile always show the QR code instead of redirecting */
@@ -168,6 +179,7 @@ export interface ProviderInstance {
 
 export interface CreateOrderRequest {
   amount: number
+  recharge_package_id?: string
   payment_type: string
   order_type: string
   plan_id?: number

@@ -107,17 +107,17 @@ func TestParsePaymentConfig(t *testing.T) {
 	t.Run("all values populated", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
-			SettingPaymentEnabled:      "true",
-			SettingMinRechargeAmount:   "5.00",
-			SettingMaxRechargeAmount:   "1000.00",
-			SettingDailyRechargeLimit:  "5000.00",
-			SettingOrderTimeoutMinutes: "15",
-			SettingMaxPendingOrders:    "5",
-			SettingEnabledPaymentTypes: "alipay,wxpay,stripe",
-			SettingBalancePayDisabled:  "true",
-			SettingLoadBalanceStrategy: "least_amount",
-			SettingProductNamePrefix:   "PRE",
-			SettingProductNameSuffix:   "SUF",
+			SettingPaymentEnabled:          "true",
+			SettingMinRechargeAmount:       "5.00",
+			SettingMaxRechargeAmount:       "1000.00",
+			SettingDailyRechargeLimit:      "5000.00",
+			SettingOrderTimeoutMinutes:     "15",
+			SettingMaxPendingOrders:        "5",
+			SettingEnabledPaymentTypes:     "alipay,wxpay,stripe",
+			SettingBalancePayDisabled:      "true",
+			SettingLoadBalanceStrategy:     "least_amount",
+			SettingProductNamePrefix:       "PRE",
+			SettingProductNameSuffix:       "SUF",
 		}
 		cfg := svc.parsePaymentConfig(vals)
 
@@ -180,6 +180,17 @@ func TestParsePaymentConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("recharge packages are parsed and normalized", func(t *testing.T) {
+		t.Parallel()
+		vals := map[string]string{
+			SettingRechargePackages: `[{"id":" cn_10 ","name":" 10元充值 ","amount":10,"pay_amount":9.9,"enabled":true,"sort_order":1}]`,
+		}
+		cfg := svc.parsePaymentConfig(vals)
+		if len(cfg.RechargePackages) != 1 || cfg.RechargePackages[0].ID != "cn_10" || cfg.RechargePackages[0].PayAmount != 9.9 {
+			t.Fatalf("RechargePackages = %+v", cfg.RechargePackages)
+		}
+	})
+
 	t.Run("enabled types with spaces are trimmed", func(t *testing.T) {
 		t.Parallel()
 		vals := map[string]string{
@@ -218,6 +229,7 @@ func TestParsePaymentConfig(t *testing.T) {
 			t.Fatalf("expected empty EnabledTypes for empty string, got %v", cfg.EnabledTypes)
 		}
 	})
+
 }
 
 func TestGetBasePaymentType(t *testing.T) {

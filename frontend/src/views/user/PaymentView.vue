@@ -37,7 +37,47 @@
                 <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('payment.onlineRecharge') }}</h2>
               </header>
 
-              <div class="space-y-3">
+              <div v-if="hasRechargePackages" class="space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargePackages') }}</h3>
+                </div>
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <button
+                    v-for="pkg in availableRechargePackages"
+                    :key="pkg.id"
+                    type="button"
+                    :class="[
+                      'group flex min-h-36 flex-col justify-between rounded-xl border p-4 text-left transition-all',
+                      selectedRechargePackageId === pkg.id
+                        ? 'border-orange-500 bg-orange-500/5 shadow-sm ring-1 ring-orange-500/30 dark:bg-orange-500/10'
+                        : 'border-gray-200 bg-white hover:border-orange-300 hover:bg-orange-50/30 dark:border-dark-700 dark:bg-dark-800 dark:hover:border-orange-500/60 dark:hover:bg-orange-950/10',
+                    ]"
+                    @click="selectRechargePackage(pkg)"
+                  >
+                    <span class="flex items-start gap-3">
+                      <span class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-50 text-orange-500 dark:bg-orange-950/40">
+                        <Icon name="creditCard" size="md" />
+                      </span>
+                      <span class="min-w-0">
+                        <span class="block truncate text-base font-bold text-gray-900 dark:text-white">{{ pkg.name }}</span>
+                        <span class="mt-1 block text-sm font-semibold text-gray-500 dark:text-gray-400">
+                          {{ t('payment.rechargePackageCredit', { amount: pkg.amount.toFixed(2) }) }}
+                        </span>
+                      </span>
+                    </span>
+                    <span class="mt-5 flex items-end justify-between gap-3">
+                      <span class="text-2xl font-black text-gray-950 dark:text-white">
+                        {{ formatPackagePaymentAmount(pkg.pay_amount) }}
+                      </span>
+                      <span class="text-sm font-bold text-orange-500">
+                        {{ selectedRechargePackageId === pkg.id ? t('payment.selectedRechargePackage') : t('payment.selectRechargePackage') }}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div v-else class="space-y-3">
                 <label class="block text-sm font-semibold text-gray-900 dark:text-white">
                   {{ t('payment.amountLabel') }}
                 </label>
@@ -61,7 +101,7 @@
                 </p>
               </div>
 
-              <div class="space-y-3">
+              <div v-if="!hasRechargePackages" class="space-y-3">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.quickAmounts') }}</h3>
                 <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                   <button
@@ -450,7 +490,7 @@ import { useAppStore } from '@/stores'
 import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargeCardProduct } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargeCardProduct, RechargePackage } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures } from '@/components/payment/providerConfig'
@@ -503,6 +543,7 @@ const errorMessage = ref('')
 const errorHintMessage = ref('')
 const activeTab = ref<'recharge' | 'rechargeCard' | 'subscription' | 'redeem'>('recharge')
 const amount = ref<number | null>(null)
+const selectedRechargePackageId = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
 const selectedRechargeCardProduct = ref<RechargeCardProduct | null>(null)
@@ -515,6 +556,7 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
+  rechargePackageId?: string
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -621,7 +663,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number; rechargePackageId?: string },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -647,6 +689,11 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
     } else {
       redirectUrl.searchParams.delete('amount')
+    }
+    if (context.rechargePackageId) {
+      redirectUrl.searchParams.set('recharge_package_id', context.rechargePackageId)
+    } else {
+      redirectUrl.searchParams.delete('recharge_package_id')
     }
 
     targetUrl.searchParams.set('redirect', `${redirectUrl.pathname}${redirectUrl.search}`)
@@ -681,7 +728,8 @@ function onPaymentSettled() {
 const checkout = ref<CheckoutInfoResponse>({
   methods: {}, global_min: 0, global_max: 0,
   min_amount: 5, max_amount: 0,
-  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', recharge_card_products: [], stripe_publishable_key: '',
+  plans: [], balance_disabled: false, balance_recharge_multiplier: 1, recharge_fee_rate: 0, help_text: '', help_image_url: '', recharge_card_products: [],
+  recharge_packages: [], stripe_publishable_key: '',
 })
 
 const tabs = computed(() => {
@@ -695,12 +743,27 @@ const tabs = computed(() => {
 
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
-const validAmount = computed(() => amount.value ?? 0)
+const availableRechargePackages = computed(() => {
+  const packages = checkout.value.recharge_packages || []
+  return [...packages]
+    .filter((item) => item.enabled !== false && item.amount > 0 && item.pay_amount > 0)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+})
+const selectedRechargePackage = computed(() =>
+  availableRechargePackages.value.find((item) => item.id === selectedRechargePackageId.value) || null,
+)
+const hasRechargePackages = computed(() => availableRechargePackages.value.length > 0)
+const validAmount = computed(() => selectedRechargePackage.value?.pay_amount ?? amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return multiplier > 0 ? multiplier : 1
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const creditedAmount = computed(() => {
+  if (selectedRechargePackage.value) {
+    return Math.round(selectedRechargePackage.value.amount * 100) / 100
+  }
+  return Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100
+})
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -741,7 +804,7 @@ const methodOptions = computed<PaymentMethodOption[]>(() =>
     return {
       type,
       fee_rate: ml?.fee_rate ?? 0,
-      available: ml?.available !== false,
+      available: ml?.available !== false && amountFitsMethod(validAmount.value, type),
     }
   }).sort((a, b) => {
     const order: readonly string[] = METHOD_ORDER
@@ -764,6 +827,7 @@ const totalAmount = computed(() =>
 )
 
 const amountError = computed(() => {
+  if (hasRechargePackages.value) return ''
   if (validAmount.value <= 0) return ''
   if (validAmount.value < rechargeMinAmount.value) return t('payment.amountTooLow', { min: formatSelectedPaymentAmount(rechargeMinAmount.value) })
   if (rechargeMaxAmount.value > 0 && validAmount.value > rechargeMaxAmount.value) return t('payment.amountTooHigh', { max: formatSelectedPaymentAmount(rechargeMaxAmount.value) })
@@ -829,10 +893,27 @@ function handleRechargeAmountInput(event: Event) {
 
 function selectRechargeAmount(value: number) {
   amount.value = value
+  selectedRechargePackageId.value = ''
+}
+
+function selectRechargePackage(pkg: RechargePackage) {
+  selectedRechargePackageId.value = pkg.id
+  amount.value = pkg.pay_amount
 }
 
 function formatQuickAmount(value: number) {
   return formatSelectedPaymentAmount(value).replace(/\.00(?=\D*$)/, '')
+}
+
+function formatPackagePaymentAmount(value: number) {
+  return formatPaymentAmount(value, selectedCurrency.value, localeCode.value).replace(/\.00(?=\D*$)/, '')
+}
+
+function chooseFirstAvailableMethod() {
+  const next = methodOptions.value.find((method) => method.available)?.type
+  if (next) {
+    selectedMethod.value = next
+  }
 }
 
 function rechargeCardProductMeta(product: { amount?: number; price?: number }) {
@@ -888,6 +969,11 @@ function paymentMethodIcon(type: string): string {
 const canSubmit = computed(() =>
   validAmount.value > 0
     && amountError.value === ''
+    && (!hasRechargePackages.value || !!selectedRechargePackage.value)
+    && !!selectedMethod.value
+    && !!selectedLimit.value
+    && amountFitsMethod(validAmount.value, selectedMethod.value)
+    && !checkout.value.balance_disabled
     && selectedLimit.value?.available !== false
 )
 
@@ -924,10 +1010,22 @@ const canSubmitSubscription = computed(() =>
 
 // Auto-switch to first available method when current selection can't handle the amount
 watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) => {
-  if (amt <= 0 || amountFitsMethod(amt, method)) return
-  const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
-  if (available) selectedMethod.value = available
+  if (amt <= 0) return
+  const current = methodOptions.value.find((item) => item.type === method)
+  if (current?.available) return
+  chooseFirstAvailableMethod()
 })
+
+watch(availableRechargePackages, (packages) => {
+  if (!packages.length) {
+    selectedRechargePackageId.value = ''
+    return
+  }
+  if (!packages.some((pkg) => pkg.id === selectedRechargePackageId.value)) {
+    selectRechargePackage(packages[0])
+  }
+  chooseFirstAvailableMethod()
+}, { immediate: true })
 
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
@@ -980,7 +1078,9 @@ function closeRenewalModal() {
 
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  await createOrder(validAmount.value, 'balance')
+  await createOrder(validAmount.value, 'balance', undefined, {
+    rechargePackageId: selectedRechargePackage.value?.id,
+  })
 }
 
 async function confirmSubscribe() {
@@ -996,6 +1096,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   try {
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
+      rechargePackageId: options.rechargePackageId,
       paymentType: requestType,
       orderType,
       planId,
@@ -1062,6 +1163,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         orderType,
         planId,
         orderAmount,
+        rechargePackageId: options.rechargePackageId,
       })
       return
     }
@@ -1102,6 +1204,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
+              rechargePackageId: options.rechargePackageId,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -1120,6 +1223,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
+          rechargePackageId: options.rechargePackageId,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -1149,6 +1253,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
+      rechargePackageId: options.rechargePackageId,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -1176,6 +1281,7 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
+  rechargePackageId?: string
   paymentType: string
   attempted: boolean
 }
@@ -1222,6 +1328,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
     const visibleMethod = normalizeVisibleMethod(context.paymentType) || context.paymentType
     const payload = buildCreateOrderPayload({
       amount: context.orderAmount,
+      rechargePackageId: context.rechargePackageId,
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
@@ -1291,6 +1398,9 @@ async function resumeWechatPaymentFromQuery() {
   }
 
   selectedMethod.value = resume.paymentType
+  if (resume.rechargePackageId) {
+    selectedRechargePackageId.value = resume.rechargePackageId
+  }
   if (resume.orderType === 'balance' && resume.orderAmount > 0) {
     amount.value = resume.orderAmount
   }
@@ -1304,6 +1414,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
+      rechargePackageId: resume.rechargePackageId,
       isResume: true,
     })
     return
@@ -1313,6 +1424,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
+      rechargePackageId: resume.rechargePackageId,
       isResume: true,
     })
   }
@@ -1323,13 +1435,7 @@ onMounted(async () => {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
     if (enabledMethods.value.length) {
-      const order: readonly string[] = METHOD_ORDER
-      const sorted = [...enabledMethods.value].sort((a, b) => {
-        const ai = order.indexOf(a)
-        const bi = order.indexOf(b)
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-      })
-      selectedMethod.value = sorted[0]
+      chooseFirstAvailableMethod()
     }
     if (typeof window !== 'undefined') {
       if (hasWechatResumeQuery(route.query)) {

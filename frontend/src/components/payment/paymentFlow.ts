@@ -15,11 +15,18 @@ const VISIBLE_METHOD_ALIASES = {
   wxpay: 'wxpay',
   wxpay_direct: 'wxpay',
   stripe: 'stripe',
+  easypay: 'easypay',
   airwallex: 'airwallex',
   creem: 'creem',
 } as const
 
-export type VisiblePaymentMethod = 'alipay' | 'wxpay' | 'stripe' | 'airwallex' | 'creem'
+export type VisiblePaymentMethod =
+  | 'alipay'
+  | 'wxpay'
+  | 'stripe'
+  | 'easypay'
+  | 'airwallex'
+  | 'creem'
 export type StripeVisibleMethod = 'alipay' | 'wechat_pay'
 export type PaymentLaunchKind =
   | 'qr_waiting'
@@ -75,6 +82,7 @@ export interface PaymentLaunchDecision {
 
 export interface BuildCreateOrderPayloadInput {
   amount: number
+  rechargePackageId?: string
   paymentType: string
   orderType: OrderType
   planId?: number
@@ -123,6 +131,7 @@ export function buildCreateOrderPayload(input: BuildCreateOrderPayloadInput): Cr
     : input.isMobile
   const payload: CreateOrderRequest = {
     amount: input.amount,
+    recharge_package_id: input.rechargePackageId || undefined,
     payment_type: visibleMethod,
     order_type: input.orderType,
     is_mobile: effectiveMobile,

@@ -142,6 +142,7 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		RechargeFeeRate:           cfg.RechargeFeeRate,
 		HelpText:                  cfg.HelpText,
 		HelpImageURL:              cfg.HelpImageURL,
+		RechargePackages:          cfg.RechargePackages,
 		RechargeCardProducts:      cfg.RechargeCardProducts,
 		StripePublishableKey:      cfg.StripePublishableKey,
 		AlipayForceQRCode:         cfg.AlipayForceQRCode,
@@ -160,6 +161,7 @@ type checkoutInfoResponse struct {
 	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
 	HelpText                  string                          `json:"help_text"`
 	HelpImageURL              string                          `json:"help_image_url"`
+	RechargePackages          []service.RechargePackage       `json:"recharge_packages"`
 	RechargeCardProducts      []service.RechargeCardProduct   `json:"recharge_card_products"`
 	StripePublishableKey      string                          `json:"stripe_publishable_key"`
 	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
@@ -216,6 +218,7 @@ func (h *PaymentHandler) GetLimits(c *gin.Context) {
 // CreateOrderRequest is the request body for creating a payment order.
 type CreateOrderRequest struct {
 	Amount            float64 `json:"amount"`
+	RechargePackageID string  `json:"recharge_package_id"`
 	PaymentType       string  `json:"payment_type" binding:"required"`
 	OpenID            string  `json:"openid"`
 	WechatResumeToken string  `json:"wechat_resume_token"`
@@ -259,20 +262,21 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		mobile = *req.IsMobile
 	}
 	result, err := h.paymentService.CreateOrder(c.Request.Context(), service.CreateOrderRequest{
-		UserID:          subject.UserID,
-		Amount:          req.Amount,
-		PaymentType:     req.PaymentType,
-		OpenID:          req.OpenID,
-		ClientIP:        c.ClientIP(),
-		IsMobile:        mobile,
-		IsWeChatBrowser: isWeChatBrowser(c),
-		SrcHost:         c.Request.Host,
-		SrcURL:          c.Request.Referer(),
-		ReturnURL:       req.ReturnURL,
-		PaymentSource:   req.PaymentSource,
-		OrderType:       req.OrderType,
-		PlanID:          req.PlanID,
-		Locale:          c.GetHeader("Accept-Language"),
+		UserID:            subject.UserID,
+		Amount:            req.Amount,
+		RechargePackageID: req.RechargePackageID,
+		PaymentType:       req.PaymentType,
+		OpenID:            req.OpenID,
+		ClientIP:          c.ClientIP(),
+		IsMobile:          mobile,
+		IsWeChatBrowser:   isWeChatBrowser(c),
+		SrcHost:           c.Request.Host,
+		SrcURL:            c.Request.Referer(),
+		ReturnURL:         req.ReturnURL,
+		PaymentSource:     req.PaymentSource,
+		OrderType:         req.OrderType,
+		PlanID:            req.PlanID,
+		Locale:            c.GetHeader("Accept-Language"),
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -302,6 +306,7 @@ func applyWeChatPaymentResumeClaims(req *CreateOrderRequest, claims *service.WeC
 	}
 	req.PaymentType = paymentType
 	req.OpenID = openid
+	req.RechargePackageID = strings.TrimSpace(claims.RechargePackageID)
 
 	if strings.TrimSpace(claims.Amount) != "" {
 		amount, err := strconv.ParseFloat(strings.TrimSpace(claims.Amount), 64)

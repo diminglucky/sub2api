@@ -53,13 +53,20 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	if s.notificationEmailService != nil {
 		s.notificationEmailService.RememberRecipientLocale(ctx, req.UserID, user.Email, req.Locale)
 	}
+	rechargePackage, err := resolveRechargePackage(req, cfg)
+	if err != nil {
+		return nil, err
+	}
 	orderAmount := req.Amount
 	limitAmount := req.Amount
 	if plan != nil {
 		orderAmount = plan.Price
 		limitAmount = plan.Price
+	} else if rechargePackage != nil {
+		orderAmount = rechargePackage.Amount
+		limitAmount = rechargePackage.PayAmount
 	} else if req.OrderType == payment.OrderTypeBalance {
-		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
+		orderAmount = calculateCreditedBalance(req.Amount, cfg.balanceRechargeMultiplierForPaymentType(req.PaymentType))
 	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
@@ -118,8 +125,20 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
 	}
+	if req.OrderType == payment.OrderTypeBalance && !cfg.allowsBalanceRechargePaymentType(req.PaymentType) {
+		return nil, infraerrors.Forbidden("PAYMENT_METHOD_NOT_ENABLED_FOR_RECHARGE", "payment method is not enabled for balance recharge")
+	}
 	if req.OrderType == payment.OrderTypeSubscription {
 		return s.validateSubOrder(ctx, req)
+	}
+	if strings.TrimSpace(req.RechargePackageID) != "" {
+		if _, ok := cfg.findRechargePackage(req.PaymentType, req.RechargePackageID); !ok {
+			return nil, infraerrors.BadRequest("INVALID_RECHARGE_PACKAGE", "recharge package is not available")
+		}
+		return nil, nil
+	}
+	if cfg.hasEnabledRechargePackages(req.PaymentType) {
+		return nil, infraerrors.BadRequest("RECHARGE_PACKAGE_REQUIRED", "recharge package is required")
 	}
 	if math.IsNaN(req.Amount) || math.IsInf(req.Amount, 0) || req.Amount <= 0 {
 		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "amount must be a positive number")
@@ -130,6 +149,17 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 			WithMetadata(map[string]string{"min": fmt.Sprintf("%.2f", minAmount), "max": fmt.Sprintf("%.2f", cfg.MaxAmount)})
 	}
 	return nil, nil
+}
+
+func resolveRechargePackage(req CreateOrderRequest, cfg *PaymentConfig) (*RechargePackage, error) {
+	if req.OrderType != payment.OrderTypeBalance || strings.TrimSpace(req.RechargePackageID) == "" {
+		return nil, nil
+	}
+	pkg, ok := cfg.findRechargePackage(req.PaymentType, req.RechargePackageID)
+	if !ok {
+		return nil, infraerrors.BadRequest("INVALID_RECHARGE_PACKAGE", "recharge package is not available")
+	}
+	return pkg, nil
 }
 
 func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRequest) (*dbent.SubscriptionPlan, error) {
@@ -713,6 +743,9 @@ func buildWeChatPaymentOAuthStartURL(req CreateOrderRequest, scope string) (stri
 	q.Set("payment_type", strings.TrimSpace(req.PaymentType))
 	if req.Amount > 0 {
 		q.Set("amount", strconv.FormatFloat(req.Amount, 'f', -1, 64))
+	}
+	if packageID := strings.TrimSpace(req.RechargePackageID); packageID != "" {
+		q.Set("recharge_package_id", packageID)
 	}
 	if orderType := strings.TrimSpace(req.OrderType); orderType != "" {
 		q.Set("order_type", orderType)

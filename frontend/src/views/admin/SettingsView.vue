@@ -5951,6 +5951,78 @@
                     </p>
                   </div>
                 </div>
+                <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <label class="font-medium text-gray-900 dark:text-white">
+                        {{ t("admin.settings.payment.rechargePackages") }}
+                      </label>
+                      <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                        {{ t("admin.settings.payment.rechargePackagesHint") }}
+                      </p>
+                    </div>
+                    <button type="button" class="btn btn-secondary" @click="addRechargePackage()">
+                      {{ t("admin.settings.payment.addRechargePackage") }}
+                    </button>
+                  </div>
+                  <div
+                    v-if="form.payment_recharge_packages.length === 0"
+                    class="mt-3 rounded-lg border border-dashed border-gray-300 px-4 py-5 text-center text-sm text-gray-500 dark:border-dark-600 dark:text-gray-400"
+                  >
+                    {{ t("admin.settings.payment.noRechargePackages") }}
+                  </div>
+                  <div v-else class="mt-3 space-y-3">
+                    <div
+                      v-for="(pkg, index) in form.payment_recharge_packages"
+                      :key="pkg.id || index"
+                      class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"
+                    >
+                      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                        <div class="xl:col-span-2">
+                          <label class="input-label">{{ t("admin.settings.payment.rechargePackageName") }}</label>
+                          <input v-model="pkg.name" type="text" class="input" />
+                        </div>
+                        <div>
+                          <label class="input-label">{{ t("admin.settings.payment.rechargePackageAmount") }}</label>
+                          <input v-model.number="pkg.amount" type="number" min="0" step="0.01" class="input" />
+                        </div>
+                        <div>
+                          <label class="input-label">{{ t("admin.settings.payment.rechargePackagePayAmount") }}</label>
+                          <input v-model.number="pkg.pay_amount" type="number" min="0" step="0.01" class="input" />
+                        </div>
+                        <div>
+                          <label class="input-label">{{ t("admin.settings.payment.rechargePackageSort") }}</label>
+                          <input v-model.number="pkg.sort_order" type="number" step="1" class="input" />
+                        </div>
+                      </div>
+                      <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+                        <div class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                          {{ t("admin.settings.payment.rechargePackagePreview", { pay: Number(pkg.pay_amount || 0).toFixed(2), amount: Number(pkg.amount || 0).toFixed(2) }) }}
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            :class="[
+                              'relative inline-flex h-8 w-14 items-center rounded-full transition-colors',
+                              pkg.enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600',
+                            ]"
+                            @click="pkg.enabled = !pkg.enabled"
+                          >
+                            <span
+                              :class="[
+                                'inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform',
+                                pkg.enabled ? 'translate-x-7' : 'translate-x-1',
+                              ]"
+                            />
+                          </button>
+                          <button type="button" class="btn btn-danger" @click="removeRechargePackage(index)">
+                            {{ t("common.delete") }}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 <!-- Row 3: Pending orders + load balance + cancel rate limit (all in one row) -->
                 <div class="flex flex-wrap items-end gap-4">
                   <div class="w-28">
@@ -6844,7 +6916,7 @@ import type {
   NotifyEmailEntry,
   Proxy,
 } from "@/types";
-import type { ProviderInstance, RechargeCardProduct } from "@/types/payment";
+import type { ProviderInstance, RechargeCardProduct, RechargePackage } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
@@ -7173,6 +7245,7 @@ const form = reactive<SettingsForm>({
   payment_balance_recharge_multiplier: 1,
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
+  payment_recharge_packages: [],
   payment_help_image_url: "",
   payment_help_text: "",
   payment_recharge_card_products: [],
@@ -7886,6 +7959,61 @@ function normalizeLoginAgreementDocumentsForSave(): LoginAgreementDocument[] {
     .filter((doc) => doc.title || doc.content_md);
 }
 
+function addRechargePackage(): void {
+  const list = form.payment_recharge_packages;
+  const maxSortOrder = list.reduce(
+    (max, item) => Math.max(max, Number(item.sort_order) || 0),
+    0,
+  );
+  const basePayAmount = 10;
+  const multiplier = Number(form.payment_balance_recharge_multiplier) || 1;
+
+  list.push({
+    id: `pkg_${Date.now().toString(36)}`,
+    name: "余额充值包",
+    amount: Math.round(basePayAmount * multiplier * 100) / 100,
+    pay_amount: basePayAmount,
+    enabled: true,
+    sort_order: maxSortOrder + 1,
+  });
+}
+
+function removeRechargePackage(index: number): void {
+  const list = form.payment_recharge_packages;
+  list.splice(index, 1);
+}
+
+function normalizeRechargePackagesForSave(
+  packages: RechargePackage[],
+  labelKey: string,
+): RechargePackage[] | null {
+  const seen = new Set<string>();
+  const normalized = packages
+    .map((item, index) => ({
+      id: String(item.id || `pkg_${index + 1}`).trim(),
+      name: String(item.name || "").trim(),
+      amount: Number(item.amount) || 0,
+      pay_amount: Number(item.pay_amount) || 0,
+      enabled: item.enabled !== false,
+      sort_order: Number(item.sort_order) || 0,
+    }))
+    .filter((item) => item.name || item.amount > 0 || item.pay_amount > 0);
+
+  for (const item of normalized) {
+    if (!item.name || item.amount <= 0 || item.pay_amount <= 0) {
+      appStore.showError(t(labelKey));
+      return null;
+    }
+    if (seen.has(item.id)) {
+      appStore.showError(t("admin.settings.payment.rechargePackageDuplicate"));
+      return null;
+    }
+    seen.add(item.id);
+  }
+
+  return normalized;
+}
+
 function addRechargeCardProduct(): void {
   const maxSortOrder = form.payment_recharge_card_products.reduce(
     (max, product) => Math.max(max, Number(product.sort_order) || 0),
@@ -8003,6 +8131,16 @@ async function loadSettings() {
           url: product.url || "",
           enabled: product.enabled !== false,
           sort_order: Number(product.sort_order) || 0,
+        }))
+      : [];
+    form.payment_recharge_packages = Array.isArray(settings.payment_recharge_packages)
+      ? settings.payment_recharge_packages.map((item) => ({
+          id: item.id || `domestic_${Date.now().toString(36)}`,
+          name: item.name || "",
+          amount: Number(item.amount) || 0,
+          pay_amount: Number(item.pay_amount) || 0,
+          enabled: item.enabled !== false,
+          sort_order: Number(item.sort_order) || 0,
         }))
       : [];
     form.login_agreement_mode =
@@ -8236,6 +8374,14 @@ async function saveSettings() {
       return;
     }
     form.payment_recharge_card_products = normalizedRechargeCardProducts;
+    const normalizedRechargePackages = normalizeRechargePackagesForSave(
+      form.payment_recharge_packages,
+      "admin.settings.payment.rechargePackagesIncomplete",
+    );
+    if (normalizedRechargePackages === null) {
+      return;
+    }
+    form.payment_recharge_packages = normalizedRechargePackages;
 
     const normalizedLoginAgreementDocuments =
       normalizeLoginAgreementDocumentsForSave();
@@ -8520,6 +8666,7 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      payment_recharge_packages: normalizedRechargePackages,
       payment_recharge_card_products: normalizedRechargeCardProducts,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
