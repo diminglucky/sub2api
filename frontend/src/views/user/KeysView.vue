@@ -1072,6 +1072,7 @@ import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
+import { resolvePublicApiEndpoint } from '@/utils/apiEndpoint'
 import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
@@ -1155,10 +1156,7 @@ let abortController: AbortController | null = null
 
 const apiEndpointUrl = computed(() => {
   const configured = publicSettings.value?.api_base_url?.trim()
-  if (configured) return configured.replace(/\/+$/, '')
-
-  if (typeof window === 'undefined') return ''
-  return `${window.location.origin.replace(/\/+$/, '')}/v1`
+  return resolvePublicApiEndpoint(configured)
 })
 
 // Get the currently selected key for group change

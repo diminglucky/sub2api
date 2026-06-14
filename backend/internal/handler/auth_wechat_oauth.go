@@ -1089,6 +1089,10 @@ func resolveWeChatOAuthAbsoluteURL(apiBaseURL string, c *gin.Context, callbackPa
 			targetPath := callbackPath
 			if basePath != "" && strings.HasSuffix(basePath, "/api/v1") && strings.HasPrefix(callbackPath, "/api/v1") {
 				targetPath = basePath + strings.TrimPrefix(callbackPath, "/api/v1")
+			} else if basePath == "/v1" {
+				targetPath = callbackPath
+			} else if strings.HasSuffix(basePath, "/v1") {
+				targetPath = strings.TrimSuffix(basePath, "/v1") + callbackPath
 			} else if basePath != "" {
 				targetPath = basePath + callbackPath
 			}

@@ -65,6 +65,65 @@ func TestWeChatOAuthStartRedirectsAndSetsPendingCookies(t *testing.T) {
 	require.NotEmpty(t, findCookie(cookies, oauthPendingBrowserCookieName))
 }
 
+func TestWeChatOAuthStartBuildsDefaultCallbackFromRequestHost(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{
+		service.SettingKeyWeChatConnectEnabled:             "true",
+		service.SettingKeyWeChatConnectAppID:               "wx-open-app",
+		service.SettingKeyWeChatConnectAppSecret:           "wx-open-secret",
+		service.SettingKeyWeChatConnectMode:                "open",
+		service.SettingKeyWeChatConnectScopes:              "snsapi_login",
+		service.SettingKeyWeChatConnectRedirectURL:         "",
+		service.SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+	})
+	defer client.Close()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open", nil)
+	c.Request.Host = "superai.dihappy.cfd"
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	handler.WeChatOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.Equal(t, "https://superai.dihappy.cfd/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
+	require.NotContains(t, parsed.Query().Get("redirect_uri"), "/v1/api/v1/")
+}
+
+func TestWeChatOAuthStartNormalizesAPIBaseURLCallbackPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{
+		service.SettingKeyAPIBaseURL:                       "https://api.dihappy.cfd/v1",
+		service.SettingKeyWeChatConnectEnabled:             "true",
+		service.SettingKeyWeChatConnectAppID:               "wx-open-app",
+		service.SettingKeyWeChatConnectAppSecret:           "wx-open-secret",
+		service.SettingKeyWeChatConnectMode:                "open",
+		service.SettingKeyWeChatConnectScopes:              "snsapi_login",
+		service.SettingKeyWeChatConnectRedirectURL:         "",
+		service.SettingKeyWeChatConnectFrontendRedirectURL: "/auth/wechat/callback",
+	})
+	defer client.Close()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open", nil)
+	c.Request.Host = "superai.dihappy.cfd"
+	c.Request.Header.Set("X-Forwarded-Proto", "https")
+
+	handler.WeChatOAuthStart(c)
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	location := recorder.Header().Get("Location")
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.Equal(t, "https://api.dihappy.cfd/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
+	require.NotContains(t, parsed.Query().Get("redirect_uri"), "/v1/api/v1/")
+}
+
 func TestWeChatOAuthStart_AllowsOpenModeWhenBothCapabilitiesEnabled(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{

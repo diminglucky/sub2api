@@ -218,6 +218,7 @@ import { authAPI, keysAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { ApiKey } from '@/types'
+import { resolvePublicApiEndpoint } from '@/utils/apiEndpoint'
 import { maskApiKey } from '@/utils/maskApiKey'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -258,9 +259,7 @@ const modelOptions = computed(() => gatewayModels.value)
 const canSend = computed(() => Boolean(apiBaseUrl.value && selectedKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 
 function resolveDefaultEndpoint(configured: string): string {
-  const trimmed = configured.trim().replace(/\/+$/, '')
-  if (trimmed) return trimmed
-  return `${window.location.origin.replace(/\/+$/, '')}/v1`
+  return resolvePublicApiEndpoint(configured)
 }
 
 async function loadKeys() {

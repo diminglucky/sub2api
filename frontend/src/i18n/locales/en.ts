@@ -5890,9 +5890,9 @@ export default {
         siteSubtitlePlaceholder: 'SuperAI AI Platform',
         siteSubtitleHint: 'Displayed on login and register pages',
         apiBaseUrl: 'API Base URL',
-        apiBaseUrlPlaceholder: 'https://api.example.com',
+        apiBaseUrlPlaceholder: 'https://api.dihappy.cfd/v1',
         apiBaseUrlHint:
-          'Used for "Use Key" and "Import to CC Switch" features. Leave empty to use current site URL.',
+          'Used for "Use Key", Playground, and "Import to CC Switch" features. Leave empty to show https://api.dihappy.cfd/v1 to users.',
         tablePreferencesTitle: 'Global Table Preferences',
         tablePreferencesDescription: 'Configure default pagination behavior for shared table components',
         tableDefaultPageSize: 'Default Rows Per Page',

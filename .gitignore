@@ -137,6 +137,7 @@ docs/*
 .codex/
 .playwright-mcp/
 .tmp-go-cache/
+.tmp-go-mod-cache/
 frontend/coverage/
 aicodex
 output/

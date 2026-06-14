@@ -531,13 +531,38 @@ func (s *NotificationEmailService) baseURL(ctx context.Context) string {
 	if s == nil || s.settingRepo == nil {
 		return ""
 	}
-	for _, key := range []string{SettingKeyAPIBaseURL, SettingKeyFrontendURL} {
-		value, err := s.settingRepo.GetValue(ctx, key)
-		if err == nil && strings.TrimSpace(value) != "" {
-			return strings.TrimRight(strings.TrimSpace(value), "/")
-		}
+	if value, err := s.settingRepo.GetValue(ctx, SettingKeyFrontendURL); err == nil && strings.TrimSpace(value) != "" {
+		return strings.TrimRight(strings.TrimSpace(value), "/")
+	}
+	if value, err := s.settingRepo.GetValue(ctx, SettingKeyAPIBaseURL); err == nil && strings.TrimSpace(value) != "" {
+		return notificationEmailLinkBaseFromAPIBaseURL(value)
 	}
 	return ""
+}
+
+func notificationEmailLinkBaseFromAPIBaseURL(raw string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return ""
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || !parsed.IsAbs() || parsed.Host == "" {
+		return ""
+	}
+
+	path := strings.TrimRight(parsed.Path, "/")
+	if path == "/v1" {
+		path = ""
+	} else if strings.HasSuffix(path, "/api/v1") {
+		path = strings.TrimSuffix(path, "/api/v1")
+	} else if strings.HasSuffix(path, "/v1") {
+		path = strings.TrimSuffix(path, "/v1")
+	}
+	parsed.Path = path
+	parsed.RawPath = ""
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/")
 }
 
 func (s *NotificationEmailService) buildUnsubscribeURL(ctx context.Context, email, event string) (string, error) {

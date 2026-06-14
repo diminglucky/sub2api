@@ -155,6 +155,8 @@
 import { computed, defineComponent, h, type PropType } from 'vue'
 import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { useAppStore } from '@/stores/app'
+import { resolvePublicApiEndpoint } from '@/utils/apiEndpoint'
 
 interface ConfigRow {
   label: string
@@ -181,15 +183,16 @@ interface ManualGuide {
 }
 
 const route = useRoute()
-const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
-const apiBaseUrl = `${baseUrl}/v1`
+const appStore = useAppStore()
+const apiBaseUrl = computed(() => resolvePublicApiEndpoint(appStore.cachedPublicSettings?.api_base_url || appStore.apiBaseUrl))
+const baseUrl = computed(() => apiBaseUrl.value.replace(/\/v1\/?$/, ''))
 
-const configRows: ConfigRow[] = [
+const configRows = computed<ConfigRow[]>(() => [
   { label: '接口类型', value: 'OpenAI Compatible / OpenAI 兼容' },
-  { label: 'Base URL', value: apiBaseUrl },
+  { label: 'Base URL', value: apiBaseUrl.value },
   { label: 'API Key', value: '粘贴你在 API 密钥页面创建的 sk- 开头密钥' },
   { label: 'Model', value: '填写模型页面显示的完整模型名，例如 gpt5.5' },
-]
+])
 
 const quickLinks = [
   { step: '第一步', title: '创建 API 密钥', desc: '进入 API 密钥页面创建密钥，复制后保存到你的客户端。' },
@@ -204,39 +207,46 @@ const commonChecks = [
   { title: '核对余额变化', desc: '如果请求成功但没有记录，刷新页面后再看；如果余额不足，先到充值页补充余额。' },
 ]
 
-const commonTroubleshooting = [
+const commonTroubleshooting = computed(() => [
   { title: '401 / Unauthorized', desc: '优先检查 API Key 是否复制完整、是否包含多余空格、密钥是否被禁用或删除。重新创建密钥后再粘贴一次最稳。' },
   { title: '模型不存在', desc: '到“模型”页面复制完整模型名，大小写、横线、点号都必须一致。不要凭记忆手打模型名。' },
-  { title: '连接失败', desc: `确认 Base URL 是 ${apiBaseUrl}，并且客户端没有自动再拼一次 /v1。如果你部署在公网域名，请填写公网域名对应的 /v1 地址。` },
+  { title: '连接失败', desc: `确认 Base URL 是 ${apiBaseUrl.value}，并且客户端没有自动再拼一次 /v1。如果你部署在公网域名，请填写公网域名对应的 /v1 地址。` },
   { title: '有返回但用量异常', desc: '到使用记录里查看模型、Token 和 User-Agent；如果客户端重试多次，可能会产生多条调用记录。' },
-]
+])
 
-const defaultPrerequisites = [
+const defaultPrerequisites = computed(() => [
   '先进入“API 密钥”页面创建一个可用密钥，复制 sk- 开头的完整内容。',
   '进入“模型”页面确认你账号可用的模型名称，并复制完整模型名。',
-  `确认接口地址为 ${apiBaseUrl}。大多数 OpenAI 兼容客户端都填写这个地址。`,
+  `确认接口地址为 ${apiBaseUrl.value}。大多数 OpenAI 兼容客户端都填写这个地址。`,
   '如果账号余额不足，请先到“充值”页面补充余额，否则配置正确也可能调用失败。',
-]
+])
 
-const platformGuides: ManualGuide[] = [
+const platformGuides = computed<ManualGuide[]>(() => {
+  const currentApiBaseUrl = apiBaseUrl.value
+  const currentBaseUrl = baseUrl.value
+  const currentConfigRows = configRows.value
+  const currentDefaultPrerequisites = defaultPrerequisites.value
+  const currentCommonTroubleshooting = commonTroubleshooting.value
+
+  return [
   {
     slug: 'chatbox',
     name: 'ChatBox',
     type: '桌面客户端',
     summary: '适合桌面聊天使用，在自定义 OpenAI API 设置里填写 SuperAI 的接口地址和密钥。',
     tags: ['Base URL', 'API Key', '模型名'],
-    prerequisites: defaultPrerequisites,
-    configRows,
+    prerequisites: currentDefaultPrerequisites,
+    configRows: currentConfigRows,
     steps: [
       { no: 1, title: '打开 ChatBox 设置', desc: '进入 ChatBox 后打开设置页，找到“模型提供方”“AI 服务”“API 设置”或类似入口。不同版本名称可能略有差异。' },
       { no: 2, title: '选择 OpenAI 兼容模式', desc: '提供方选择 OpenAI API、自定义 OpenAI、OpenAI Compatible 或类似选项。不要选择只支持官方登录的模式。' },
-      { no: 3, title: '填写接口地址', desc: `Base URL / API Host 填写 ${apiBaseUrl}。注意必须包含 /v1；如果客户端已经固定拼接 /v1，则只填写 ${baseUrl}。` },
+      { no: 3, title: '填写接口地址', desc: `Base URL / API Host 填写 ${currentApiBaseUrl}。注意必须包含 /v1；如果客户端已经固定拼接 /v1，则只填写 ${currentBaseUrl}。` },
       { no: 4, title: '填写 API Key', desc: 'API Key 粘贴 SuperAI 里创建的 sk- 开头密钥。复制后检查前后没有空格，也不要把密钥名称当成密钥。' },
       { no: 5, title: '添加模型名称', desc: '模型填写“模型”页面显示的完整名称，例如 gpt5.5。如果 ChatBox 支持自定义模型列表，就手动添加该模型。' },
       { no: 6, title: '保存并新建对话', desc: '保存配置后新建一个会话，选择刚配置的模型，发送短问题测试。测试成功后再开始长文本或文件任务。' },
     ],
     checks: commonChecks,
-    troubleshooting: commonTroubleshooting,
+    troubleshooting: currentCommonTroubleshooting,
   },
   {
     slug: 'cherry-studio',
@@ -244,19 +254,19 @@ const platformGuides: ManualGuide[] = [
     type: '桌面客户端',
     summary: '适合多模型管理，在供应商设置里新增 OpenAI 兼容服务商并绑定模型。',
     tags: ['供应商', '模型列表', 'OpenAI 兼容'],
-    prerequisites: defaultPrerequisites,
-    configRows,
+    prerequisites: currentDefaultPrerequisites,
+    configRows: currentConfigRows,
     steps: [
       { no: 1, title: '进入模型服务设置', desc: '打开 Cherry Studio 设置，进入“模型服务”“供应商”或 Provider 管理页面。' },
       { no: 2, title: '新增自定义供应商', desc: '新增一个供应商，名称建议写 SuperAI，类型选择 OpenAI Compatible / OpenAI 兼容。' },
-      { no: 3, title: '填写 API 地址', desc: `API 地址、API Host 或 Base URL 填写 ${apiBaseUrl}。如果界面分成 Host 和 Path，Host 填 ${baseUrl}，Path 填 /v1。` },
+      { no: 3, title: '填写 API 地址', desc: `API 地址、API Host 或 Base URL 填写 ${currentApiBaseUrl}。如果界面分成 Host 和 Path，Host 填 ${currentBaseUrl}，Path 填 /v1。` },
       { no: 4, title: '填写密钥', desc: 'API Key 填写 SuperAI 生成的 sk- 密钥。保存前确认密钥没有换行、空格或中文引号。' },
       { no: 5, title: '添加模型列表', desc: '在该供应商下手动添加模型名称。模型名必须和 SuperAI 模型页一致，否则聊天页会提示模型不可用。' },
       { no: 6, title: '设置默认模型并测试', desc: '回到聊天页面选择 SuperAI 供应商和对应模型，发送一条短消息。成功后可以把该模型设为默认模型。' },
     ],
     checks: commonChecks,
     troubleshooting: [
-      ...commonTroubleshooting,
+      ...currentCommonTroubleshooting,
       { title: '供应商保存了但聊天页看不到', desc: '检查是否已经在供应商下添加模型，并确认模型被启用。有些版本需要重启 Cherry Studio 或切换会话后才刷新模型列表。' },
     ],
   },
@@ -266,19 +276,19 @@ const platformGuides: ManualGuide[] = [
     type: '移动/桌面客户端',
     summary: '适合移动端或轻量聊天使用，在自定义服务里配置 OpenAI 兼容接口。',
     tags: ['自定义服务', '移动端', '聊天测试'],
-    prerequisites: defaultPrerequisites,
-    configRows,
+    prerequisites: currentDefaultPrerequisites,
+    configRows: currentConfigRows,
     steps: [
       { no: 1, title: '打开 API 设置', desc: '进入 OpenCat 设置，找到 API、服务商、Provider、自定义 Endpoint 或 OpenAI 配置入口。' },
       { no: 2, title: '新增 OpenAI 兼容服务', desc: '服务类型选择 OpenAI 或 OpenAI-compatible，自定义名称建议填写 SuperAI，方便后续识别。' },
-      { no: 3, title: '填写 Endpoint', desc: `Endpoint / Base URL 填写 ${apiBaseUrl}。如果客户端只接受服务器地址，则填写 ${baseUrl}，再确认路径或接口版本是 /v1。` },
+      { no: 3, title: '填写 Endpoint', desc: `Endpoint / Base URL 填写 ${currentApiBaseUrl}。如果客户端只接受服务器地址，则填写 ${currentBaseUrl}，再确认路径或接口版本是 /v1。` },
       { no: 4, title: '填写 API Key', desc: 'API Key 填写 SuperAI 的 sk- 密钥。移动端复制时尤其注意不要带入空格、换行或自动纠错字符。' },
       { no: 5, title: '设置默认模型', desc: '默认模型填写模型页完整名称。如果支持模型列表，建议只添加你最常用的几个模型。' },
       { no: 6, title: '保存后测试网络', desc: '在移动网络和 Wi-Fi 下各测试一次。如果只有移动网络失败，多半是本地地址或内网地址无法访问。' },
     ],
     checks: commonChecks,
     troubleshooting: [
-      ...commonTroubleshooting,
+      ...currentCommonTroubleshooting,
       { title: '手机端无法连接 localhost', desc: 'localhost 只代表手机本机，不代表你的电脑或服务器。手机端必须填写公网域名，或填写同一局域网可访问的电脑 IP。' },
     ],
   },
@@ -288,19 +298,19 @@ const platformGuides: ManualGuide[] = [
     type: '代码编辑器',
     summary: '适合编码场景，在 OpenAI API Key 和 Override Base URL 中接入 SuperAI。',
     tags: ['编辑器', 'Override URL', '代码辅助'],
-    prerequisites: defaultPrerequisites,
-    configRows,
+    prerequisites: currentDefaultPrerequisites,
+    configRows: currentConfigRows,
     steps: [
       { no: 1, title: '打开 Cursor 设置', desc: '进入 Cursor Settings，找到 Models、Provider、OpenAI API Key 或自定义模型配置区域。' },
       { no: 2, title: '启用自定义 OpenAI 配置', desc: '打开自定义 API Key、Override OpenAI Base URL、OpenAI Compatible Provider 或类似选项。' },
-      { no: 3, title: '填写密钥和地址', desc: `OpenAI API Key 填写 sk- 密钥，Override Base URL 填写 ${apiBaseUrl}。如果 Cursor 自动附加 /v1，则改填 ${baseUrl}。` },
+      { no: 3, title: '填写密钥和地址', desc: `OpenAI API Key 填写 sk- 密钥，Override Base URL 填写 ${currentApiBaseUrl}。如果 Cursor 自动附加 /v1，则改填 ${currentBaseUrl}。` },
       { no: 4, title: '添加模型名称', desc: '在模型配置中添加 SuperAI 模型页显示的模型名。建议先用一个便宜或常用模型测试，再添加更多模型。' },
       { no: 5, title: '选择模型范围', desc: '如果 Cursor 区分 Chat、Composer、Agent、Inline Edit，分别确认这些入口使用的是同一个 SuperAI 模型。' },
       { no: 6, title: '用代码任务测试', desc: '打开 Chat 或 Composer，让它解释当前文件的一小段代码。成功后再执行更长的生成或重构任务。' },
     ],
     checks: commonChecks,
     troubleshooting: [
-      ...commonTroubleshooting,
+      ...currentCommonTroubleshooting,
       { title: '编辑器仍走官方模型', desc: '检查当前会话选择的模型是否是你新增的 SuperAI 模型。有些编辑器保存 Key 后，还需要在聊天窗口手动切换模型。' },
     ],
   },
@@ -314,12 +324,12 @@ const platformGuides: ManualGuide[] = [
       '先在电脑上安装并启动 CC Switch，确认 ccswitch:// 协议可以被系统识别。',
       '进入 SuperAI 的“API 密钥”页面创建密钥，并确认密钥所属分组支持你要使用的模型平台。',
       '如果页面上看不到“导入到 CC Switch”按钮，可能是管理员隐藏了该按钮，此时使用手动配置方式。',
-      `手动配置时接口地址通常使用 ${apiBaseUrl}；部分平台映射可能会由导入功能自动设置 endpoint。`,
+      `手动配置时接口地址通常使用 ${currentApiBaseUrl}；部分平台映射可能会由导入功能自动设置 endpoint。`,
     ],
     configRows: [
       { label: '推荐方式', value: 'API 密钥页点击“导入到 CC Switch”' },
       { label: '协议', value: 'ccswitch://v1/import' },
-      { label: 'Base URL', value: apiBaseUrl },
+      { label: 'Base URL', value: currentApiBaseUrl },
       { label: 'API Key', value: '选择要导入的 SuperAI API 密钥' },
       { label: '客户端类型', value: 'Claude Code 或 Gemini CLI' },
     ],
@@ -330,7 +340,7 @@ const platformGuides: ManualGuide[] = [
       { no: 4, title: '允许浏览器打开 CC Switch', desc: '浏览器弹出确认时允许打开 CC Switch。成功后 CC Switch 会新增一个 SuperAI Provider。' },
       { no: 5, title: '在 CC Switch 中启用 Provider', desc: '打开 CC Switch，确认新 Provider 的名称、endpoint 和 API Key 已写入，然后把它设为当前使用项。' },
       { no: 6, title: '在命令行工具中测试', desc: '打开 Claude Code、Gemini CLI 或对应工具，发送一个简单请求。成功后回到 SuperAI 使用记录查看是否产生调用。' },
-      { no: 7, title: '导入失败时手动配置', desc: `如果提示未安装或协议未注册，就在 CC Switch 里手动新增 Provider：名称写 SuperAI，endpoint 填 ${apiBaseUrl}，API Key 粘贴 sk- 密钥。` },
+      { no: 7, title: '导入失败时手动配置', desc: `如果提示未安装或协议未注册，就在 CC Switch 里手动新增 Provider：名称写 SuperAI，endpoint 填 ${currentApiBaseUrl}，API Key 粘贴 sk- 密钥。` },
     ],
     checks: [
       { title: '确认 CC Switch Provider', desc: 'CC Switch 中应该能看到 SuperAI Provider，并且 endpoint、API Key 不为空。' },
@@ -351,45 +361,46 @@ const platformGuides: ManualGuide[] = [
     summary: '适合 Node.js、Python 等程序调用，按 OpenAI SDK 的 baseURL/base_url 写法接入。',
     tags: ['Node.js', 'Python', 'API 调用'],
     prerequisites: [
-      ...defaultPrerequisites,
+      ...currentDefaultPrerequisites,
       '建议把 API Key 放到环境变量中，不要直接提交到 Git 仓库。',
       '先用最小请求测试连通性，再接入你的正式业务逻辑。',
     ],
     configRows: [
-      ...configRows,
-      { label: 'Node.js', value: `new OpenAI({ apiKey: 'sk-...', baseURL: '${apiBaseUrl}' })` },
-      { label: 'Python', value: `OpenAI(api_key='sk-...', base_url='${apiBaseUrl}')` },
+      ...currentConfigRows,
+      { label: 'Node.js', value: `new OpenAI({ apiKey: 'sk-...', baseURL: '${currentApiBaseUrl}' })` },
+      { label: 'Python', value: `OpenAI(api_key='sk-...', base_url='${currentApiBaseUrl}')` },
     ],
     steps: [
       { no: 1, title: '安装 OpenAI SDK', desc: 'Node.js 使用 openai 包，Python 使用 openai 包。确认 SDK 版本支持自定义 baseURL/base_url。' },
       { no: 2, title: '设置环境变量', desc: '把 SuperAI API Key 放到环境变量，例如 SUPERAI_API_KEY。不要写进前端代码、公开仓库或日志。' },
-      { no: 3, title: '设置 baseURL/base_url', desc: `SDK 初始化时把 baseURL/base_url 设置为 ${apiBaseUrl}。如果你有反向代理或公网域名，请使用最终用户能访问的域名。` },
+      { no: 3, title: '设置 baseURL/base_url', desc: `SDK 初始化时把 baseURL/base_url 设置为 ${currentApiBaseUrl}。如果你有反向代理或公网域名，请使用最终用户能访问的域名。` },
       { no: 4, title: '填写模型名', desc: 'chat.completions.create、responses.create 或 embeddings.create 中的 model 填写模型页完整名称。' },
       { no: 5, title: '先跑最小请求', desc: '先发送一个短 prompt，只打印返回文本和错误码。确认成功后再接入流式输出、工具调用或长上下文。' },
       { no: 6, title: '记录错误码', desc: '接入业务时保留 status、message、request id 等信息，方便在 SuperAI 使用记录和后端日志中排查。' },
     ],
     checks: commonChecks,
     troubleshooting: [
-      ...commonTroubleshooting,
+      ...currentCommonTroubleshooting,
       { title: '浏览器前端直连失败', desc: '不要把 SuperAI API Key 暴露在浏览器前端。正式产品应由你的后端调用 SuperAI，再把结果返回给前端。' },
       { title: '流式输出中断', desc: '先用非流式请求测试。如果非流式正常，检查你的代理、网关或运行环境是否支持长连接和 SSE。' },
     ],
   },
-]
+  ]
+})
 
-const faqs = [
+const faqs = computed(() => [
   { q: '请求提示 Unauthorized 怎么办？', a: '通常是 API Key 填错、复制不完整或密钥已删除。请重新创建密钥并替换客户端配置。' },
   { q: '模型不存在怎么办？', a: '请到模型页面复制完整模型名，注意大小写和符号必须一致。' },
-  { q: 'Base URL 应该填哪里？', a: `大多数客户端填 ${apiBaseUrl}。如果客户端单独要求 Host 和 Path，请确保路径最终包含 /v1。` },
+  { q: 'Base URL 应该填哪里？', a: `大多数客户端填 ${apiBaseUrl.value}。如果客户端单独要求 Host 和 Path，请确保路径最终包含 /v1。` },
   { q: '为什么使用记录为空？', a: '只有真实发起过 API 请求后才会产生记录。刚创建密钥但还没调用时，使用记录为空是正常的。' },
-]
+])
 
 const selectedGuide = computed(() => {
   const slug = typeof route.params.platform === 'string' ? route.params.platform : ''
-  return platformGuides.find((guide) => guide.slug === slug)
+  return platformGuides.value.find((guide) => guide.slug === slug)
 })
 
-const otherGuides = computed(() => platformGuides.filter((guide) => guide.slug !== selectedGuide.value?.slug))
+const otherGuides = computed(() => platformGuides.value.filter((guide) => guide.slug !== selectedGuide.value?.slug))
 
 const pageTitle = computed(() => selectedGuide.value ? `${selectedGuide.value.name} 配置方法` : '从创建 API 密钥到开始调用')
 const pageDescription = computed(() =>

@@ -91,6 +91,38 @@ func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t 
 	require.True(t, settings.ForceEmailOnThirdPartySignup)
 }
 
+func TestSettingService_GetPublicSettings_DefaultsAPIBaseURLToPublicAPIDomain(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "https://api.dihappy.cfd/v1", settings.APIBaseURL)
+}
+
+func TestSettingService_GetPublicSettings_NormalizesLegacyWebAPIBaseURL(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAPIBaseURL: "https://superai.dihappy.cfd/v1/",
+		},
+	}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "https://api.dihappy.cfd/v1", settings.APIBaseURL)
+}
+
+func TestSettingService_GetPublicSettings_KeepsCustomWebDomainAPIPath(t *testing.T) {
+	svc := NewSettingService(&settingPublicRepoStub{
+		values: map[string]string{
+			SettingKeyAPIBaseURL: "https://superai.dihappy.cfd/custom-api/v1/",
+		},
+	}, &config.Config{})
+
+	settings, err := svc.GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "https://superai.dihappy.cfd/custom-api/v1", settings.APIBaseURL)
+}
+
 func TestSettingService_GetPublicSettings_ExposesAllowUserViewErrorRequests(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{

@@ -314,6 +314,18 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfig
 	require.True(t, got.APIKeyACLTrustForwardedIP)
 }
 
+func TestSettingService_ParseSettings_PreservesRawAPIBaseURLForAdminAndCallbacks(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	require.Empty(t, svc.parseSettings(map[string]string{}).APIBaseURL)
+
+	got := svc.parseSettings(map[string]string{
+		SettingKeyAPIBaseURL: "https://superai.dihappy.cfd/v1/",
+	})
+
+	require.Equal(t, "https://superai.dihappy.cfd/v1/", got.APIBaseURL)
+}
+
 func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {
 	t.Run("后台设置优先", func(t *testing.T) {
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{

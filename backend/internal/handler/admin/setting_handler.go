@@ -1268,6 +1268,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	req.APIBaseURL = strings.TrimSpace(req.APIBaseURL)
+	if req.APIBaseURL != "" {
+		if err := config.ValidateAbsoluteHTTPURL(req.APIBaseURL); err != nil {
+			response.BadRequest(c, "API Base URL must be an absolute http(s) URL")
+			return
+		}
+	}
 
 	// 自定义菜单项验证
 	const (

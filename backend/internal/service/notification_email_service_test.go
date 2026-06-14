@@ -321,6 +321,30 @@ func TestNotificationEmailPreferenceKeyUsesShortStableHashAndReadsLegacyKey(t *t
 	require.True(t, unsubscribed)
 }
 
+func TestNotificationEmailBaseURLPrefersFrontendURL(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, repo.Set(ctx, SettingKeyFrontendURL, "https://superai.dihappy.cfd/"))
+	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.dihappy.cfd/v1"))
+	svc := NewNotificationEmailService(repo, nil)
+
+	require.Equal(t, "https://superai.dihappy.cfd", svc.baseURL(ctx))
+}
+
+func TestNotificationEmailBaseURLNormalizesAPIBaseURLFallback(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.dihappy.cfd/v1"))
+	svc := NewNotificationEmailService(repo, nil)
+
+	require.Equal(t, "https://api.dihappy.cfd", svc.baseURL(ctx))
+
+	unsubscribeURL, err := svc.buildUnsubscribeURL(ctx, "user@example.com", NotificationEmailEventBalanceLow)
+	require.NoError(t, err)
+	require.Contains(t, unsubscribeURL, "https://api.dihappy.cfd/api/v1/settings/email-unsubscribe?token=")
+	require.NotContains(t, unsubscribeURL, "/v1/api/v1/")
+}
+
 func TestNotificationEmailSendDeduplicatesSubscriptionExpiryReminder(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()

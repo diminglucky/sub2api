@@ -322,6 +322,7 @@ const (
 	defaultGoogleOAuthFrontend   = "/auth/oauth/callback"
 	defaultLoginAgreementMode    = "modal"
 	defaultLoginAgreementDate    = "2026-03-31"
+	defaultPublicAPIBaseURL      = "https://api.dihappy.cfd/v1"
 )
 
 func normalizeLoginAgreementMode(raw string) string {
@@ -838,7 +839,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "SuperAI"),
 		SiteLogo:                         settings[SettingKeySiteLogo],
 		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "SuperAI AI Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
+		APIBaseURL:                       normalizePublicAPIBaseURL(settings[SettingKeyAPIBaseURL]),
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],
@@ -3603,6 +3604,28 @@ func (s *SettingService) getStringOrDefault(settings map[string]string, key, def
 		return value
 	}
 	return defaultValue
+}
+
+func normalizePublicAPIBaseURL(raw string) string {
+	trimmed := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if trimmed == "" {
+		return defaultPublicAPIBaseURL
+	}
+
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return trimmed
+	}
+
+	host := strings.ToLower(u.Hostname())
+	path := strings.TrimRight(u.Path, "/")
+	if host == "superai.dihappy.cfd" && (path == "" || path == "/v1") {
+		return defaultPublicAPIBaseURL
+	}
+	if host == "api.dihappy.cfd" && (u.Path == "" || u.Path == "/") {
+		return defaultPublicAPIBaseURL
+	}
+	return trimmed
 }
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证
