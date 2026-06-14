@@ -450,7 +450,7 @@ func (cfg *PaymentConfig) findRechargePackage(paymentType, id string) (*Recharge
 		return nil, false
 	}
 	for _, p := range cfg.rechargePackagesForPaymentType(paymentType) {
-		if p.Enabled == false {
+		if !p.Enabled {
 			continue
 		}
 		if p.ID == id {
@@ -463,7 +463,7 @@ func (cfg *PaymentConfig) findRechargePackage(paymentType, id string) (*Recharge
 
 func (cfg *PaymentConfig) hasEnabledRechargePackages(paymentType string) bool {
 	for _, p := range cfg.rechargePackagesForPaymentType(paymentType) {
-		if p.Enabled != false && p.Amount > 0 && p.PayAmount > 0 {
+		if p.Enabled && p.Amount > 0 && p.PayAmount > 0 {
 			return true
 		}
 	}
