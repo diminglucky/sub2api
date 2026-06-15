@@ -24,6 +24,10 @@ server:
   # 用于生成邮件中的外部链接（例如：重置密码链接）的前端基础地址
   # Example: "https://example.com"
   frontend_url: ""
+  # Hostnames that should only accept AI gateway transport endpoints.
+  # 这些域名不会展示登录/注册/管理页面，只允许 /v1、/v1beta、/responses 等模型传输端点。
+  api_only_hosts:
+    - "api.dihappy.cfd"
   # Trusted proxies for X-Forwarded-For parsing (CIDR/IP). Empty disables trusted proxies.
   # 信任的代理地址（CIDR/IP 格式），用于解析 X-Forwarded-For 头。留空则禁用代理信任。
   trusted_proxies: []

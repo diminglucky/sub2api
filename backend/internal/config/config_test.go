@@ -812,6 +812,18 @@ func TestNormalizeStringSlice(t *testing.T) {
 	}
 }
 
+func TestLoadServerAPIOnlyHostsFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SERVER_API_ONLY_HOSTS", " api.dihappy.cfd,API2.Example.com ")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	require.Equal(t, []string{"api.dihappy.cfd", "api2.example.com"}, cfg.Server.APIOnlyHosts)
+}
+
 func TestGetServerAddressFromEnv(t *testing.T) {
 	t.Setenv("SERVER_HOST", "127.0.0.1")
 	t.Setenv("SERVER_PORT", "9090")

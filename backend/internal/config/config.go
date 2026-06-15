@@ -551,6 +551,7 @@ type ServerConfig struct {
 	Port               int       `mapstructure:"port"`
 	Mode               string    `mapstructure:"mode"`                  // debug/release
 	FrontendURL        string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
+	APIOnlyHosts       []string  `mapstructure:"api_only_hosts"`        // 只允许 AI 网关传输端点的域名
 	ReadHeaderTimeout  int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
 	IdleTimeout        int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
 	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
@@ -1422,6 +1423,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 		cfg.Server.Mode = "debug"
 	}
 	cfg.Server.FrontendURL = strings.TrimSpace(cfg.Server.FrontendURL)
+	cfg.Server.APIOnlyHosts = normalizeLowerStringSlice(envStringSlice("SERVER_API_ONLY_HOSTS", cfg.Server.APIOnlyHosts))
 	cfg.JWT.Secret = strings.TrimSpace(cfg.JWT.Secret)
 	cfg.LinuxDo.ClientID = strings.TrimSpace(cfg.LinuxDo.ClientID)
 	cfg.LinuxDo.ClientSecret = strings.TrimSpace(cfg.LinuxDo.ClientSecret)
@@ -1554,6 +1556,7 @@ func setDefaults() {
 	viper.SetDefault("server.port", 8080)
 	viper.SetDefault("server.mode", "release")
 	viper.SetDefault("server.frontend_url", "")
+	viper.SetDefault("server.api_only_hosts", []string{})
 	viper.SetDefault("server.read_header_timeout", 30) // 30秒读取请求头
 	viper.SetDefault("server.idle_timeout", 120)       // 120秒空闲超时
 	viper.SetDefault("server.trusted_proxies", []string{})
