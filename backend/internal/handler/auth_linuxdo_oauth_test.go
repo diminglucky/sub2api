@@ -568,7 +568,7 @@ func TestLinuxDoOAuthCallbackCreatesBindPendingSessionForCompatEmailUser(t *test
 	require.False(t, hasAccessToken)
 }
 
-func TestLinuxDoOAuthCallbackCreatesChoicePendingSessionWhenSignupRequiresInvite(t *testing.T) {
+func TestLinuxDoOAuthCallbackCreatesInvitationPendingSessionWhenSignupRequiresInvite(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
@@ -626,9 +626,11 @@ func TestLinuxDoOAuthCallbackCreatesChoicePendingSessionWhenSignupRequiresInvite
 
 	completion, ok := session.LocalFlowState[oauthCompletionResponseKey].(map[string]any)
 	require.True(t, ok)
-	require.Equal(t, oauthPendingChoiceStep, completion["step"])
+	require.Equal(t, "invitation_required", completion["error"])
 	require.Equal(t, "/dashboard", completion["redirect"])
-	require.Equal(t, "third_party_signup", completion["choice_reason"])
+	require.Equal(t, "invitation_required", completion["choice_reason"])
+	_, hasStep := completion["step"]
+	require.False(t, hasStep)
 }
 
 func TestLinuxDoOAuthCallbackDirectlyLogsInNewUserWhenEmailVerificationDisabled(t *testing.T) {
@@ -967,6 +969,84 @@ func TestCompleteLinuxDoOAuthRegistrationReturnsPendingSessionWhenChoiceStillReq
 	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
 	require.NoError(t, err)
 	require.Nil(t, storedSession.ConsumedAt)
+}
+
+func TestCompleteLinuxDoOAuthRegistrationCompletesInvitationOnlySession(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, true)
+	ctx := context.Background()
+
+	_, err := client.RedeemCode.Create().
+		SetCode("invite-1").
+		SetType(service.RedeemTypeInvitation).
+		SetStatus(service.StatusUnused).
+		SetValue(0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	session, err := client.PendingAuthSession.Create().
+		SetSessionToken("linuxdo-invitation-session").
+		SetIntent("login").
+		SetProviderType("linuxdo").
+		SetProviderKey("linuxdo").
+		SetProviderSubject("linuxdo-invite-subject-1").
+		SetResolvedEmail("linuxdo-invite-subject-1@linuxdo-connect.invalid").
+		SetBrowserSessionKey("linuxdo-invitation-browser").
+		SetUpstreamIdentityClaims(map[string]any{
+			"username":               "linuxdo_invite_user",
+			"suggested_display_name": "LinuxDo Invite User",
+			"suggested_avatar_url":   "https://cdn.example/linuxdo-invite.png",
+		}).
+		SetLocalFlowState(map[string]any{
+			oauthCompletionResponseKey: map[string]any{
+				"error":             "invitation_required",
+				"redirect":          "/dashboard",
+				"choice_reason":     "invitation_required",
+				"adoption_required": true,
+			},
+		}).
+		SetExpiresAt(time.Now().UTC().Add(10 * time.Minute)).
+		Save(ctx)
+	require.NoError(t, err)
+
+	body := bytes.NewBufferString(`{"invitation_code":"invite-1","adopt_display_name":true,"adopt_avatar":true}`)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/oauth/linuxdo/complete-registration", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: oauthPendingSessionCookieName, Value: encodeCookieValue(session.SessionToken)})
+	req.AddCookie(&http.Cookie{Name: oauthPendingBrowserCookieName, Value: encodeCookieValue("linuxdo-invitation-browser")})
+	c.Request = req
+
+	handler.CompleteLinuxDoOAuthRegistration(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	responseData := decodeJSONBody(t, recorder)
+	require.NotEmpty(t, responseData["access_token"])
+	require.NotEmpty(t, responseData["refresh_token"])
+	require.Equal(t, "Bearer", responseData["token_type"])
+
+	userEntity, err := client.User.Query().
+		Where(dbuser.EmailEQ("linuxdo-invite-subject-1@linuxdo-connect.invalid")).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "LinuxDo Invite User", userEntity.Username)
+	require.Equal(t, "linuxdo", userEntity.SignupSource)
+
+	identity, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ("linuxdo"),
+			authidentity.ProviderKeyEQ("linuxdo"),
+			authidentity.ProviderSubjectEQ("linuxdo-invite-subject-1"),
+		).
+		Only(ctx)
+	require.NoError(t, err)
+	require.Equal(t, userEntity.ID, identity.UserID)
+	require.Equal(t, "LinuxDo Invite User", identity.Metadata["display_name"])
+	require.Equal(t, "https://cdn.example/linuxdo-invite.png", identity.Metadata["avatar_url"])
+
+	storedSession, err := client.PendingAuthSession.Get(ctx, session.ID)
+	require.NoError(t, err)
+	require.NotNil(t, storedSession.ConsumedAt)
 }
 
 func TestCompleteLinuxDoOAuthRegistrationBindsIdentityWithoutAdoptionFlags(t *testing.T) {

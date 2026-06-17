@@ -322,9 +322,8 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 		return
 	}
-	emailVerificationRequired := h != nil && h.authService != nil && h.authService.IsEmailVerifyEnabled(c.Request.Context())
 	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
-	if compatEmailUser == nil && !emailVerificationRequired && !forceEmailOnSignup {
+	if compatEmailUser == nil {
 		if err := h.ensureBackendModeAllowsNewUserLogin(c.Request.Context()); err != nil {
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
@@ -362,6 +361,19 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 			redirectOAuthError(c, frontendCallback, "session_error", infraerrors.Reason(err), infraerrors.Message(err))
 			return
 		}
+		if err := h.createLinuxDoOAuthInvitationPendingSession(
+			c,
+			identityKey,
+			email,
+			redirectTo,
+			browserSessionKey,
+			upstreamClaims,
+		); err != nil {
+			redirectOAuthError(c, frontendCallback, "session_error", "failed to continue oauth login", "")
+			return
+		}
+		redirectToFrontendCallback(c, frontendCallback)
+		return
 	}
 	if err := h.createLinuxDoOAuthChoicePendingSession(
 		c,
@@ -379,6 +391,30 @@ func (h *AuthHandler) LinuxDoOAuthCallback(c *gin.Context) {
 		return
 	}
 	redirectToFrontendCallback(c, frontendCallback)
+}
+
+func (h *AuthHandler) createLinuxDoOAuthInvitationPendingSession(
+	c *gin.Context,
+	identity service.PendingAuthIdentityKey,
+	resolvedEmail string,
+	redirectTo string,
+	browserSessionKey string,
+	upstreamClaims map[string]any,
+) error {
+	return h.createOAuthPendingSession(c, oauthPendingSessionPayload{
+		Intent:                 oauthIntentLogin,
+		Identity:               identity,
+		ResolvedEmail:          strings.TrimSpace(resolvedEmail),
+		RedirectTo:             redirectTo,
+		BrowserSessionKey:      browserSessionKey,
+		UpstreamIdentityClaims: upstreamClaims,
+		CompletionResponse: map[string]any{
+			"error":             "invitation_required",
+			"redirect":          strings.TrimSpace(redirectTo),
+			"choice_reason":     "invitation_required",
+			"adoption_required": true,
+		},
+	})
 }
 
 func (h *AuthHandler) findLinuxDoCompatEmailUser(ctx context.Context, email string) (*dbent.User, error) {

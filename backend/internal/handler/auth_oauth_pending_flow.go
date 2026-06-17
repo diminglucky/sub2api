@@ -369,6 +369,9 @@ func (h *AuthHandler) legacyCompleteRegistrationSessionStatus(
 	if step := pendingSessionStringValue(payload, "step"); step != "" {
 		return session, true, nil
 	}
+	if strings.EqualFold(strings.TrimSpace(session.ProviderType), "linuxdo") && pendingSessionWantsInvitation(payload) {
+		return session, false, nil
+	}
 
 	emailVerificationRequired := h != nil && h.authService != nil && h.authService.IsEmailVerifyEnabled(c.Request.Context())
 	forceEmailOnSignup := h.isForceEmailOnThirdPartySignup(c.Request.Context())
