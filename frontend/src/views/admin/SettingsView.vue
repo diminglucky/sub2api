@@ -6886,6 +6886,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import { adminAPI } from "@/api";
 import {
   appendAuthSourceDefaultsToUpdateRequest,
@@ -6944,6 +6945,7 @@ import {
 } from "@/utils/registrationEmailPolicy";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
@@ -6999,6 +7001,26 @@ const settingsTabKeyboardActions = {
 function selectSettingsTab(tab: SettingsTab): void {
   activeTab.value = tab;
 }
+
+function isSettingsTab(value: unknown): value is SettingsTab {
+  return (
+    typeof value === "string" &&
+    settingsTabs.some((item) => item.key === value)
+  );
+}
+
+if (isSettingsTab(route.query.tab)) {
+  activeTab.value = route.query.tab;
+}
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (isSettingsTab(tab)) {
+      selectSettingsTab(tab);
+    }
+  },
+);
 
 function focusSettingsTab(tab: SettingsTab): void {
   window.requestAnimationFrame(() => {

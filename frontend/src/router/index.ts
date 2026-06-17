@@ -658,15 +658,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/admin/backups',
-    name: 'AdminBackups',
-    component: () => import('@/views/admin/BackupView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Database Backup',
-      titleKey: 'admin.backup.title',
-      descriptionKey: 'admin.backup.description'
-    }
+    redirect: { path: '/admin/settings', query: { tab: 'backup' } }
   },
   {
     path: '/admin/risk-control',

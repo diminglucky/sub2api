@@ -464,31 +464,6 @@ const ServerIcon = {
     )
 }
 
-const BackupIcon = {
-  render: () =>
-    h(
-      'svg',
-      { fill: 'none', viewBox: '0 0 24 24', stroke: 'currentColor', 'stroke-width': '1.5' },
-      [
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 6.75c0-1.243 3.694-2.25 8.25-2.25s8.25 1.007 8.25 2.25-3.694 2.25-8.25 2.25-8.25-1.007-8.25-2.25z'
-        }),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 6.75v5.25c0 1.243 3.694 2.25 8.25 2.25s8.25-1.007 8.25-2.25V6.75'
-        }),
-        h('path', {
-          'stroke-linecap': 'round',
-          'stroke-linejoin': 'round',
-          d: 'M3.75 12v5.25c0 1.243 3.694 2.25 8.25 2.25s8.25-1.007 8.25-2.25V12'
-        })
-      ]
-    )
-}
-
 const BellIcon = {
   render: () =>
     h(
@@ -826,7 +801,6 @@ const adminNavItems = computed((): NavItem[] => {
   if (authStore.isSimpleMode) {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
-    filtered.push({ path: '/admin/backups', label: t('nav.backup'), icon: BackupIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
@@ -834,7 +808,6 @@ const adminNavItems = computed((): NavItem[] => {
     return filtered
   }
 
-  visible.push({ path: '/admin/backups', label: t('nav.backup'), icon: BackupIcon })
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
   for (const cm of customMenuItemsForAdmin.value) {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
