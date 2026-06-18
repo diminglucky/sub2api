@@ -2110,6 +2110,7 @@ export default {
       groupConfig: '用户分组配置',
       groupConfigHint: '为用户 {email} 配置专属分组倍率（覆盖分组默认倍率）',
       exclusiveGroups: '专属分组',
+      exclusiveGroupsAssignHint: '勾选后，该用户创建或使用 Key 时才能看到并使用这些专属分组。',
       publicGroups: '公开分组（默认可用）',
       defaultRate: '默认倍率',
       customRate: '专属倍率',

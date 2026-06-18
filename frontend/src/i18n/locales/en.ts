@@ -2050,6 +2050,7 @@ export default {
       groupConfig: 'User Group Configuration',
       groupConfigHint: 'Configure custom rate multipliers for user {email} (overrides group defaults)',
       exclusiveGroups: 'Exclusive Groups',
+      exclusiveGroupsAssignHint: 'Selected exclusive groups will be visible and usable for this user when creating or using API keys.',
       publicGroups: 'Public Groups (Default Available)',
       defaultRate: 'Default Rate',
       customRate: 'Custom Rate',
