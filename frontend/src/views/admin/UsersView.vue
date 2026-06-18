@@ -740,7 +740,7 @@
       @success="loadUsers"
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
-    <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
+    <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="handleAllowedGroupsSaved" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
@@ -871,7 +871,7 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
 const DEFAULT_HIDDEN_COLUMNS = [
-  'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
+  'notes', 'subscriptions', 'usage', 'concurrency',
   'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity',
   'balance_platform_quota'
 ]
@@ -886,10 +886,13 @@ const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
 // 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
 // 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
 const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
-const COLUMN_SETTINGS_VERSION = 3
+const COLUMN_SETTINGS_VERSION = 4
 const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
   2: ['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'],
   3: ['balance_platform_quota']
+}
+const VERSION_UNHIDDEN_COLUMNS: Record<number, string[]> = {
+  4: ['groups']
 }
 
 // Load saved column settings
@@ -911,6 +914,11 @@ const loadSavedColumns = () => {
             if (REMOVED_COLUMNS.has(key) || FORCED_VISIBLE_COLUMNS.has(key)) continue
             if (!hiddenColumns.has(key)) {
               hiddenColumns.add(key)
+              mutated = true
+            }
+          }
+          for (const key of VERSION_UNHIDDEN_COLUMNS[v] ?? []) {
+            if (hiddenColumns.delete(key)) {
               mutated = true
             }
           }
@@ -1019,8 +1027,8 @@ const sortState = reactive(loadInitialSortState())
 
 // Groups data for the groups column and the existing "authorised group" filter (active only)
 const allGroups = ref<AdminGroup[]>([])
-const loadAllGroups = async () => {
-  if (allGroups.value.length > 0) return
+const loadAllGroups = async (force = false) => {
+  if (!force && allGroups.value.length > 0) return
   try {
     allGroups.value = await adminAPI.groups.getAll()
   } catch (e) {
@@ -1696,6 +1704,13 @@ const handleAllowedGroups = (user: AdminUser) => {
 const closeAllowedGroupsModal = () => {
   showAllowedGroupsModal.value = false
   allowedGroupsUser.value = null
+}
+
+const handleAllowedGroupsSaved = async () => {
+  await Promise.all([
+    loadAllGroups(true),
+    loadUsers()
+  ])
 }
 
 const openGroupReplace = (user: AdminUser, group: { id: number; name: string }) => {

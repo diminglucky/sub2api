@@ -161,4 +161,79 @@ describe('admin UsersView', () => {
       expect.any(Object)
     )
   })
+
+  it('shows the groups column by default', async () => {
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="columns"]').text().split(',')).toContain('groups')
+  })
+
+  it('unhides the groups column for older saved column settings', async () => {
+    localStorage.setItem('user-hidden-columns', JSON.stringify(['groups', 'notes']))
+    localStorage.setItem('user-column-settings-version', '3')
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: true,
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const visibleColumns = wrapper.get('[data-test="columns"]').text().split(',')
+    expect(visibleColumns).toContain('groups')
+    expect(visibleColumns).not.toContain('notes')
+    expect(JSON.parse(localStorage.getItem('user-hidden-columns') || '[]')).not.toContain('groups')
+    expect(localStorage.getItem('user-column-settings-version')).toBe('4')
+  })
 })
