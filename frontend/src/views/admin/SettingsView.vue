@@ -6977,6 +6977,7 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
+const routeTab = computed(() => route?.query?.tab);
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -7009,12 +7010,12 @@ function isSettingsTab(value: unknown): value is SettingsTab {
   );
 }
 
-if (isSettingsTab(route.query.tab)) {
-  activeTab.value = route.query.tab;
+if (isSettingsTab(routeTab.value)) {
+  activeTab.value = routeTab.value;
 }
 
 watch(
-  () => route.query.tab,
+  routeTab,
   (tab) => {
     if (isSettingsTab(tab)) {
       selectSettingsTab(tab);
