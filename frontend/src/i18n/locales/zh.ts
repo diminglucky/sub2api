@@ -769,6 +769,7 @@ export default {
     apiKey: 'API 密钥',
     group: '分组',
     noGroup: '无分组',
+    exclusiveGroupsTitle: '我的专属分组',
     searchGroup: '搜索分组...',
     noGroupFound: '未找到匹配的分组',
     created: '创建时间',

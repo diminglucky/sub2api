@@ -27,6 +27,31 @@
             :api-base-url="apiEndpointUrl"
             :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
+
+          <div
+            v-if="exclusiveGroups.length > 0"
+            class="rounded-lg border border-purple-200 bg-purple-50/70 px-4 py-3 dark:border-purple-900/50 dark:bg-purple-950/20"
+            data-test="exclusive-groups-panel"
+          >
+            <div class="flex flex-col gap-2 md:flex-row md:items-center">
+              <div class="flex shrink-0 items-center gap-2 text-sm font-semibold text-purple-700 dark:text-purple-300">
+                <Icon name="shield" size="sm" />
+                <span>{{ t('keys.exclusiveGroupsTitle') }}</span>
+              </div>
+              <div class="flex flex-1 flex-wrap gap-2">
+                <GroupBadge
+                  v-for="group in exclusiveGroups"
+                  :key="group.id"
+                  :name="group.name"
+                  :platform="group.platform"
+                  :subscription-type="group.subscription_type"
+                  :rate-multiplier="group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[group.id] ?? null"
+                  always-show-rate
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -1277,6 +1302,10 @@ const sortedGroups = computed(() => {
     return collator.compare(a.name, b.name)
   })
 })
+
+const exclusiveGroups = computed(() =>
+  sortedGroups.value.filter((group) => group.is_exclusive && group.subscription_type === 'standard')
+)
 
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>

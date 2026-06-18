@@ -770,6 +770,7 @@ export default {
     apiKey: 'API Key',
     group: 'Group',
     noGroup: 'No group',
+    exclusiveGroupsTitle: 'My Exclusive Groups',
     searchGroup: 'Search groups...',
     noGroupFound: 'No groups found',
     created: 'Created',
