@@ -836,6 +836,9 @@ func TestAPIContracts(t *testing.T) {
 					"backend_mode_enabled": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"enable_claude_oauth_system_prompt_injection": true,
+					"claude_oauth_system_prompt": "",
+					"claude_oauth_system_prompt_blocks": "",
 					"rewrite_message_cache_control": false,
 					"antigravity_user_agent_version": "",
 					"enable_fingerprint_unification": true,
@@ -1078,6 +1081,9 @@ func TestAPIContracts(t *testing.T) {
 					"enable_metadata_passthrough": false,
 					"enable_cch_signing": false,
 					"enable_anthropic_cache_ttl_1h_injection": false,
+					"enable_claude_oauth_system_prompt_injection": true,
+					"claude_oauth_system_prompt": "",
+					"claude_oauth_system_prompt_blocks": "",
 					"rewrite_message_cache_control": false,
 					"antigravity_user_agent_version": "",
 					"web_search_emulation_enabled": false,
@@ -1944,8 +1950,8 @@ func (stubRedeemCodeRepo) ListByUserPaginated(ctx context.Context, userID int64,
 	return nil, nil, errors.New("not implemented")
 }
 
-func (stubRedeemCodeRepo) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
-	return 0, errors.New("not implemented")
+func (stubRedeemCodeRepo) SumBalanceHistoryByUser(ctx context.Context, userID int64) (service.BalanceHistorySummary, error) {
+	return service.BalanceHistorySummary{}, errors.New("not implemented")
 }
 
 type stubUserSubscriptionRepo struct {

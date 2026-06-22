@@ -32,6 +32,7 @@ const (
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
 	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
+	NotificationEmailEventUpstreamMonitorAlert        = "upstream_monitor.alert"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -974,6 +975,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventContentModerationDisabled,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
+	NotificationEmailEventUpstreamMonitorAlert,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1077,6 +1079,15 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"report_name", "report_type", "report_start_time", "report_end_time", "report_html"),
+	},
+	NotificationEmailEventUpstreamMonitorAlert: {
+		Event:       NotificationEmailEventUpstreamMonitorAlert,
+		Label:       "Upstream monitor alert",
+		Description: "Sent to configured admin recipients when upstream cost exceeds local multiplier or a monitored upstream multiplier changes.",
+		Category:    "ops",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"group_name", "model_family", "severity", "status", "local_multiplier", "reference_multiplier", "estimated_margin_rate", "source_names", "issues", "triggered_at"),
 	},
 }
 
@@ -1340,6 +1351,36 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p><strong>类型</strong>：{{report_type}}</p>
 <p><strong>时间范围</strong>：{{report_start_time}} - {{report_end_time}}</p>
 <div>{{report_html}}</div>`),
+		},
+	},
+	NotificationEmailEventUpstreamMonitorAlert: {
+		notificationEmailDefaultLocale: {
+			Subject: "[Upstream Monitor][{{severity}}] {{group_name}}",
+			HTML: notificationEmailCard("#dc2626", "Upstream monitor alert", `
+<p><strong>Group</strong>: {{group_name}}</p>
+<p><strong>Model family</strong>: {{model_family}}</p>
+<p><strong>Severity</strong>: {{severity}}</p>
+<p><strong>Status</strong>: {{status}}</p>
+<p><strong>Local multiplier</strong>: {{local_multiplier}}</p>
+<p><strong>Reference multiplier</strong>: {{reference_multiplier}}</p>
+<p><strong>Estimated margin</strong>: {{estimated_margin_rate}}</p>
+<p><strong>Sources</strong>: {{source_names}}</p>
+<p><strong>Issues</strong>: {{issues}}</p>
+<p><strong>Triggered at</strong>: {{triggered_at}}</p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[上游监测告警][{{severity}}] {{group_name}}",
+			HTML: notificationEmailCard("#dc2626", "上游监测告警", `
+<p><strong>分组</strong>：{{group_name}}</p>
+<p><strong>模型族</strong>：{{model_family}}</p>
+<p><strong>告警级别</strong>：{{severity}}</p>
+<p><strong>当前状态</strong>：{{status}}</p>
+<p><strong>本地倍率</strong>：{{local_multiplier}}</p>
+<p><strong>上游参考倍率</strong>：{{reference_multiplier}}</p>
+<p><strong>预估利润率</strong>：{{estimated_margin_rate}}</p>
+<p><strong>关联上游</strong>：{{source_names}}</p>
+<p><strong>问题</strong>：{{issues}}</p>
+<p><strong>触发时间</strong>：{{triggered_at}}</p>`),
 		},
 	},
 }

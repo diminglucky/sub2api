@@ -84,3 +84,24 @@ func TestMergeBalanceHistoryCodesPaginatesAfterCombiningSources(t *testing.T) {
 	require.Equal(t, RedeemTypeConcurrency, got[0].Type)
 	require.Equal(t, int64(-4), got[1].ID)
 }
+
+func TestBalanceHistorySummaryTotalsBySource(t *testing.T) {
+	t.Parallel()
+
+	codes := []*RedeemCode{
+		{Code: "PAY-1-123", Type: RedeemTypeBalance, Value: 10},
+		{Code: "PAY-NOTES", Type: RedeemTypeBalance, Value: 5, Notes: "在线充值订单 sub2_1"},
+		{Code: "CARD-1", Type: RedeemTypeBalance, Value: 8},
+		{Code: "ADMIN-1", Type: AdjustmentTypeAdminBalance, Value: 3},
+	}
+
+	var summary BalanceHistorySummary
+	for _, code := range codes {
+		AddBalanceHistorySummary(&summary, code)
+	}
+
+	require.Equal(t, 26.0, summary.TotalRecharged)
+	require.Equal(t, 15.0, summary.OnlineRecharged)
+	require.Equal(t, 8.0, summary.RedeemRecharged)
+	require.Equal(t, 3.0, summary.AdminAdjusted)
+}

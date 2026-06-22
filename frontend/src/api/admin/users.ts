@@ -249,6 +249,9 @@ export interface BalanceHistoryItem {
 // Balance history response extends pagination with total_recharged summary
 export interface BalanceHistoryResponse extends PaginatedResponse<BalanceHistoryItem> {
   total_recharged: number
+  online_recharged?: number
+  redeem_recharged?: number
+  admin_adjusted?: number
 }
 
 /**

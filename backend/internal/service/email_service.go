@@ -97,6 +97,7 @@ type EmailService struct {
 	settingRepo              SettingRepository
 	cache                    EmailCache
 	notificationEmailService *NotificationEmailService
+	sendWithConfig           func(config *SMTPConfig, to, subject, body string) error
 }
 
 // NewEmailService 创建邮件服务实例
@@ -185,6 +186,10 @@ const smtpIOTimeout = 20 * time.Second
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	if s != nil && s.sendWithConfig != nil {
+		return s.sendWithConfig(config, to, subject, body)
+	}
+
 	// Sanitize all SMTP header fields to prevent header injection (CR/LF removal).
 	to = sanitizeEmailHeader(to)
 	subject = sanitizeEmailHeader(subject)

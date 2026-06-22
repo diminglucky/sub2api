@@ -89,6 +89,7 @@ interface DatePreset {
 interface Props {
   startDate: string
   endDate: string
+  showLast24Hours?: boolean
 }
 
 interface Emits {
@@ -97,7 +98,9 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), {
+  showLast24Hours: true
+})
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -106,7 +109,7 @@ const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
-const activePreset = ref<string | null>('last24Hours')
+const activePreset = ref<string | null>(null)
 
 const today = computed(() => {
   // Use local timezone to avoid UTC timezone issues
@@ -152,7 +155,7 @@ const presets: DatePreset[] = [
       return { start: yesterday, end: yesterday }
     }
   },
-  {
+  ...(props.showLast24Hours === false ? [] : [{
     labelKey: 'dates.last24Hours',
     value: 'last24Hours',
     getRange: () => {
@@ -163,7 +166,7 @@ const presets: DatePreset[] = [
         end: formatDateToString(end)
       }
     }
-  },
+  }]),
   {
     labelKey: 'dates.last7Days',
     value: '7days',
@@ -262,6 +265,7 @@ const onDateChange = () => {
     }
   }
 }
+onDateChange()
 
 const toggle = () => {
   isOpen.value = !isOpen.value

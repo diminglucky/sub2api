@@ -143,6 +143,7 @@ func (h *AuthHandler) OIDCOAuthStart(c *gin.Context) {
 	oidcSetCookie(c, oidcOAuthRedirectCookie, encodeCookieValue(redirectTo), oidcOAuthCookieMaxAgeSec, secureCookie)
 	intent := normalizeOAuthIntent(c.Query("intent"))
 	oidcSetCookie(c, oidcOAuthIntentCookieName, encodeCookieValue(intent), oidcOAuthCookieMaxAgeSec, secureCookie)
+	captureOAuthPromoCode(c, secureCookie)
 	setOAuthPendingBrowserCookie(c, browserSessionKey, secureCookie)
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	if intent == oauthIntentBindCurrentUser {
@@ -226,6 +227,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		oidcClearCookie(c, oidcOAuthNonceCookie, secureCookie)
 		oidcClearCookie(c, oidcOAuthIntentCookieName, secureCookie)
 		oidcClearCookie(c, oidcOAuthBindUserCookieName, secureCookie)
+		clearOAuthPromoCodeCookie(c, secureCookie)
 	}()
 
 	expectedState, err := readCookieDecoded(c, oidcOAuthStateCookieName)
@@ -685,7 +687,15 @@ func (h *AuthHandler) CompleteOIDCOAuthRegistration(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPair(c.Request.Context(), email, username, req.InvitationCode, req.AffCode, "oidc")
+	tokenPair, user, err := h.authService.LoginOrRegisterOAuthWithTokenPairAndPromoCode(
+		c.Request.Context(),
+		email,
+		username,
+		req.InvitationCode,
+		req.AffCode,
+		pendingOAuthPromoCode(session),
+		"oidc",
+	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

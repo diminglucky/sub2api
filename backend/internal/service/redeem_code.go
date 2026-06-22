@@ -3,6 +3,7 @@ package service
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"time"
 )
 
@@ -23,6 +24,40 @@ type RedeemCode struct {
 
 	User  *User
 	Group *Group
+}
+
+type BalanceHistorySummary struct {
+	TotalRecharged  float64
+	OnlineRecharged float64
+	RedeemRecharged float64
+	AdminAdjusted   float64
+}
+
+func AddBalanceHistorySummary(summary *BalanceHistorySummary, code *RedeemCode) {
+	if summary == nil || code == nil || code.Value <= 0 {
+		return
+	}
+	if code.Type != RedeemTypeBalance && code.Type != AdjustmentTypeAdminBalance {
+		return
+	}
+	summary.TotalRecharged += code.Value
+	switch {
+	case code.Type == AdjustmentTypeAdminBalance:
+		summary.AdminAdjusted += code.Value
+	case IsPaymentBalanceCode(code):
+		summary.OnlineRecharged += code.Value
+	default:
+		summary.RedeemRecharged += code.Value
+	}
+}
+
+func IsPaymentBalanceCode(code *RedeemCode) bool {
+	if code == nil || code.Type != RedeemTypeBalance {
+		return false
+	}
+	return strings.HasPrefix(strings.ToUpper(code.Code), "PAY-") ||
+		strings.Contains(code.Notes, "在线充值") ||
+		strings.Contains(strings.ToLower(code.Notes), "payment order")
 }
 
 func (r *RedeemCode) IsUsed() bool {

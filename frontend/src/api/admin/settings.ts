@@ -557,6 +557,9 @@ export interface SystemSettings {
   enable_fingerprint_unification: boolean;
   enable_metadata_passthrough: boolean;
   enable_cch_signing: boolean;
+  enable_claude_oauth_system_prompt_injection: boolean;
+  claude_oauth_system_prompt: string;
+  claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
@@ -795,6 +798,9 @@ export interface UpdateSettingsRequest {
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
   enable_cch_signing?: boolean;
+  enable_claude_oauth_system_prompt_injection?: boolean;
+  claude_oauth_system_prompt?: string;
+  claude_oauth_system_prompt_blocks?: string;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
@@ -1299,6 +1305,363 @@ export interface WebSearchTestResult {
   query: string;
 }
 
+export type UpstreamMonitorSourceKind =
+  | "manual"
+  | "newapi"
+  | "sub2api"
+  | "openai_compatible"
+  | "custom";
+
+export type UpstreamMonitorAuthMode = "none" | "bearer" | "header" | "cookie";
+export type UpstreamMonitorCurrency = "CNY" | "USD";
+export type UpstreamMonitorFetchMode = "auto" | "json_path" | "plain_text";
+export type UpstreamMonitorSyncStatus = "idle" | "success" | "error";
+export type UpstreamMonitorModelFamily =
+  | "gpt"
+  | "claude"
+  | "gemini"
+  | "deepseek"
+  | "mixed";
+
+export interface UpstreamMonitorUpstreamGroupOption {
+  key: string;
+  name: string;
+  description: string;
+  reference_multiplier: number;
+  raw_id: string;
+  path: string;
+}
+
+export interface UpstreamMonitorSourceConfig {
+  id: string;
+  name: string;
+  kind: UpstreamMonitorSourceKind;
+  enabled: boolean;
+  auto_sync_enabled: boolean;
+  account_ids: number[];
+  fetch_mode: UpstreamMonitorFetchMode;
+  base_url: string;
+  pricing_url: string;
+  pricing_path_hint: string;
+  auth_mode: UpstreamMonitorAuthMode;
+  auth_header_name: string;
+  auth_token?: string;
+  auth_configured: boolean;
+  currency: UpstreamMonitorCurrency;
+  exchange_rate: number;
+  reference_multiplier: number;
+  upstream_group_options: UpstreamMonitorUpstreamGroupOption[];
+  last_sync_at: string | null;
+  last_sync_status: UpstreamMonitorSyncStatus;
+  last_sync_error: string;
+  notes: string;
+}
+
+export interface UpstreamMonitorGroupMapping {
+  id: string;
+  local_group_id: number;
+  local_group: string;
+  upstream_group_key: string;
+  upstream_group: string;
+  model_family: UpstreamMonitorModelFamily;
+  source_ids: string[];
+  reference_multiplier: number;
+  notes: string;
+}
+
+export interface UpstreamMonitorConfig {
+  enabled: boolean;
+  auto_refresh_enabled: boolean;
+  refresh_interval_minutes: number;
+  default_exchange_rate: number;
+  default_profit_rate_threshold: number;
+  warning_rate_threshold: number;
+  critical_rate_threshold: number;
+  notify_on_critical_only: boolean;
+  sources: UpstreamMonitorSourceConfig[];
+  group_mappings: UpstreamMonitorGroupMapping[];
+}
+
+export interface UpstreamMonitorPreviewSummary {
+  enabled: boolean;
+  auto_refresh_enabled: boolean;
+  source_count: number;
+  enabled_source_count: number;
+  mapped_group_count: number;
+  monitored_account_count: number;
+  unmapped_group_count: number;
+  healthy_count: number;
+  warning_count: number;
+  critical_count: number;
+  unknown_count: number;
+  average_margin_rate: number;
+  lowest_margin_rate: number;
+  highest_margin_rate: number;
+}
+
+export interface UpstreamMonitorPreviewSourceRow {
+  id: string;
+  name: string;
+  enabled: boolean;
+  auto_sync_enabled: boolean;
+  kind: UpstreamMonitorSourceKind | string;
+  fetch_mode: UpstreamMonitorFetchMode | string;
+  currency: UpstreamMonitorCurrency | string;
+  exchange_rate: number;
+  reference_multiplier: number;
+  upstream_group_options: UpstreamMonitorUpstreamGroupOption[];
+  account_ids: number[];
+  account_count: number;
+  auth_configured: boolean;
+  pricing_url: string;
+  last_sync_at: string | null;
+  last_sync_status: UpstreamMonitorSyncStatus | string;
+  last_sync_error: string;
+  notes: string;
+}
+
+export interface UpstreamMonitorPreviewAccountInfo {
+  account_id: number;
+  account_name: string;
+  platform: string;
+  type: string;
+  rate_multiplier: number;
+  status: string;
+  group_ids: number[];
+  group_names: string[];
+}
+
+export interface UpstreamMonitorPreviewAccountRow {
+  source_id: string;
+  source_name: string;
+  account_id: number;
+  account_name: string;
+  account_platform: string;
+  account_type: string;
+  account_rate_multiplier: number;
+  group_ids: number[];
+  group_names: string[];
+  group_multipliers: number[];
+  highest_group_multiplier: number;
+  reference_multiplier: number;
+  estimated_cost_multiplier: number;
+  estimated_margin_rate: number;
+  status: "healthy" | "warning" | "critical" | "unknown" | string;
+  issues: string[];
+}
+
+export interface UpstreamMonitorPreviewGroupRow {
+  mapping_id: string;
+  local_group: string;
+  upstream_group_key: string;
+  upstream_group: string;
+  local_group_id: number;
+  local_group_platform: string;
+  local_group_multiplier: number;
+  model_family: UpstreamMonitorModelFamily | string;
+  source_ids: string[];
+  source_names: string[];
+  source_count: number;
+  enabled_source_count: number;
+  reference_multiplier: number;
+  mapping_multiplier: number;
+  estimated_margin_rate: number;
+  status: "healthy" | "warning" | "critical" | "unknown" | string;
+  issues: string[];
+  notes: string;
+}
+
+export interface UpstreamMonitorPreviewUnmappedRow {
+  group_id: number;
+  group_name: string;
+  platform: string;
+  multiplier: number;
+  is_exclusive: boolean;
+  subscription_type: string;
+}
+
+export interface UpstreamMonitorPreviewGroupOption {
+  group_id: number;
+  group_name: string;
+  platform: string;
+  multiplier: number;
+  is_exclusive: boolean;
+  subscription_type: string;
+}
+
+export interface UpstreamMonitorPreviewSnapshot {
+  generated_at: string;
+  summary: UpstreamMonitorPreviewSummary;
+  source_rows: UpstreamMonitorPreviewSourceRow[];
+  group_rows: UpstreamMonitorPreviewGroupRow[];
+  account_rows: UpstreamMonitorPreviewAccountRow[];
+  account_options: UpstreamMonitorPreviewAccountInfo[];
+  group_options: UpstreamMonitorPreviewGroupOption[];
+  unmapped_groups: UpstreamMonitorPreviewUnmappedRow[];
+}
+
+export interface UpstreamMonitorRefreshSummary {
+  attempted_count: number;
+  success_count: number;
+  failed_count: number;
+  skipped_count: number;
+}
+
+export interface UpstreamMonitorRefreshResult {
+  refreshed_at: string;
+  summary: UpstreamMonitorRefreshSummary;
+  config: UpstreamMonitorConfig;
+  snapshot?: UpstreamMonitorPreviewSnapshot;
+}
+
+function normalizeUpstreamGroupOptions(
+  input?: UpstreamMonitorUpstreamGroupOption[] | null,
+): UpstreamMonitorUpstreamGroupOption[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const out: UpstreamMonitorUpstreamGroupOption[] = [];
+  for (const option of input) {
+    const name = String(option?.name || "").trim();
+    const description = String(option?.description || "").trim();
+    const rawID = String(option?.raw_id || "").trim();
+    const path = String(option?.path || "").trim();
+    const multiplier = toFiniteNumber(option?.reference_multiplier) ?? 0;
+    let key = String(option?.key || "").trim();
+    if (!key) {
+      key = rawID ? `id:${rawID}` : path ? `path:${path}` : name ? `name:${name.toLowerCase()}` : "";
+    }
+    if (!name || !key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    out.push({
+      key,
+      name,
+      description,
+      reference_multiplier: multiplier,
+      raw_id: rawID,
+      path,
+    });
+  }
+  return out.sort((left, right) => {
+    const nameSort = left.name.localeCompare(right.name, "zh-CN");
+    return nameSort !== 0 ? nameSort : left.key.localeCompare(right.key);
+  });
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === "string" && value.trim() === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function normalizeUpstreamMonitorConfig(
+  input?: Partial<UpstreamMonitorConfig> | null,
+): UpstreamMonitorConfig {
+  const refreshInterval = toFiniteNumber(input?.refresh_interval_minutes);
+  const defaultExchangeRate = toFiniteNumber(input?.default_exchange_rate);
+  const defaultProfitRateThreshold = toFiniteNumber(input?.default_profit_rate_threshold);
+  const warningRateThreshold = toFiniteNumber(input?.warning_rate_threshold);
+  const criticalRateThreshold = toFiniteNumber(input?.critical_rate_threshold);
+
+  return {
+    enabled: Boolean(input?.enabled),
+    auto_refresh_enabled: input?.auto_refresh_enabled ?? true,
+    refresh_interval_minutes: refreshInterval ?? 10,
+    default_exchange_rate: defaultExchangeRate ?? 7.2,
+    default_profit_rate_threshold: defaultProfitRateThreshold ?? 0.15,
+    warning_rate_threshold: warningRateThreshold ?? 0.08,
+    critical_rate_threshold: criticalRateThreshold ?? 0,
+    notify_on_critical_only: input?.notify_on_critical_only ?? true,
+    sources: Array.isArray(input?.sources)
+      ? input!.sources.map((source) => ({
+          id: String(source.id || ""),
+          name: String(source.name || ""),
+          kind: (source.kind || "manual") as UpstreamMonitorSourceKind,
+          enabled: source.enabled ?? true,
+          auto_sync_enabled: source.auto_sync_enabled ?? false,
+          account_ids: Array.isArray(source.account_ids)
+            ? source.account_ids
+                .map((id) => Number(id))
+                .filter((id) => Number.isFinite(id) && id > 0)
+            : [],
+          fetch_mode: (source.fetch_mode || "auto") as UpstreamMonitorFetchMode,
+          base_url: String(source.base_url || ""),
+          pricing_url: String(source.pricing_url || ""),
+          pricing_path_hint: String(source.pricing_path_hint || ""),
+          auth_mode: (source.auth_mode || "none") as UpstreamMonitorAuthMode,
+          auth_header_name: String(source.auth_header_name || ""),
+          auth_token: String(source.auth_token || ""),
+          auth_configured: Boolean(source.auth_configured),
+          currency: (source.currency || "CNY") as UpstreamMonitorCurrency,
+          exchange_rate: toFiniteNumber(source.exchange_rate) ?? defaultExchangeRate ?? 7.2,
+          reference_multiplier: toFiniteNumber(source.reference_multiplier) ?? 0,
+          upstream_group_options: normalizeUpstreamGroupOptions(source.upstream_group_options),
+          last_sync_at: source.last_sync_at ? String(source.last_sync_at) : null,
+          last_sync_status: (source.last_sync_status || "idle") as UpstreamMonitorSyncStatus,
+          last_sync_error: String(source.last_sync_error || ""),
+          notes: String(source.notes || ""),
+        }))
+      : [],
+    group_mappings: Array.isArray(input?.group_mappings)
+      ? input!.group_mappings.map((mapping) => ({
+          id: String(mapping.id || ""),
+          local_group_id: toFiniteNumber(mapping.local_group_id) ?? 0,
+          local_group: String(mapping.local_group || ""),
+          upstream_group_key: String(mapping.upstream_group_key || ""),
+          upstream_group: String(mapping.upstream_group || mapping.local_group || ""),
+          model_family: (mapping.model_family || "mixed") as UpstreamMonitorModelFamily,
+          source_ids: Array.isArray(mapping.source_ids)
+            ? mapping.source_ids.map((id) => String(id))
+            : [],
+          reference_multiplier: toFiniteNumber(mapping.reference_multiplier) ?? 0,
+          notes: String(mapping.notes || ""),
+        }))
+      : [],
+  };
+}
+
+export async function getUpstreamMonitorConfig(): Promise<UpstreamMonitorConfig> {
+  const { data } = await apiClient.get<UpstreamMonitorConfig>(
+    "/admin/settings/upstream-monitor",
+  );
+  return data;
+}
+
+export async function updateUpstreamMonitorConfig(
+  config: UpstreamMonitorConfig,
+): Promise<UpstreamMonitorConfig> {
+  const { data } = await apiClient.put<UpstreamMonitorConfig>(
+    "/admin/settings/upstream-monitor",
+    config,
+  );
+  return data;
+}
+
+export async function previewUpstreamMonitorConfig(
+  config: UpstreamMonitorConfig,
+): Promise<UpstreamMonitorPreviewSnapshot> {
+  const { data } = await apiClient.post<UpstreamMonitorPreviewSnapshot>(
+    "/admin/settings/upstream-monitor/preview",
+    config,
+  );
+  return data;
+}
+
+export async function refreshUpstreamMonitorConfig(
+  sourceId?: string,
+): Promise<UpstreamMonitorRefreshResult> {
+  const { data } = await apiClient.post<UpstreamMonitorRefreshResult>(
+    "/admin/settings/upstream-monitor/refresh",
+    sourceId ? { source_id: sourceId } : undefined,
+  );
+  return data;
+}
+
 export async function getWebSearchEmulationConfig(): Promise<WebSearchEmulationConfig> {
   const { data } = await apiClient.get<WebSearchEmulationConfig>(
     "/admin/settings/web-search-emulation",
@@ -1358,6 +1721,10 @@ export const settingsAPI = {
   updateRectifierSettings,
   getBetaPolicySettings,
   updateBetaPolicySettings,
+  getUpstreamMonitorConfig,
+  updateUpstreamMonitorConfig,
+  previewUpstreamMonitorConfig,
+  refreshUpstreamMonitorConfig,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,

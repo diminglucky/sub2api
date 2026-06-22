@@ -36,14 +36,21 @@
           </div>
         </div>
         <!-- Row 2: notes + total recharged -->
-        <div class="mt-2.5 flex items-center justify-between border-t border-gray-200/60 pt-2.5 dark:border-dark-600/60">
+        <div class="mt-2.5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-200/60 pt-2.5 dark:border-dark-600/60">
           <p class="min-w-0 flex-1 truncate text-xs text-gray-500 dark:text-dark-400" :title="user.notes || ''">
             <template v-if="user.notes">{{ t('admin.users.notes') }}: {{ user.notes }}</template>
             <template v-else>&nbsp;</template>
           </p>
-          <p class="ml-4 flex-shrink-0 text-xs text-gray-500 dark:text-dark-400">
-            {{ t('admin.users.totalRecharged') }}: <span class="font-semibold text-emerald-600 dark:text-emerald-400">¥{{ totalRecharged.toFixed(2) }}</span>
-          </p>
+          <div class="grid w-full grid-cols-2 gap-2 text-xs sm:w-auto sm:grid-cols-4">
+            <div
+              v-for="stat in balanceSummaryStats"
+              :key="stat.key"
+              class="rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-dark-600 dark:bg-dark-800"
+            >
+              <p class="text-[11px] text-gray-500 dark:text-dark-400">{{ stat.label }}</p>
+              <p :class="['mt-0.5 font-semibold', stat.className]">¥{{ stat.value.toFixed(2) }}</p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -111,6 +118,16 @@
               <div>
                 <p class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ getItemTitle(item) }}
+                </p>
+                <p class="mt-1">
+                  <span
+                    :class="[
+                      'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+                      getSourceBadgeClass(item)
+                    ]"
+                  >
+                    {{ getSourceLabel(item) }}
+                  </span>
                 </p>
                 <!-- Notes (admin adjustment reason) -->
                 <p
@@ -190,10 +207,19 @@ const loading = ref(false)
 const currentPage = ref(1)
 const total = ref(0)
 const totalRecharged = ref(0)
+const onlineRecharged = ref(0)
+const redeemRecharged = ref(0)
+const adminAdjusted = ref(0)
 const pageSize = 15
 const typeFilter = ref('')
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
+const balanceSummaryStats = computed(() => [
+  { key: 'total', label: t('admin.users.totalRecharged'), value: totalRecharged.value, className: 'text-emerald-600 dark:text-emerald-400' },
+  { key: 'online', label: t('admin.users.sourceOnlineRecharge'), value: onlineRecharged.value, className: 'text-sky-600 dark:text-sky-400' },
+  { key: 'redeem', label: t('admin.users.sourceRedeemCode'), value: redeemRecharged.value, className: 'text-violet-600 dark:text-violet-400' },
+  { key: 'admin', label: t('admin.users.sourceAdminAdjustment'), value: adminAdjusted.value, className: 'text-amber-600 dark:text-amber-400' }
+])
 
 // Type filter options
 const typeOptions = computed(() => [
@@ -228,6 +254,9 @@ const loadHistory = async (page: number) => {
     history.value = res.items || []
     total.value = res.total || 0
     totalRecharged.value = res.total_recharged || 0
+    onlineRecharged.value = res.online_recharged || 0
+    redeemRecharged.value = res.redeem_recharged || 0
+    adminAdjusted.value = res.admin_adjusted || 0
   } catch (error) {
     console.error('Failed to load balance history:', error)
   } finally {
@@ -291,10 +320,41 @@ const getValueColor = (item: BalanceHistoryItem) => {
 }
 
 // Item title
+const isPaymentRecharge = (item: BalanceHistoryItem) => {
+  if (item.type !== 'balance') return false
+  const code = (item.code || '').toUpperCase()
+  const notes = item.notes || ''
+  return code.startsWith('PAY-') || notes.includes('在线充值') || notes.toLowerCase().includes('payment order')
+}
+
+const getSourceLabel = (item: BalanceHistoryItem) => {
+  if (isPaymentRecharge(item)) return t('admin.users.sourceOnlineRecharge')
+  switch (item.type) {
+    case 'balance':
+    case 'concurrency':
+    case 'subscription':
+      return t('admin.users.sourceRedeemCode')
+    case 'affiliate_balance':
+      return t('admin.users.sourceAffiliateTransfer')
+    case 'admin_balance':
+    case 'admin_concurrency':
+      return t('admin.users.sourceAdminAdjustment')
+    default:
+      return t('common.unknown')
+  }
+}
+
+const getSourceBadgeClass = (item: BalanceHistoryItem) => {
+  if (isPaymentRecharge(item)) return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300'
+  if (item.type === 'affiliate_balance') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (isAdminType(item.type)) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300'
+}
+
 const getItemTitle = (item: BalanceHistoryItem) => {
   switch (item.type) {
     case 'balance':
-      return t('redeem.balanceAddedRedeem')
+      return isPaymentRecharge(item) ? t('redeem.balanceAddedPayment') : t('redeem.balanceAddedRedeem')
     case 'affiliate_balance':
       return t('redeem.balanceAddedAffiliate')
     case 'admin_balance':

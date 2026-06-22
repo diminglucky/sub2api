@@ -158,7 +158,7 @@ func (r *paymentOrderLifecycleRedeemRepo) ListByUserPaginated(context.Context, i
 	panic("unexpected call")
 }
 
-func (r *paymentOrderLifecycleRedeemRepo) SumPositiveBalanceByUser(context.Context, int64) (float64, error) {
+func (r *paymentOrderLifecycleRedeemRepo) SumBalanceHistoryByUser(context.Context, int64) (BalanceHistorySummary, error) {
 	panic("unexpected call")
 }
 

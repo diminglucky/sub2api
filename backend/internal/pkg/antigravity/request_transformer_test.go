@@ -424,6 +424,42 @@ func TestTransformClaudeToGeminiWithOptions_PreservesBillingHeaderSystemBlock(t 
 	}
 }
 
+func TestTransformClaudeToGeminiWithOptions_MessageSystemRoleMovesToSystemInstruction(t *testing.T) {
+	body, err := TransformClaudeToGeminiWithOptions(&ClaudeRequest{
+		Model:  "claude-3-5-sonnet-latest",
+		System: json.RawMessage(`"top level system"`),
+		Messages: []ClaudeMessage{
+			{
+				Role:    "system",
+				Content: json.RawMessage(`"message system"`),
+			},
+			{
+				Role:    "user",
+				Content: json.RawMessage(`"hello"`),
+			},
+		},
+	}, "project-1", "gemini-2.5-flash", DefaultTransformOptions())
+	require.NoError(t, err)
+
+	var req V1InternalRequest
+	require.NoError(t, json.Unmarshal(body, &req))
+	require.Len(t, req.Request.Contents, 1)
+	require.Equal(t, "user", req.Request.Contents[0].Role)
+
+	var systemTexts []string
+	require.NotNil(t, req.Request.SystemInstruction)
+	for _, part := range req.Request.SystemInstruction.Parts {
+		systemTexts = append(systemTexts, part.Text)
+	}
+	mergedSystem := strings.Join(systemTexts, "\n")
+	require.Contains(t, mergedSystem, "top level system")
+	require.Contains(t, mergedSystem, "message system")
+	require.Less(t, strings.Index(mergedSystem, "top level system"), strings.Index(mergedSystem, "message system"))
+	for _, content := range req.Request.Contents {
+		require.NotEqual(t, "system", content.Role)
+	}
+}
+
 func TestTransformClaudeToGeminiWithOptions_PreservesWebSearchAlongsideFunctions(t *testing.T) {
 	claudeReq := &ClaudeRequest{
 		Model: "claude-3-5-sonnet-latest",

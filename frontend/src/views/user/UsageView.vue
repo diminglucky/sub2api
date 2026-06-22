@@ -122,6 +122,7 @@
               <DateRangePicker
                 v-model:start-date="startDate"
                 v-model:end-date="endDate"
+                :show-last24-hours="false"
                 @change="onDateRangeChange"
               />
             </div>
@@ -713,14 +714,15 @@ const formatLocalDate = (date: Date): string => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-// Initialize date range immediately
-const now = new Date()
-const weekAgo = new Date(now)
-weekAgo.setDate(weekAgo.getDate() - 6)
+const getTodayRangeDates = (): { start: string; end: string } => {
+  const today = formatLocalDate(new Date())
+  return { start: today, end: today }
+}
 
 // Date range state
-const startDate = ref(formatLocalDate(weekAgo))
-const endDate = ref(formatLocalDate(now))
+const defaultRange = getTodayRangeDates()
+const startDate = ref(defaultRange.start)
+const endDate = ref(defaultRange.end)
 
 const filters = ref<UsageQueryParams>({
   api_key_id: undefined,
@@ -895,12 +897,9 @@ const resetFilters = () => {
     start_date: undefined,
     end_date: undefined
   }
-  // Reset date range to default (last 7 days)
-  const now = new Date()
-  const weekAgo = new Date(now)
-  weekAgo.setDate(weekAgo.getDate() - 6)
-  startDate.value = formatLocalDate(weekAgo)
-  endDate.value = formatLocalDate(now)
+  const range = getTodayRangeDates()
+  startDate.value = range.start
+  endDate.value = range.end
   filters.value.start_date = startDate.value
   filters.value.end_date = endDate.value
   pagination.page = 1

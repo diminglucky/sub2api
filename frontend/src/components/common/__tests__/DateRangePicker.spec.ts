@@ -34,26 +34,7 @@ const formatLocalDate = (date: Date): string => {
 }
 
 describe('DateRangePicker', () => {
-  it('uses last 24 hours as the default recognized preset', () => {
-    const now = new Date()
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-
-    const wrapper = mount(DateRangePicker, {
-      props: {
-        startDate: formatLocalDate(yesterday),
-        endDate: formatLocalDate(now)
-      },
-      global: {
-        stubs: {
-          Icon: true
-        }
-      }
-    })
-
-    expect(wrapper.text()).toContain('Last 24 Hours')
-  })
-
-  it('emits range updates with last24Hours preset when applied', async () => {
+  it('keeps last 24 hours available by default for non-usage pages', async () => {
     const now = new Date()
     const today = formatLocalDate(now)
 
@@ -64,7 +45,8 @@ describe('DateRangePicker', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          Transition: false
         }
       }
     })
@@ -74,23 +56,50 @@ describe('DateRangePicker', () => {
       node.text().includes('Last 24 Hours')
     )
     expect(presetButton).toBeDefined()
+  })
 
-    await presetButton!.trigger('click')
-    await wrapper.find('.date-picker-apply').trigger('click')
+  it('uses today as the default recognized preset for a same-day range', () => {
+    const now = new Date()
+    const today = formatLocalDate(now)
 
-    const nowAfterClick = new Date()
-    const yesterdayAfterClick = new Date(nowAfterClick.getTime() - 24 * 60 * 60 * 1000)
-    const expectedStart = formatLocalDate(yesterdayAfterClick)
-    const expectedEnd = formatLocalDate(nowAfterClick)
-
-    expect(wrapper.emitted('update:startDate')?.[0]).toEqual([expectedStart])
-    expect(wrapper.emitted('update:endDate')?.[0]).toEqual([expectedEnd])
-    expect(wrapper.emitted('change')?.[0]).toEqual([
-      {
-        startDate: expectedStart,
-        endDate: expectedEnd,
-        preset: 'last24Hours'
+    const wrapper = mount(DateRangePicker, {
+      props: {
+        startDate: today,
+        endDate: today
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          Transition: false
+        }
       }
-    ])
+    })
+
+    expect(wrapper.text()).toContain('Today')
+  })
+
+  it('can hide the date-only last 24 hours preset for usage pages', async () => {
+    const now = new Date()
+    const today = formatLocalDate(now)
+
+    const wrapper = mount(DateRangePicker, {
+      props: {
+        startDate: today,
+        endDate: today,
+        showLast24Hours: false
+      },
+      global: {
+        stubs: {
+          Icon: true,
+          Transition: false
+        }
+      }
+    })
+
+    await wrapper.find('.date-picker-trigger').trigger('click')
+    const presetButton = wrapper.findAll('.date-picker-preset').find((node) =>
+      node.text().includes('Last 24 Hours')
+    )
+    expect(presetButton).toBeUndefined()
   })
 })

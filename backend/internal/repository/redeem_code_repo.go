@@ -386,26 +386,23 @@ func (r *redeemCodeRepository) ListByUserPaginated(ctx context.Context, userID i
 	return redeemCodeEntitiesToService(codes), paginationResultFromTotal(int64(total), params), nil
 }
 
-// SumPositiveBalanceByUser returns total recharged amount (sum of value > 0 where type is balance/admin_balance).
-func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
-	var result []struct {
-		Sum float64 `json:"sum"`
-	}
-	err := r.client.RedeemCode.Query().
+// SumBalanceHistoryByUser returns positive balance top-ups grouped by source.
+func (r *redeemCodeRepository) SumBalanceHistoryByUser(ctx context.Context, userID int64) (service.BalanceHistorySummary, error) {
+	var summary service.BalanceHistorySummary
+	codes, err := r.client.RedeemCode.Query().
 		Where(
 			redeemcode.UsedByEQ(userID),
 			redeemcode.ValueGT(0),
-			redeemcode.TypeIn("balance", "admin_balance"),
+			redeemcode.TypeIn(service.RedeemTypeBalance, service.AdjustmentTypeAdminBalance),
 		).
-		Aggregate(dbent.As(dbent.Sum(redeemcode.FieldValue), "sum")).
-		Scan(ctx, &result)
+		All(ctx)
 	if err != nil {
-		return 0, err
+		return summary, err
 	}
-	if len(result) == 0 {
-		return 0, nil
+	for _, code := range redeemCodeEntitiesToService(codes) {
+		service.AddBalanceHistorySummary(&summary, &code)
 	}
-	return result[0].Sum, nil
+	return summary, nil
 }
 
 func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {

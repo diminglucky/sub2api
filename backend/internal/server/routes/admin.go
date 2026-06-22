@@ -477,6 +477,11 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)
+		// 上游监测配置
+		adminSettings.GET("/upstream-monitor", h.Admin.Setting.GetUpstreamMonitorConfig)
+		adminSettings.PUT("/upstream-monitor", h.Admin.Setting.UpdateUpstreamMonitorConfig)
+		adminSettings.POST("/upstream-monitor/preview", h.Admin.Setting.PreviewUpstreamMonitorConfig)
+		adminSettings.POST("/upstream-monitor/refresh", h.Admin.Setting.RefreshUpstreamMonitorConfig)
 		// Web Search 模拟配置
 		adminSettings.GET("/web-search-emulation", h.Admin.Setting.GetWebSearchEmulationConfig)
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)

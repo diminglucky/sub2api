@@ -252,6 +252,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableFingerprintUnification:           settings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              settings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       settings.EnableCCHSigning,
+		EnableClaudeOAuthSystemPromptInjection: settings.EnableClaudeOAuthSystemPromptInjection,
+		ClaudeOAuthSystemPrompt:                settings.ClaudeOAuthSystemPrompt,
+		ClaudeOAuthSystemPromptBlocks:          settings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
@@ -582,14 +585,17 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   *bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin   *bool   `json:"openai_allow_claude_code_codex_plugin"`
+	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin       *bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1654,6 +1660,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.EnableCCHSigning
 		}(),
+		EnableClaudeOAuthSystemPromptInjection: func() bool {
+			if req.EnableClaudeOAuthSystemPromptInjection != nil {
+				return *req.EnableClaudeOAuthSystemPromptInjection
+			}
+			return previousSettings.EnableClaudeOAuthSystemPromptInjection
+		}(),
+		ClaudeOAuthSystemPrompt: func() string {
+			if req.ClaudeOAuthSystemPrompt != nil {
+				return *req.ClaudeOAuthSystemPrompt
+			}
+			return previousSettings.ClaudeOAuthSystemPrompt
+		}(),
+		ClaudeOAuthSystemPromptBlocks: func() string {
+			if req.ClaudeOAuthSystemPromptBlocks != nil {
+				return *req.ClaudeOAuthSystemPromptBlocks
+			}
+			return previousSettings.ClaudeOAuthSystemPromptBlocks
+		}(),
 		EnableAnthropicCacheTTL1hInjection: func() bool {
 			if req.EnableAnthropicCacheTTL1hInjection != nil {
 				return *req.EnableAnthropicCacheTTL1hInjection
@@ -2058,6 +2082,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableFingerprintUnification:           updatedSettings.EnableFingerprintUnification,
 		EnableMetadataPassthrough:              updatedSettings.EnableMetadataPassthrough,
 		EnableCCHSigning:                       updatedSettings.EnableCCHSigning,
+		EnableClaudeOAuthSystemPromptInjection: updatedSettings.EnableClaudeOAuthSystemPromptInjection,
+		ClaudeOAuthSystemPrompt:                updatedSettings.ClaudeOAuthSystemPrompt,
+		ClaudeOAuthSystemPromptBlocks:          updatedSettings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
@@ -2524,6 +2551,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.EnableCCHSigning != after.EnableCCHSigning {
 		changed = append(changed, "enable_cch_signing")
+	}
+	if before.EnableClaudeOAuthSystemPromptInjection != after.EnableClaudeOAuthSystemPromptInjection {
+		changed = append(changed, "enable_claude_oauth_system_prompt_injection")
+	}
+	if before.ClaudeOAuthSystemPrompt != after.ClaudeOAuthSystemPrompt {
+		changed = append(changed, "claude_oauth_system_prompt")
+	}
+	if before.ClaudeOAuthSystemPromptBlocks != after.ClaudeOAuthSystemPromptBlocks {
+		changed = append(changed, "claude_oauth_system_prompt_blocks")
 	}
 	if before.EnableAnthropicCacheTTL1hInjection != after.EnableAnthropicCacheTTL1hInjection {
 		changed = append(changed, "enable_anthropic_cache_ttl_1h_injection")
@@ -3366,6 +3402,83 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 		ThresholdCount:         updatedSettings.ThresholdCount,
 		ThresholdWindowMinutes: updatedSettings.ThresholdWindowMinutes,
 	})
+}
+
+// GetUpstreamMonitorConfig 获取上游监测配置
+// GET /api/v1/admin/settings/upstream-monitor
+func (h *SettingHandler) GetUpstreamMonitorConfig(c *gin.Context) {
+	cfg, err := h.settingService.GetUpstreamMonitorConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateUpstreamMonitorConfig 更新上游监测配置
+// PUT /api/v1/admin/settings/upstream-monitor
+func (h *SettingHandler) UpdateUpstreamMonitorConfig(c *gin.Context) {
+	var req service.UpstreamMonitorConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	if err := h.settingService.SaveUpstreamMonitorConfig(c.Request.Context(), &req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+
+	updated, err := h.settingService.GetUpstreamMonitorConfig(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, updated)
+}
+
+// PreviewUpstreamMonitorConfig 预览上游监测快照
+// POST /api/v1/admin/settings/upstream-monitor/preview
+func (h *SettingHandler) PreviewUpstreamMonitorConfig(c *gin.Context) {
+	var req service.UpstreamMonitorConfig
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	snapshot, err := h.settingService.PreviewUpstreamMonitorConfig(c.Request.Context(), &req)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, snapshot)
+}
+
+// RefreshUpstreamMonitorConfig 立即刷新上游监测来源
+// POST /api/v1/admin/settings/upstream-monitor/refresh
+func (h *SettingHandler) RefreshUpstreamMonitorConfig(c *gin.Context) {
+	var req struct {
+		SourceID string `json:"source_id"`
+	}
+	if c.Request.Body != nil && c.Request.ContentLength != 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.BadRequest(c, "Invalid request: "+err.Error())
+			return
+		}
+	}
+
+	var result *service.UpstreamMonitorRefreshResult
+	var err error
+	sourceID := strings.TrimSpace(req.SourceID)
+	if sourceID != "" {
+		result, err = h.settingService.RefreshStoredUpstreamMonitorSource(c.Request.Context(), sourceID)
+	} else {
+		result, err = h.settingService.RefreshStoredUpstreamMonitorConfig(c.Request.Context())
+	}
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, result)
 }
 
 // GetWebSearchEmulationConfig 获取 Web Search 模拟配置

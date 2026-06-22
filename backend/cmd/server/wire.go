@@ -83,6 +83,7 @@ func provideCleanup(
 	accountExpiry *service.AccountExpiryService,
 	proxyExpiry *service.ProxyExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
+	upstreamMonitorRunner *service.UpstreamMonitorRunner,
 	usageCleanup *service.UsageCleanupService,
 	idempotencyCleanup *service.IdempotencyCleanupService,
 	pricing *service.PricingService,
@@ -181,6 +182,12 @@ func provideCleanup(
 			}},
 			{"SubscriptionExpiryService", func() error {
 				subscriptionExpiry.Stop()
+				return nil
+			}},
+			{"UpstreamMonitorRunner", func() error {
+				if upstreamMonitorRunner != nil {
+					upstreamMonitorRunner.Stop()
+				}
 				return nil
 			}},
 			{"SubscriptionService", func() error {

@@ -113,6 +113,40 @@ func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
 	assert.Equal(t, "ping", resp.Tools[0].Name)
 }
 
+func TestChatCompletionsToResponses_ToolStrictDefaultsFalse(t *testing.T) {
+	strictTrue := true
+	tests := []struct {
+		name   string
+		strict *bool
+		want   bool
+	}{
+		{name: "omitted strict", want: false},
+		{name: "explicit true", strict: &strictTrue, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &ChatCompletionsRequest{
+				Model:    "gpt-4o",
+				Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				Tools: []ChatTool{{
+					Type: "function",
+					Function: &ChatFunction{
+						Name:   "lookup",
+						Strict: tt.strict,
+					},
+				}},
+			}
+
+			resp, err := ChatCompletionsToResponses(req)
+			require.NoError(t, err)
+			require.Len(t, resp.Tools, 1)
+			require.NotNil(t, resp.Tools[0].Strict)
+			assert.Equal(t, tt.want, *resp.Tools[0].Strict)
+		})
+	}
+}
+
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 	t.Run("max_tokens", func(t *testing.T) {
 		maxTokens := 100

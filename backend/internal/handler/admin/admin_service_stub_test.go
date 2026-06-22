@@ -566,8 +566,8 @@ func (s *stubAdminService) ExpireRedeemCode(ctx context.Context, id int64) (*ser
 	return &code, nil
 }
 
-func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]service.RedeemCode, int64, float64, error) {
-	return s.redeems, int64(len(s.redeems)), 100.0, nil
+func (s *stubAdminService) GetUserBalanceHistory(ctx context.Context, userID int64, page, pageSize int, codeType string) ([]service.RedeemCode, int64, service.BalanceHistorySummary, error) {
+	return s.redeems, int64(len(s.redeems)), service.BalanceHistorySummary{TotalRecharged: 100.0}, nil
 }
 
 func (s *stubAdminService) UpdateGroupSortOrders(ctx context.Context, updates []service.GroupSortOrderUpdate) error {

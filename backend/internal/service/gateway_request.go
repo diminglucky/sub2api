@@ -119,6 +119,7 @@ func clearGatewayRequestDerivedState(parsed *ParsedRequest) {
 	parsed.MaxTokens = 0
 	parsed.systemRange = missingJSONRange()
 	parsed.messagesRange = missingJSONRange()
+	parsed.inputRange = missingJSONRange()
 }
 
 func clearGatewayRequestRanges(parsed *ParsedRequest) {
@@ -128,6 +129,7 @@ func clearGatewayRequestRanges(parsed *ParsedRequest) {
 	parsed.HasSystem = false
 	parsed.systemRange = missingJSONRange()
 	parsed.messagesRange = missingJSONRange()
+	parsed.inputRange = missingJSONRange()
 }
 
 func setGatewayRequestRanges(parsed *ParsedRequest, protocol string, jsonStr string) {
@@ -149,6 +151,11 @@ func setGatewayRequestRanges(parsed *ParsedRequest, protocol string, jsonStr str
 		}
 		if msgs := gjson.Get(jsonStr, "messages"); msgs.Exists() && msgs.IsArray() {
 			parsed.messagesRange = rangeFromResult(msgs)
+		}
+		if protocol == "responses" {
+			if input := gjson.Get(jsonStr, "input"); input.Exists() {
+				parsed.inputRange = rangeFromResult(input)
+			}
 		}
 	}
 }
@@ -235,6 +242,7 @@ type ParsedRequest struct {
 	protocol      string    // 当前 Body 的协议格式，用于 Body 替换后刷新 raw range
 	systemRange   jsonRange // system/systemInstruction.parts 的 raw JSON 范围，绑定 Body 当前内容
 	messagesRange jsonRange // messages/contents 的 raw JSON 范围，绑定 Body 当前内容
+	inputRange    jsonRange // Responses API input 的 raw JSON 范围，绑定 Body 当前内容
 
 	// GroupID 请求所属分组 ID（来自 API Key）
 	GroupID *int64
@@ -315,6 +323,10 @@ func (p *ParsedRequest) SystemRaw() []byte {
 
 func (p *ParsedRequest) MessagesRaw() []byte {
 	return p.raw(p.messagesRange)
+}
+
+func (p *ParsedRequest) InputRaw() []byte {
+	return p.raw(p.inputRange)
 }
 
 func (p *ParsedRequest) DecodeSystem(dst any) error {
@@ -502,15 +514,22 @@ func StripEmptyTextBlocks(body []byte) []byte {
 	return out
 }
 
-// FilterThinkingBlocks removes thinking blocks from request body
-// Returns filtered body or original body if filtering fails (fail-safe)
-// This prevents 400 errors from invalid thinking block signatures
+// FilterThinkingBlocks removes thinking blocks from request body.
+// Returns filtered body or original body if filtering fails (fail-safe).
+// This prevents 400 errors from invalid thinking block signatures.
+//
+// mappedModel is the actual upstream model ID after account model mapping.
+// Only Anthropic-strict upstreams are filtered; passback-required and unknown
+// upstreams preserve thinking blocks because filtering breaks their contract.
 //
 // 策略：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
 //   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
-func FilterThinkingBlocks(body []byte) []byte {
+func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
+	if !ShouldPreFilterThinkingBlocks(mappedModel) {
+		return body
+	}
 	return filterThinkingBlocksInternal(body, false)
 }
 
@@ -528,7 +547,11 @@ func FilterThinkingBlocks(body []byte) []byte {
 //   - Convert `thinking` blocks to `text` blocks (preserve the thinking content).
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
-func FilterThinkingBlocksForRetry(body []byte) []byte {
+func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+	}
+
 	hasThinkingContent := bytes.Contains(body, patternTypeThinking) ||
 		bytes.Contains(body, patternTypeThinkingSpaced) ||
 		bytes.Contains(body, patternTypeRedactedThinking) ||
@@ -871,7 +894,11 @@ func anthropicBetaTokensContains(header, token string) bool {
 //
 // Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
 // risk of prompt injection (tool output becomes plain conversation text).
-func FilterSignatureSensitiveBlocksForRetry(body []byte) []byte {
+func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []byte {
+	if !ShouldApplyRetryFilters(mappedModel) {
+		return body
+	}
+
 	// Fast path: only run when we see likely relevant constructs.
 	if !bytes.Contains(body, []byte(`"type":"thinking"`)) &&
 		!bytes.Contains(body, []byte(`"type": "thinking"`)) &&
@@ -1166,6 +1193,36 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 	}
 }
 
+// DefaultEffortForThinkingEnabled returns a default usage-log effort for
+// thinking-enabled Chinese Anthropic-compatible models that do not expose an
+// explicit effort tier. DeepSeek is excluded because it has native
+// reasoning_effort support.
+func DefaultEffortForThinkingEnabled(mappedModel string) *string {
+	if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired {
+		return nil
+	}
+	if strings.HasPrefix(strings.ToLower(mappedModel), "deepseek-") {
+		return nil
+	}
+	effort := "high"
+	return &effort
+}
+
+func OpenAIBodyHasThinkingEnabled(body []byte) bool {
+	thinkingType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "thinking.type").String()))
+	return thinkingType == "enabled" || thinkingType == "adaptive"
+}
+
+func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel string) *string {
+	if effort != nil {
+		return effort
+	}
+	if !OpenAIBodyHasThinkingEnabled(body) {
+		return nil
+	}
+	return DefaultEffortForThinkingEnabled(mappedModel)
+}
+
 // =========================
 // Thinking Budget Rectifier
 // =========================
@@ -1251,4 +1308,22 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 	}
 
 	return modified, changed
+}
+
+// NormalizeChineseLLMThinking rewrites vendor-specific Anthropic-compatible
+// thinking settings. MiniMax M-series accepts "adaptive" / "disabled" and may
+// reject the Anthropic SDK default "enabled".
+func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
+	modelLower := strings.ToLower(mappedModel)
+	if !strings.HasPrefix(modelLower, "minimax-m") {
+		return body, false
+	}
+	if gjson.GetBytes(body, "thinking.type").String() != "enabled" {
+		return body, false
+	}
+	modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")
+	if err != nil {
+		return body, false
+	}
+	return modified, true
 }

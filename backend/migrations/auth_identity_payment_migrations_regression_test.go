@@ -155,3 +155,29 @@ func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
 	require.Contains(t, sql, "'github'")
 	require.Contains(t, sql, "'google'")
 }
+
+func TestSchedulerOutboxDedupKeyMigrationsAreOnlineSafe(t *testing.T) {
+	content, err := FS.ReadFile("152_scheduler_outbox_dedup_key.sql")
+	require.NoError(t, err)
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS dedup_key TEXT")
+
+	indexContent, err := FS.ReadFile("153_scheduler_outbox_pending_dedup_key_index_notx.sql")
+	require.NoError(t, err)
+	indexSQL := string(indexContent)
+	require.Contains(t, indexSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_scheduler_outbox_pending_dedup_key")
+	require.Contains(t, indexSQL, "WHERE dedup_key IS NOT NULL")
+}
+
+func TestMigration154AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
+	content, err := FS.ReadFile("154_account_autopause_expiry_index_notx.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_accounts_autopause_expiry_due")
+	require.Contains(t, sql, "ON accounts (expires_at)")
+	require.Contains(t, sql, "WHERE deleted_at IS NULL")
+	require.Contains(t, sql, "schedulable = TRUE")
+	require.Contains(t, sql, "auto_pause_on_expired = TRUE")
+	require.Contains(t, sql, "expires_at IS NOT NULL")
+}

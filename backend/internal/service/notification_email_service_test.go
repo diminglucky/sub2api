@@ -142,6 +142,7 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 		{NotificationEmailEventContentModerationDisabled, "violation_count"},
 		{NotificationEmailEventOpsAlert, "rule_name"},
 		{NotificationEmailEventOpsScheduledReport, "report_html"},
+		{NotificationEmailEventUpstreamMonitorAlert, "group_name"},
 	}
 
 	for _, check := range checks {

@@ -426,7 +426,7 @@ func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 	page, pageSize := response.ParsePagination(c)
 	codeType := c.Query("type")
 
-	codes, total, totalRecharged, err := h.adminService.GetUserBalanceHistory(c.Request.Context(), userID, page, pageSize, codeType)
+	codes, total, summary, err := h.adminService.GetUserBalanceHistory(c.Request.Context(), userID, page, pageSize, codeType)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -444,12 +444,15 @@ func (h *UserHandler) GetBalanceHistory(c *gin.Context) {
 		pages = 1
 	}
 	response.Success(c, gin.H{
-		"items":           out,
-		"total":           total,
-		"page":            page,
-		"page_size":       pageSize,
-		"pages":           pages,
-		"total_recharged": totalRecharged,
+		"items":            out,
+		"total":            total,
+		"page":             page,
+		"page_size":        pageSize,
+		"pages":            pages,
+		"total_recharged":  summary.TotalRecharged,
+		"online_recharged": summary.OnlineRecharged,
+		"redeem_recharged": summary.RedeemRecharged,
+		"admin_adjusted":   summary.AdminAdjusted,
 	})
 }
 

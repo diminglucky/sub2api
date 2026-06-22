@@ -457,10 +457,14 @@ func ProvideOpsService(
 	return svc
 }
 
-// ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
+// ProvideSettingService wires SettingService with group/account readers and proxy repo.
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, accountRepo AccountRepository, userRepo UserRepository, proxyRepo ProxyRepository, cfg *config.Config, notificationEmailService *NotificationEmailService) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
+	svc.SetUpstreamMonitorGroupLister(groupRepo)
+	svc.SetUpstreamMonitorAccountLister(accountRepo)
+	svc.SetUpstreamMonitorAdminReader(userRepo)
+	svc.SetNotificationEmailService(notificationEmailService)
 	svc.SetProxyRepository(proxyRepo)
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
@@ -565,6 +569,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountExpiryService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
+	ProvideUpstreamMonitorRunner,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,
@@ -608,6 +613,14 @@ func ProvideUserPlatformQuotaUsageFlusher(cfg *config.Config, cache BillingCache
 // ProvideLotteryDrawRunner creates and starts the due lottery draw runner.
 func ProvideLotteryDrawRunner(lotterySvc *LotteryService) *LotteryDrawRunner {
 	runner := NewLotteryDrawRunner(lotterySvc, 10*time.Second)
+	runner.Start()
+	return runner
+}
+
+// ProvideUpstreamMonitorRunner creates and starts the upstream monitor refresh runner.
+func ProvideUpstreamMonitorRunner(settingSvc *SettingService, lockCache LeaderLockCache, db *sql.DB) *UpstreamMonitorRunner {
+	runner := NewUpstreamMonitorRunner(settingSvc, time.Minute)
+	runner.SetLeaderLock(lockCache, db)
 	runner.Start()
 	return runner
 }
