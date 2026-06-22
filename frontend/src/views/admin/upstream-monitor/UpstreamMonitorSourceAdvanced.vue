@@ -12,31 +12,51 @@
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.currency') }}</label>
-          <select v-model="source.currency" class="input w-full">
+          <select
+            :value="source.currency"
+            class="input w-full"
+            @change="updateCurrency(($event.target as HTMLSelectElement).value)"
+          >
             <option value="CNY">CNY</option>
             <option value="USD">USD</option>
           </select>
         </div>
-        <Input v-model="source.exchange_rate" type="number" min="0" step="any" :label="t('admin.upstreamMonitor.sources.fields.exchangeRate')" />
+        <Input
+          :model-value="source.exchange_rate"
+          type="number"
+          min="0"
+          step="any"
+          :label="t('admin.upstreamMonitor.sources.fields.exchangeRate')"
+          @update:model-value="updateSourceField('exchange_rate', Number($event))"
+        />
       </div>
 
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.fetchMode') }}</label>
-          <select v-model="source.fetch_mode" class="input w-full">
+          <select
+            :value="source.fetch_mode"
+            class="input w-full"
+            @change="updateFetchMode(($event.target as HTMLSelectElement).value)"
+          >
             <option v-for="option in fetchModeOptions" :key="option.value" :value="option.value">
               {{ t(option.labelKey) }}
             </option>
           </select>
         </div>
         <Input
-          v-model="source.pricing_path_hint"
+          :model-value="source.pricing_path_hint"
           :label="t('admin.upstreamMonitor.sources.fields.pricingHint')"
           :hint="t('admin.upstreamMonitor.sources.fields.pricingHintHint')"
+          @update:model-value="updateSourceField('pricing_path_hint', $event)"
         />
         <div>
           <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.authMode') }}</label>
-          <select v-model="source.auth_mode" class="input w-full">
+          <select
+            :value="source.auth_mode"
+            class="input w-full"
+            @change="updateAuthMode(($event.target as HTMLSelectElement).value)"
+          >
             <option v-for="option in authModeOptions" :key="option.value" :value="option.value">
               {{ t(option.labelKey) }}
             </option>
@@ -44,9 +64,10 @@
         </div>
         <Input
           v-if="source.auth_mode === 'header'"
-          v-model="source.auth_header_name"
+          :model-value="source.auth_header_name"
           :label="t('admin.upstreamMonitor.sources.fields.authHeaderName')"
           :hint="t('admin.upstreamMonitor.sources.fields.authHeaderNameHint')"
+          @update:model-value="updateSourceField('auth_header_name', $event)"
         />
         <div v-else class="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60">
           <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -60,10 +81,11 @@
 
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <Input
-          v-model="source.auth_token"
+          :model-value="source.auth_token"
           :label="t('admin.upstreamMonitor.sources.fields.authToken')"
           :placeholder="source.auth_configured ? t('admin.upstreamMonitor.sources.tokenMasked') : ''"
           :hint="source.auth_configured ? t('admin.upstreamMonitor.sources.tokenConfigured') : t('admin.upstreamMonitor.sources.tokenHint')"
+          @update:model-value="updateSourceField('auth_token', $event)"
         />
         <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60">
           <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -134,9 +156,10 @@
 
       <div class="mt-4">
         <TextArea
-          v-model="source.notes"
+          :model-value="source.notes"
           :label="t('admin.upstreamMonitor.sources.fields.notes')"
           :rows="2"
+          @update:model-value="updateSourceField('notes', $event)"
         />
       </div>
     </div>
@@ -149,6 +172,9 @@ import Icon from "@/components/icons/Icon.vue";
 import Input from "@/components/common/Input.vue";
 import TextArea from "@/components/common/TextArea.vue";
 import type {
+  UpstreamMonitorAuthMode,
+  UpstreamMonitorCurrency,
+  UpstreamMonitorFetchMode,
   UpstreamMonitorPreviewAccountInfo,
   UpstreamMonitorSourceConfig,
 } from "@/api/admin/settings";
@@ -168,10 +194,32 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+  (event: "update-source", payload: SourceFieldUpdatePayload): void;
   (event: "toggle-account", accountID: number): void;
 }>();
 
 const { t, locale } = useI18n();
+
+type SourceFieldUpdatePayload<K extends keyof UpstreamMonitorSourceConfig = keyof UpstreamMonitorSourceConfig> = {
+  field: K;
+  value: UpstreamMonitorSourceConfig[K];
+};
+
+function updateSourceField<K extends keyof UpstreamMonitorSourceConfig>(field: K, value: UpstreamMonitorSourceConfig[K]) {
+  emit("update-source", { field, value });
+}
+
+function updateCurrency(value: string) {
+  updateSourceField("currency", value as UpstreamMonitorCurrency);
+}
+
+function updateFetchMode(value: string) {
+  updateSourceField("fetch_mode", value as UpstreamMonitorFetchMode);
+}
+
+function updateAuthMode(value: string) {
+  updateSourceField("auth_mode", value as UpstreamMonitorAuthMode);
+}
 
 function isAccountSelected(accountID: number): boolean {
   return uniqueSourceNumberIDs(props.source.account_ids).includes(accountID);

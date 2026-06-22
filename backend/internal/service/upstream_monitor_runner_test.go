@@ -11,15 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type upstreamMonitorAdminReaderStub struct {
-	admin *User
-	err   error
-}
-
-func (s upstreamMonitorAdminReaderStub) GetFirstAdmin(context.Context) (*User, error) {
-	return s.admin, s.err
-}
-
 func TestSettingServiceRunDueUpstreamMonitorRefresh_UsesStoredConfig(t *testing.T) {
 	stubUpstreamMonitorClient(t, http.StatusOK, "application/json", `{"data":{"reference_multiplier":1.42}}`)
 

@@ -90,6 +90,7 @@
               :fetch-mode-options="fetchModeOptions"
               @toggle-expanded="toggleSourceExpanded(source)"
               @remove="removeSource(index)"
+              @update-source="updateSourceField(source, $event)"
               @apply-preset="applySourcePreset(source)"
               @sync="syncSource(source)"
               @toggle-account="toggleSourceAccount(source, $event)"
@@ -318,6 +319,15 @@ function removeSource(index: number) {
   if (!removed?.id) return;
   expandedSourceIDs.value = expandedSourceIDs.value.filter((id) => id !== removed.id);
   mappingRows.replaceGroupMappings(mappingRows.removeSourceFromMappingRows(form.value.group_mappings, removed.id));
+}
+
+type SourceFieldUpdatePayload = {
+  field: keyof UpstreamMonitorSourceConfig;
+  value: UpstreamMonitorSourceConfig[keyof UpstreamMonitorSourceConfig];
+};
+
+function updateSourceField(source: UpstreamMonitorSourceConfig, payload: SourceFieldUpdatePayload) {
+  source[payload.field] = payload.value as never;
 }
 
 function uniqueNumberIDs(values: Array<number | string>): number[] {

@@ -48,7 +48,7 @@
           <Icon name="edit" size="sm" />
           <span>{{ t('common.edit') }}</span>
         </button>
-        <Toggle v-model="source.enabled" />
+        <Toggle :model-value="source.enabled" @update:model-value="updateSourceField('enabled', $event)" />
         <button
           type="button"
           class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-gray-200 text-gray-500 transition hover:border-red-200 hover:text-red-500 dark:border-dark-600 dark:text-gray-400 dark:hover:border-red-800/40 dark:hover:text-red-300"
@@ -83,23 +83,36 @@
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Input v-model="source.name" :label="t('admin.upstreamMonitor.sources.fields.name')" />
+          <Input
+            :model-value="source.name"
+            :label="t('admin.upstreamMonitor.sources.fields.name')"
+            @update:model-value="updateSourceField('name', $event)"
+          />
           <div>
             <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.kind') }}</label>
-            <select v-model="source.kind" class="input w-full">
+            <select
+              :value="source.kind"
+              class="input w-full"
+              @change="updateSourceKind(($event.target as HTMLSelectElement).value)"
+            >
               <option v-for="option in sourceKindOptions" :key="option.value" :value="option.value">
                 {{ t(option.labelKey) }}
               </option>
             </select>
           </div>
           <Input
-            v-model="source.base_url"
+            :model-value="source.base_url"
             :label="t('admin.upstreamMonitor.sources.fields.baseUrl')"
             :placeholder="t('admin.upstreamMonitor.sources.fields.baseUrlPlaceholder')"
             :hint="t('admin.upstreamMonitor.sources.fields.baseUrlHint')"
+            @update:model-value="updateSourceField('base_url', $event)"
           />
           <div class="space-y-2">
-            <Input v-model="source.pricing_url" :label="t('admin.upstreamMonitor.sources.fields.pricingUrl')" />
+            <Input
+              :model-value="source.pricing_url"
+              :label="t('admin.upstreamMonitor.sources.fields.pricingUrl')"
+              @update:model-value="updateSourceField('pricing_url', $event)"
+            />
             <div class="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -168,16 +181,20 @@
                   {{ t('admin.upstreamMonitor.sources.fields.autoSyncHint') }}
                 </p>
               </div>
-              <Toggle v-model="source.auto_sync_enabled" />
+              <Toggle
+                :model-value="source.auto_sync_enabled"
+                @update:model-value="updateSourceField('auto_sync_enabled', $event)"
+              />
             </div>
           </div>
           <Input
-            v-model="source.reference_multiplier"
+            :model-value="source.reference_multiplier"
             type="number"
             min="0"
             step="any"
             :label="t('admin.upstreamMonitor.sources.fields.referenceMultiplier')"
             :hint="t('admin.upstreamMonitor.sources.fields.referenceMultiplierHint')"
+            @update:model-value="updateSourceField('reference_multiplier', Number($event))"
           />
         </div>
 
@@ -202,6 +219,7 @@
         :account-options="accountOptions"
         :auth-mode-options="authModeOptions"
         :fetch-mode-options="fetchModeOptions"
+        @update-source="emit('update-source', $event)"
         @toggle-account="emit('toggle-account', $event)"
       />
     </div>
@@ -217,6 +235,7 @@ import type {
   UpstreamMonitorGroupMapping,
   UpstreamMonitorPreviewAccountInfo,
   UpstreamMonitorSourceConfig,
+  UpstreamMonitorSourceKind,
   UpstreamMonitorUpstreamGroupOption,
 } from "@/api/admin/settings";
 import SourceMappingRowsEditor from "./SourceMappingRowsEditor.vue";
@@ -265,11 +284,17 @@ defineProps<{
   fetchModeOptions: ReadonlyArray<SourceFetchModeOptionConfig>;
 }>();
 
+type SourceFieldUpdatePayload<K extends keyof UpstreamMonitorSourceConfig = keyof UpstreamMonitorSourceConfig> = {
+  field: K;
+  value: UpstreamMonitorSourceConfig[K];
+};
+
 const emit = defineEmits<{
   (event: "toggle-expanded"): void;
   (event: "remove"): void;
   (event: "sync"): void;
   (event: "apply-preset"): void;
+  (event: "update-source", payload: SourceFieldUpdatePayload): void;
   (event: "toggle-account", accountID: number): void;
   (event: "add-mapping"): void;
   (event: "remove-mapping", mapping: UpstreamMonitorGroupMapping): void;
@@ -279,6 +304,14 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+
+function updateSourceField<K extends keyof UpstreamMonitorSourceConfig>(field: K, value: UpstreamMonitorSourceConfig[K]) {
+  emit("update-source", { field, value });
+}
+
+function updateSourceKind(value: string) {
+  updateSourceField("kind", value as UpstreamMonitorSourceKind);
+}
 
 function handleUpdateLocalMapping(payload: SourceMappingUpdatePayload) {
   emit("update-local-mapping", payload);
