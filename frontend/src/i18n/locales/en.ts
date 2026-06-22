@@ -6004,6 +6004,7 @@ export default {
             mappingRowAddFailed: 'Failed to add a binding row. Refresh the page and try again.',
             mappingBound: 'Mapping updated. Remember to save the configuration.',
             mappingBindFailed: 'Failed to bind the mapping. Refresh the page and try again.',
+            referenceMultiplierRequired: 'Enter a mapping upstream multiplier, or set a reference multiplier on the upstream source first.',
             mappingRemoved: 'Mapping removed. Remember to save the configuration.',
             mappingRemoveFailed: 'Failed to remove the mapping. Refresh the page and try again.',
             mappingDuplicate: 'This local group and upstream group are already bound.',

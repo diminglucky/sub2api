@@ -99,6 +99,23 @@ describe("SourceMappingRowsEditor", () => {
     });
   });
 
+  it("emits manual upstream group and multiplier values", async () => {
+    const wrapper = mountEditor();
+    const inputs = wrapper.findAll("input");
+
+    await inputs[0].setValue("manual-gpt");
+    await inputs[1].setValue("0.12");
+
+    expect(wrapper.emitted("update-manual-upstream")?.[0]?.[0]).toMatchObject({
+      mapping: { id: "mapping_1" },
+      value: "manual-gpt",
+    });
+    expect(wrapper.emitted("update-reference-multiplier")?.[0]?.[0]).toMatchObject({
+      mapping: { id: "mapping_1" },
+      value: "0.12",
+    });
+  });
+
   it("disables adding when there are no local groups", async () => {
     const wrapper = mountEditor({
       props: {

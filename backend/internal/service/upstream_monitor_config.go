@@ -29,6 +29,18 @@ type UpstreamMonitorConfig struct {
 	GroupMappings              []UpstreamMonitorGroupMap `json:"group_mappings"`
 }
 
+func (cfg *UpstreamMonitorConfig) UnmarshalJSON(data []byte) error {
+	type Alias UpstreamMonitorConfig
+	aux := Alias{
+		NotifyOnCriticalOnly: true,
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	*cfg = UpstreamMonitorConfig(aux)
+	return nil
+}
+
 type UpstreamMonitorSource struct {
 	ID                   string                               `json:"id"`
 	Name                 string                               `json:"name"`
@@ -1064,11 +1076,7 @@ func (s *SettingService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *
 
 		enabledSourceCount := 0
 		bestReference := 0.0
-		mappingReferenceFound := mapping.ReferenceMultiplier > 0
-		referenceFound := mappingReferenceFound
-		if mappingReferenceFound {
-			bestReference = mapping.ReferenceMultiplier
-		}
+		referenceFound := false
 		for _, sourceID := range mapping.SourceIDs {
 			source, ok := sourceByID[sourceID]
 			if !ok {
@@ -1078,9 +1086,14 @@ func (s *SettingService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *
 			row.SourceNames = append(row.SourceNames, source.Name)
 			if source.Enabled {
 				enabledSourceCount++
-				if !mappingReferenceFound && source.ReferenceMultiplier > 0 {
-					if !referenceFound || source.ReferenceMultiplier > bestReference {
-						bestReference = source.ReferenceMultiplier
+				rawReference := mapping.ReferenceMultiplier
+				if rawReference <= 0 {
+					rawReference = source.ReferenceMultiplier
+				}
+				effectiveReference := upstreamMonitorEffectiveCostMultiplier(source, rawReference)
+				if effectiveReference > 0 {
+					if !referenceFound || effectiveReference > bestReference {
+						bestReference = effectiveReference
 					}
 					referenceFound = true
 				}
@@ -1140,12 +1153,13 @@ func (s *SettingService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *
 	accountRows := make([]UpstreamMonitorPreviewAccountRow, 0)
 	monitoredAccountIDs := make(map[int64]struct{})
 	for _, source := range previewCfg.Sources {
+		effectiveSourceReference := upstreamMonitorEffectiveCostMultiplier(source, source.ReferenceMultiplier)
 		for _, accountID := range source.AccountIDs {
 			row := UpstreamMonitorPreviewAccountRow{
 				SourceID:            source.ID,
 				SourceName:          source.Name,
 				AccountID:           accountID,
-				ReferenceMultiplier: source.ReferenceMultiplier,
+				ReferenceMultiplier: effectiveSourceReference,
 			}
 			issues := make([]string, 0, 4)
 			if !source.Enabled {
@@ -1305,6 +1319,21 @@ func upstreamMonitorProfitRate(localMultiplier, upstreamMultiplier float64) floa
 		return 0
 	}
 	return (localMultiplier - upstreamMultiplier) / localMultiplier
+}
+
+func upstreamMonitorEffectiveCostMultiplier(source UpstreamMonitorSource, referenceMultiplier float64) float64 {
+	if referenceMultiplier <= 0 {
+		return 0
+	}
+	currency := strings.ToUpper(strings.TrimSpace(source.Currency))
+	if currency == "" || currency == "CNY" {
+		return referenceMultiplier
+	}
+	exchangeRate := source.ExchangeRate
+	if exchangeRate <= 0 {
+		exchangeRate = 1
+	}
+	return referenceMultiplier * exchangeRate
 }
 
 func incrementUpstreamMonitorStatusCounts(status string, healthyCount, warningCount, criticalCount, unknownCount int) (int, int, int, int) {
@@ -2395,6 +2424,9 @@ func upstreamMonitorAlertSeverity(cfg *UpstreamMonitorConfig, row UpstreamMonito
 	if row.LocalGroupMultiplier > 0 && row.ReferenceMultiplier > 0 && row.LocalGroupMultiplier < row.ReferenceMultiplier {
 		return "critical"
 	}
+	if !cfg.NotifyOnCriticalOnly && row.Status == "warning" {
+		return "warning"
+	}
 	return ""
 }
 
@@ -2404,6 +2436,9 @@ func upstreamMonitorAccountAlertSeverity(cfg *UpstreamMonitorConfig, row Upstrea
 	}
 	if row.HighestGroupMultiplier > 0 && row.EstimatedCostMultiplier > 0 && row.HighestGroupMultiplier < row.EstimatedCostMultiplier {
 		return "critical"
+	}
+	if !cfg.NotifyOnCriticalOnly && row.Status == "warning" {
+		return "warning"
 	}
 	return ""
 }

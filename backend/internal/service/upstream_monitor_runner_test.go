@@ -190,6 +190,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsUpstreamAlertEmail(t *t
 		DefaultExchangeRate:    7.2,
 		WarningRateThreshold:   0.4,
 		CriticalRateThreshold:  0.2,
+		NotifyOnCriticalOnly:   true,
 		Sources: []UpstreamMonitorSource{
 			{
 				ID:              "plain",
@@ -304,6 +305,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsEmailWhenUpstreamMultip
 		DefaultExchangeRate:    7.2,
 		WarningRateThreshold:   0.4,
 		CriticalRateThreshold:  0.2,
+		NotifyOnCriticalOnly:   true,
 		Sources: []UpstreamMonitorSource{
 			{
 				ID:              "plain",
@@ -402,6 +404,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 		DefaultExchangeRate:    7.2,
 		WarningRateThreshold:   0.12,
 		CriticalRateThreshold:  0.02,
+		NotifyOnCriticalOnly:   true,
 		Sources: []UpstreamMonitorSource{
 			{
 				ID:                  "manual",
@@ -472,6 +475,93 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 	require.Contains(t, sent[0], "OpenAI upstream A")
 }
 
+func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsWarningOnlyWhenConfigured(t *testing.T) {
+	ctx := context.Background()
+
+	buildService := func(notifyOnCriticalOnly bool) (*SettingService, *notificationEmailMemorySettingRepo, *[]string) {
+		repo := newNotificationEmailMemorySettingRepo()
+		repo.values[SettingKeySMTPHost] = "smtp.example.com"
+		repo.values[SettingKeySMTPPort] = "587"
+		repo.values[SettingKeySMTPUsername] = "demo"
+		repo.values[SettingKeySMTPPassword] = "secret"
+		repo.values[SettingKeySMTPFrom] = "noreply@example.com"
+		repo.values[SettingKeyAccountQuotaNotifyEmails] = `[{"email":"ops@example.com","disabled":false,"verified":true}]`
+
+		cfg := &UpstreamMonitorConfig{
+			Enabled:                true,
+			AutoRefreshEnabled:     true,
+			RefreshIntervalMinutes: 10,
+			DefaultExchangeRate:    7.2,
+			WarningRateThreshold:   0.25,
+			CriticalRateThreshold:  0,
+			NotifyOnCriticalOnly:   notifyOnCriticalOnly,
+			Sources: []UpstreamMonitorSource{
+				{
+					ID:              "plain",
+					Name:            "Plain Upstream",
+					Kind:            "custom",
+					Enabled:         true,
+					AutoSyncEnabled: true,
+					FetchMode:       upstreamMonitorFetchModePlainText,
+					BaseURL:         "https://example.com",
+					PricingURL:      "https://example.com/pricing",
+					AuthMode:        "none",
+					Currency:        "CNY",
+					ExchangeRate:    7.2,
+				},
+			},
+			GroupMappings: []UpstreamMonitorGroupMap{
+				{
+					ID:          "map_warning",
+					LocalGroup:  "VIP",
+					ModelFamily: "gpt",
+					SourceIDs:   []string{"plain"},
+				},
+			},
+		}
+		raw, err := json.Marshal(cfg)
+		require.NoError(t, err)
+		repo.values[SettingKeyUpstreamMonitorConfig] = string(raw)
+
+		emailSvc := NewEmailService(repo, nil)
+		notificationSvc := NewNotificationEmailService(repo, emailSvc)
+		settingSvc := NewSettingService(repo, nil)
+		settingSvc.SetNotificationEmailService(notificationSvc)
+		settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+			groups: []Group{
+				{ID: 1, Name: "VIP", Platform: PlatformOpenAI, RateMultiplier: 2.0},
+			},
+		})
+		sent := []string{}
+		emailSvc.sendWithConfig = func(config *SMTPConfig, to, subject, body string) error {
+			sent = append(sent, to+"\n"+subject+"\n"+body)
+			return nil
+		}
+		return settingSvc, repo, &sent
+	}
+
+	runRefresh := func(settingSvc *SettingService) {
+		stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", "1.60")
+		result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+	}
+
+	criticalOnlySvc, criticalOnlyRepo, criticalOnlySent := buildService(true)
+	runRefresh(criticalOnlySvc)
+	require.Len(t, *criticalOnlySent, 0)
+	_, err := criticalOnlyRepo.GetValue(ctx, upstreamMonitorAlertStateKey("map_warning"))
+	require.ErrorIs(t, err, ErrSettingNotFound)
+
+	warningSvc, warningRepo, warningSent := buildService(false)
+	runRefresh(warningSvc)
+	require.Len(t, *warningSent, 1)
+	require.Contains(t, (*warningSent)[0], "[warning]")
+	state, err := warningRepo.GetValue(ctx, upstreamMonitorAlertStateKey("map_warning"))
+	require.NoError(t, err)
+	require.Equal(t, "warning", state)
+}
+
 func TestSettingServiceRunDueUpstreamMonitorRefresh_RetriesUpstreamAlertWhenEmailFails(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
@@ -489,6 +579,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_RetriesUpstreamAlertWhenEmai
 		DefaultExchangeRate:    7.2,
 		WarningRateThreshold:   0.4,
 		CriticalRateThreshold:  0.2,
+		NotifyOnCriticalOnly:   true,
 		Sources: []UpstreamMonitorSource{
 			{
 				ID:              "plain",

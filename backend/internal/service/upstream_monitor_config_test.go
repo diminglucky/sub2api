@@ -994,6 +994,59 @@ func TestSettingServicePreviewUpstreamMonitorConfig_UsesMappingReferenceMultipli
 	require.Equal(t, "healthy", row.Status)
 }
 
+func TestSettingServicePreviewUpstreamMonitorConfig_AppliesExchangeRateForForeignCurrency(t *testing.T) {
+	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
+	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+		groups: []Group{
+			{
+				ID:             1,
+				Name:           "GPT",
+				Platform:       PlatformOpenAI,
+				RateMultiplier: 0.50,
+			},
+		},
+	})
+
+	cfg := &UpstreamMonitorConfig{
+		Enabled:                true,
+		AutoRefreshEnabled:     true,
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		WarningRateThreshold:   0.08,
+		CriticalRateThreshold:  0,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:                  "usd_pool",
+				Name:                "USD Pool",
+				Kind:                "custom",
+				Enabled:             true,
+				AuthMode:            "none",
+				Currency:            "USD",
+				ExchangeRate:        7,
+				ReferenceMultiplier: 0.08,
+			},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{
+			{
+				ID:                  "map_usd",
+				LocalGroup:          "GPT",
+				UpstreamGroup:       "usd-gpt",
+				ModelFamily:         "gpt",
+				SourceIDs:           []string{"usd_pool"},
+				ReferenceMultiplier: 0.08,
+			},
+		},
+	}
+
+	snapshot, err := svc.PreviewUpstreamMonitorConfig(context.Background(), cfg)
+	require.NoError(t, err)
+	require.Len(t, snapshot.GroupRows, 1)
+	row := snapshot.GroupRows[0]
+	require.InDelta(t, 0.56, row.ReferenceMultiplier, 0.0001)
+	require.InDelta(t, (0.50-0.56)/0.50, row.EstimatedMarginRate, 0.0001)
+	require.Equal(t, "critical", row.Status)
+}
+
 func TestSettingServicePreviewUpstreamMonitorConfig_UsesLocalGroupID(t *testing.T) {
 	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
 	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{

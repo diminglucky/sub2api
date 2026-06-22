@@ -99,6 +99,8 @@
               @bind-mapping="bindSourceGroupMapping(source, $event)"
               @update-local-mapping="updateMappingLocalGroup(source, $event)"
               @select-upstream-mapping="selectUpstreamGroupOption(source, $event)"
+              @update-manual-upstream-mapping="updateManualUpstreamGroup(source, $event)"
+              @update-reference-multiplier="updateMappingReferenceMultiplier(source, $event)"
             />
           </div>
         </section>
@@ -208,6 +210,7 @@ const mappingRows = useSourceMappingRows({
     mappingRowAddFailed: t("admin.upstreamMonitor.sources.fields.mappingRowAddFailed"),
     selectLocalGroup: t("admin.upstreamMonitor.sources.fields.selectLocalGroupPlaceholder"),
     selectUpstreamGroup: t("admin.upstreamMonitor.sources.fields.selectUpstreamGroupPlaceholder"),
+    referenceMultiplierRequired: t("admin.upstreamMonitor.sources.fields.referenceMultiplierRequired"),
     mappingDuplicate: t("admin.upstreamMonitor.sources.fields.mappingDuplicate"),
     mappingBindFailed: t("admin.upstreamMonitor.sources.fields.mappingBindFailed"),
     mappingRemoveFailed: t("admin.upstreamMonitor.sources.fields.mappingRemoveFailed"),
@@ -494,6 +497,20 @@ function updateMappingLocalGroup(
   payload: SourceMappingUpdatePayload,
 ) {
   mappingRows.updateLocalGroup(source, payload.mapping, payload.value);
+}
+
+function updateManualUpstreamGroup(
+  source: UpstreamMonitorSourceConfig,
+  payload: SourceMappingUpdatePayload,
+) {
+  mappingRows.updateManualUpstreamGroup(source, payload.mapping, payload.value);
+}
+
+function updateMappingReferenceMultiplier(
+  source: UpstreamMonitorSourceConfig,
+  payload: SourceMappingUpdatePayload,
+) {
+  mappingRows.updateReferenceMultiplier(source, payload.mapping, payload.value);
 }
 
 function ensureSourceID(source: UpstreamMonitorSourceConfig): string {

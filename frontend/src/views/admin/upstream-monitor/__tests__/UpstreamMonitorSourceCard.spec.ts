@@ -178,7 +178,15 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
         },
         SourceMappingRowsEditor: {
           props: ["rows"],
-          emits: ["add", "remove", "bind", "update-local", "select-upstream"],
+          emits: [
+            "add",
+            "remove",
+            "bind",
+            "update-local",
+            "select-upstream",
+            "update-manual-upstream",
+            "update-reference-multiplier",
+          ],
           template: `
             <div data-test="mapping-editor">
               <button type="button" data-test="mapping-add" @click="$emit('add')">add</button>
@@ -186,6 +194,8 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
               <button type="button" data-test="mapping-bind" @click="$emit('bind', rows[0].mapping)">bind</button>
               <button type="button" data-test="mapping-update-local" @click="$emit('update-local', { mapping: rows[0].mapping, value: '2' })">local</button>
               <button type="button" data-test="mapping-select-upstream" @click="$emit('select-upstream', { mapping: rows[0].mapping, value: 'up:claude' })">upstream</button>
+              <button type="button" data-test="mapping-update-manual-upstream" @click="$emit('update-manual-upstream', { mapping: rows[0].mapping, value: 'manual-gpt' })">manual</button>
+              <button type="button" data-test="mapping-update-reference" @click="$emit('update-reference-multiplier', { mapping: rows[0].mapping, value: '0.12' })">reference</button>
             </div>
           `,
         },
@@ -233,6 +243,8 @@ describe("UpstreamMonitorSourceCard", () => {
     await wrapper.find('[data-test="mapping-bind"]').trigger("click");
     await wrapper.find('[data-test="mapping-update-local"]').trigger("click");
     await wrapper.find('[data-test="mapping-select-upstream"]').trigger("click");
+    await wrapper.find('[data-test="mapping-update-manual-upstream"]').trigger("click");
+    await wrapper.find('[data-test="mapping-update-reference"]').trigger("click");
 
     expect(wrapper.emitted("add-mapping")).toHaveLength(1);
     expect(wrapper.emitted("remove-mapping")?.[0]?.[0]).toMatchObject({ id: "mapping_1" });
@@ -244,6 +256,14 @@ describe("UpstreamMonitorSourceCard", () => {
     expect(wrapper.emitted("select-upstream-mapping")?.[0]?.[0]).toMatchObject({
       mapping: { id: "mapping_1" },
       value: "up:claude",
+    });
+    expect(wrapper.emitted("update-manual-upstream-mapping")?.[0]?.[0]).toMatchObject({
+      mapping: { id: "mapping_1" },
+      value: "manual-gpt",
+    });
+    expect(wrapper.emitted("update-reference-multiplier")?.[0]?.[0]).toMatchObject({
+      mapping: { id: "mapping_1" },
+      value: "0.12",
     });
   });
 

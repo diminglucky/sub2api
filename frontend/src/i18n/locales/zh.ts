@@ -5796,6 +5796,7 @@ export default {
           mappingRowAddFailed: '添加绑定框失败，请刷新页面后重试。',
           mappingBound: '映射已更新，记得保存配置。',
           mappingBindFailed: '绑定映射失败，请刷新页面后重试。',
+          referenceMultiplierRequired: '请先填写该映射上游倍率，或在上游源里填写参考倍率。',
           mappingRemoved: '映射已删除，记得保存配置。',
           mappingRemoveFailed: '删除映射失败，请刷新页面后重试。',
           mappingDuplicate: '这条本地分组和上游分组已经绑定过了。',

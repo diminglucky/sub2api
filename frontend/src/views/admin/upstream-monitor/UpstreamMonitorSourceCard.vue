@@ -211,6 +211,8 @@
           @bind="emit('bind-mapping', $event)"
           @update-local="handleUpdateLocalMapping"
           @select-upstream="handleSelectUpstreamMapping"
+          @update-manual-upstream="handleUpdateManualUpstreamMapping"
+          @update-reference-multiplier="handleUpdateReferenceMultiplier"
         />
       </section>
 
@@ -301,6 +303,8 @@ const emit = defineEmits<{
   (event: "bind-mapping", mapping: UpstreamMonitorGroupMapping): void;
   (event: "update-local-mapping", payload: SourceMappingUpdatePayload): void;
   (event: "select-upstream-mapping", payload: SourceMappingUpdatePayload): void;
+  (event: "update-manual-upstream-mapping", payload: SourceMappingUpdatePayload): void;
+  (event: "update-reference-multiplier", payload: SourceMappingUpdatePayload): void;
 }>();
 
 const { t, locale } = useI18n();
@@ -319,6 +323,14 @@ function handleUpdateLocalMapping(payload: SourceMappingUpdatePayload) {
 
 function handleSelectUpstreamMapping(payload: SourceMappingUpdatePayload) {
   emit("select-upstream-mapping", payload);
+}
+
+function handleUpdateManualUpstreamMapping(payload: SourceMappingUpdatePayload) {
+  emit("update-manual-upstream-mapping", payload);
+}
+
+function handleUpdateReferenceMultiplier(payload: SourceMappingUpdatePayload) {
+  emit("update-reference-multiplier", payload);
 }
 </script>
 

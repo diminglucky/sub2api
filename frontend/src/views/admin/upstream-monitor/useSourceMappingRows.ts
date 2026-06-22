@@ -49,6 +49,7 @@ export interface SourceMappingControllerMessages {
   mappingRowAddFailed: string;
   selectLocalGroup: string;
   selectUpstreamGroup: string;
+  referenceMultiplierRequired: string;
   mappingDuplicate: string;
   mappingBindFailed: string;
   mappingRemoveFailed: string;
@@ -89,6 +90,17 @@ function multiplierValueLabel(formatMultiplier: (value: number) => string, value
 
 function nullablePercentLabel(formatPercent: (value: number) => string, value: number | null): string {
   return value === null ? "--" : formatPercent(value);
+}
+
+function effectiveSourceCostMultiplier(source: UpstreamMonitorSourceConfig, referenceMultiplier: number): number {
+  const multiplier = Number(referenceMultiplier || 0);
+  if (multiplier <= 0) return 0;
+  const currency = String(source.currency || "").trim().toUpperCase();
+  if (!currency || currency === "CNY") {
+    return multiplier;
+  }
+  const exchangeRate = Number(source.exchange_rate || 0);
+  return multiplier * (exchangeRate > 0 ? exchangeRate : 1);
 }
 
 export function useSourceMappingRows(options: SourceMappingControllerOptions) {
@@ -191,7 +203,18 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
   }
 
   function isCompleteMapping(mapping: UpstreamMonitorGroupMapping): boolean {
-    return Boolean(localGroupIDForMapping(mapping) > 0 && mapping.local_group.trim() && mapping.upstream_group_key.trim());
+    return Boolean(
+      localGroupIDForMapping(mapping) > 0 &&
+      mapping.local_group.trim() &&
+      (mapping.upstream_group_key.trim() || mapping.upstream_group.trim()),
+    );
+  }
+
+  function isCompleteMappingForSource(
+    source: UpstreamMonitorSourceConfig,
+    mapping: UpstreamMonitorGroupMapping,
+  ): boolean {
+    return isCompleteMapping(mapping) && mappingReferenceMultiplier(source, mapping, true) > 0;
   }
 
   function sourceMappingRows(source: UpstreamMonitorSourceConfig): UpstreamMonitorGroupMapping[] {
@@ -203,7 +226,7 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
   }
 
   function sourceMappedMappings(source: UpstreamMonitorSourceConfig): UpstreamMonitorGroupMapping[] {
-    return sourceMappingRows(source).filter((mapping) => isCompleteMapping(mapping));
+    return sourceMappingRows(source).filter((mapping) => isCompleteMappingForSource(source, mapping));
   }
 
   function sourceGroupRowForMapping(
@@ -251,7 +274,7 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
   }
 
   function effectiveReferenceMultiplier(source: UpstreamMonitorSourceConfig, mapping: UpstreamMonitorGroupMapping): number {
-    return mappingReferenceMultiplier(source, mapping, true);
+    return effectiveSourceCostMultiplier(source, mappingReferenceMultiplier(source, mapping, true));
   }
 
   function mappingMarginRate(source: UpstreamMonitorSourceConfig, mapping: UpstreamMonitorGroupMapping): number | null {
@@ -406,6 +429,46 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     return { ok: false, reason };
   }
 
+  function updateManualUpstreamGroup(
+    source: UpstreamMonitorSourceConfig,
+    mapping: UpstreamMonitorGroupMapping,
+    value: string,
+  ): SourceMappingControllerResult {
+    const nextMapping = {
+      ...mapping,
+      upstream_group_key: "",
+      upstream_group: value,
+    };
+    const result = replaceSourceMappingRowForSource(options.form.value.group_mappings, sanitizeSourceID(source), nextMapping);
+    if (result.replaced) {
+      replaceGroupMappings(result.mappings);
+      return { ok: true, mapping: nextMapping };
+    }
+    const reason = options.messages().mappingBindFailed;
+    options.onError(reason);
+    return { ok: false, reason };
+  }
+
+  function updateReferenceMultiplier(
+    source: UpstreamMonitorSourceConfig,
+    mapping: UpstreamMonitorGroupMapping,
+    value: string,
+  ): SourceMappingControllerResult {
+    const parsed = Number(value || 0);
+    const nextMapping = {
+      ...mapping,
+      reference_multiplier: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
+    };
+    const result = replaceSourceMappingRowForSource(options.form.value.group_mappings, sanitizeSourceID(source), nextMapping);
+    if (result.replaced) {
+      replaceGroupMappings(result.mappings);
+      return { ok: true, mapping: nextMapping };
+    }
+    const reason = options.messages().mappingBindFailed;
+    options.onError(reason);
+    return { ok: false, reason };
+  }
+
   function updateLocalGroup(
     source: UpstreamMonitorSourceConfig,
     mapping: UpstreamMonitorGroupMapping,
@@ -418,14 +481,11 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       nextMapping.local_group = "";
     } else {
       const oldLocalGroup = mapping.local_group.trim();
-      const shouldUseLocalNameAsUpstream =
-        !mapping.upstream_group.trim() ||
-        mapping.upstream_group.trim() === oldLocalGroup;
       nextMapping.local_group_id = Number(group.group_id || 0);
       nextMapping.local_group = group.group_name;
       nextMapping.model_family = options.modelFamilyForGroup(group);
-      if (shouldUseLocalNameAsUpstream && !mapping.upstream_group_key) {
-        nextMapping.upstream_group = group.group_name;
+      if (!mapping.upstream_group_key && mapping.upstream_group.trim() === oldLocalGroup) {
+        nextMapping.upstream_group = "";
       }
     }
     const result = replaceSourceMappingRowForSource(options.form.value.group_mappings, sanitizeSourceID(source), nextMapping);
@@ -450,21 +510,25 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       return { ok: false, reason };
     }
     const upstreamOption = selectedUpstreamGroupOption(source, mapping);
-    if (!upstreamOption) {
-      const reason = options.messages().selectUpstreamGroup;
-      options.onError(reason);
-      return { ok: false, reason };
-    }
+    const manualUpstreamGroup = String(mapping.upstream_group || "").trim() || group.group_name;
+    const referenceMultiplier = upstreamOption
+      ? Number(upstreamOption.reference_multiplier || 0)
+      : mappingReferenceMultiplier(source, mapping, true);
     const nextMapping: UpstreamMonitorGroupMapping = {
       ...mapping,
       local_group_id: Number(group.group_id || 0),
       local_group: group.group_name,
       model_family: options.modelFamilyForGroup(group),
-      upstream_group_key: upstreamOption.key,
-      upstream_group: upstreamOption.name,
-      reference_multiplier: Number(upstreamOption.reference_multiplier || 0),
+      upstream_group_key: upstreamOption?.key || "",
+      upstream_group: upstreamOption?.name || manualUpstreamGroup,
+      reference_multiplier: Number.isFinite(referenceMultiplier) && referenceMultiplier > 0 ? referenceMultiplier : 0,
       source_ids: [sid],
     };
+    if (mappingReferenceMultiplier(source, nextMapping, true) <= 0) {
+      const reason = options.messages().referenceMultiplierRequired;
+      options.onError(reason);
+      return { ok: false, reason };
+    }
     if (hasDuplicateSourceMapping(source, nextMapping)) {
       const reason = options.messages().mappingDuplicate;
       options.onError(reason);
@@ -516,7 +580,7 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
             upstream_group: (mapping.upstream_group || mapping.local_group).trim(),
             source_ids: [mappingSourceID],
             reference_multiplier: source
-              ? mappingReferenceMultiplier(source, mapping, false)
+              ? mappingReferenceMultiplier(source, mapping, true)
               : Number(mapping.reference_multiplier || 0),
             notes: mapping.notes.trim(),
           };
@@ -524,7 +588,12 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       })
       .filter((mapping) => {
         if (!optionsArg.dropIncompleteMappings) return true;
-        return mapping.id && isCompleteMapping(mapping) && mapping.model_family && mapping.source_ids.length > 0;
+        const mappingSourceID = uniqueStringIDs(mapping.source_ids)[0] || "";
+        const source = options.form.value.sources.find((item) => sanitizeSourceID(item) === mappingSourceID);
+        const isComplete = source
+          ? isCompleteMappingForSource(source, mapping)
+          : isCompleteMapping(mapping) && Number(mapping.reference_multiplier || 0) > 0;
+        return mapping.id && isComplete && mapping.model_family && mapping.source_ids.length > 0;
       });
   }
 
@@ -554,6 +623,8 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     sourceMappingRowsBySourceID,
     sourceMappingRowViews,
     updateLocalGroup,
+    updateManualUpstreamGroup,
+    updateReferenceMultiplier,
     upstreamGroupOptionsForSource,
     upstreamGroupSelectOptionsForSource,
     normalizeModelFamily,

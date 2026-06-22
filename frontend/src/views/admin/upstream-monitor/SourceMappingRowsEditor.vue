@@ -114,6 +114,39 @@
           </button>
         </div>
 
+        <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label class="input-label">{{ t('admin.upstreamMonitor.sources.fields.manualUpstreamGroup') }}</label>
+            <input
+              class="input mt-1.5 w-full"
+              type="text"
+              :value="row.mapping.upstream_group"
+              :placeholder="t('admin.upstreamMonitor.sources.fields.upstreamGroup')"
+              @input="emit('update-manual-upstream', { mapping: row.mapping, value: ($event.target as HTMLInputElement).value })"
+            />
+            <p class="input-hint mt-1.5">{{ t('admin.upstreamMonitor.sources.fields.upstreamGroupHint') }}</p>
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.upstreamMonitor.sources.fields.mappingReferenceMultiplier') }}</label>
+            <input
+              class="input mt-1.5 w-full"
+              type="number"
+              min="0"
+              step="any"
+              :value="row.mapping.reference_multiplier || ''"
+              @input="emit('update-reference-multiplier', { mapping: row.mapping, value: ($event.target as HTMLInputElement).value })"
+            />
+            <p class="input-hint mt-1.5">
+              {{
+                row.mapping.upstream_group_key
+                  ? t('admin.upstreamMonitor.sources.fields.mappingReferenceMultiplierAutoHint')
+                  : t('admin.upstreamMonitor.sources.fields.mappingReferenceMultiplierHint')
+              }}
+            </p>
+          </div>
+        </div>
+
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div class="rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-dark-600 dark:bg-dark-800/80">
             <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -185,6 +218,8 @@ const emit = defineEmits<{
   (event: "bind", mapping: UpstreamMonitorGroupMapping): void;
   (event: "update-local", payload: SourceMappingUpdatePayload): void;
   (event: "select-upstream", payload: SourceMappingUpdatePayload): void;
+  (event: "update-manual-upstream", payload: SourceMappingUpdatePayload): void;
+  (event: "update-reference-multiplier", payload: SourceMappingUpdatePayload): void;
 }>();
 
 const { t } = useI18n();
