@@ -1479,17 +1479,6 @@ func shouldRefreshUpstreamSource(source *UpstreamMonitorSource, intervalMinutes 
 	return now.Sub(source.LastSyncAt.UTC()) >= time.Duration(intervalMinutes)*time.Minute
 }
 
-func fetchUpstreamReferenceMultiplier(ctx context.Context, source *UpstreamMonitorSource) (float64, error) {
-	pricing, err := fetchUpstreamPricingSnapshot(ctx, source)
-	if err != nil {
-		return 0, err
-	}
-	if !pricing.HasReference {
-		return 0, fmt.Errorf("reference multiplier missing")
-	}
-	return pricing.ReferenceMultiplier, nil
-}
-
 func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSource) (*upstreamMonitorPricingSnapshot, error) {
 	if source == nil {
 		return nil, fmt.Errorf("source is nil")
@@ -1552,17 +1541,6 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 		}
 	}
 	return pricing, nil
-}
-
-func parseUpstreamReferenceMultiplier(body []byte, contentType, fetchMode, pathHint string) (float64, error) {
-	pricing, err := parseUpstreamPricingSnapshot(body, contentType, fetchMode, pathHint)
-	if err != nil {
-		return 0, err
-	}
-	if !pricing.HasReference {
-		return 0, fmt.Errorf("reference multiplier missing")
-	}
-	return pricing.ReferenceMultiplier, nil
 }
 
 func parseUpstreamPricingSnapshot(body []byte, contentType, fetchMode, pathHint string) (*upstreamMonitorPricingSnapshot, error) {
