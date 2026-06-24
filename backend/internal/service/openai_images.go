@@ -466,9 +466,7 @@ func isOpenAIImagesEndpointModel(model string) bool {
 	if normalized == "" {
 		return false
 	}
-	if strings.HasPrefix(normalized, "models/") {
-		normalized = strings.TrimPrefix(normalized, "models/")
-	}
+	normalized = strings.TrimPrefix(normalized, "models/")
 	if isOpenAIImageGenerationModel(normalized) {
 		return true
 	}
