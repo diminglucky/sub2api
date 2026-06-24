@@ -3826,7 +3826,7 @@
                 <Toggle v-model="form.enable_metadata_passthrough" />
               </div>
 
-              <!-- CCH Signing -->
+              <!-- Legacy CCH compatibility setting -->
               <div class="flex items-center justify-between">
                 <div>
                   <label

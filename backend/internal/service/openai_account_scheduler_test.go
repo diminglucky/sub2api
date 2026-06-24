@@ -2321,6 +2321,7 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	require.Equal(t, 0.7, defaultWeights.Queue)
 	require.Equal(t, 0.8, defaultWeights.ErrorRate)
 	require.Equal(t, 0.5, defaultWeights.TTFT)
+	require.Equal(t, 0.0, defaultWeights.Reset)
 
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.LBTopK = 9
@@ -2330,6 +2331,7 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 0.4
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0.5
 	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.6
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 0.7
 	svcWithCfg := &OpenAIGatewayService{cfg: cfg}
 
 	require.Equal(t, 9, svcWithCfg.openAIWSLBTopK())
@@ -2340,6 +2342,40 @@ func TestOpenAIGatewayService_SchedulerWrappersAndDefaults(t *testing.T) {
 	require.Equal(t, 0.4, customWeights.Queue)
 	require.Equal(t, 0.5, customWeights.ErrorRate)
 	require.Equal(t, 0.6, customWeights.TTFT)
+	require.Equal(t, 0.7, customWeights.Reset)
+}
+
+func TestDefaultOpenAIAccountScheduler_ResetWeightPrefersSoonestSessionWindow(t *testing.T) {
+	now := time.Now()
+	soon := now.Add(10 * time.Minute)
+	later := now.Add(90 * time.Minute)
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 3
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Reset = 1
+
+	schedulerAny := newDefaultOpenAIAccountScheduler(&OpenAIGatewayService{cfg: cfg}, nil)
+	scheduler, ok := schedulerAny.(*defaultOpenAIAccountScheduler)
+	require.True(t, ok)
+
+	plan := scheduler.buildOpenAIAccountLoadPlan(
+		OpenAIAccountScheduleRequest{SessionHash: "stable-reset-test"},
+		[]*Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, SessionWindowEnd: &later},
+			{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1, SessionWindowEnd: &soon},
+			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true, Concurrency: 1},
+		},
+		map[int64]*AccountLoadInfo{
+			1: {AccountID: 1},
+			2: {AccountID: 2},
+			3: {AccountID: 3},
+		},
+	)
+
+	ranked := selectTopKOpenAICandidates(plan.candidates, len(plan.candidates))
+	require.Len(t, ranked, 3)
+	require.Equal(t, int64(2), ranked[0].account.ID)
+	require.Equal(t, int64(1), ranked[1].account.ID)
+	require.Equal(t, int64(3), ranked[2].account.ID)
 }
 
 func TestDefaultOpenAIAccountScheduler_IsAccountTransportCompatible_Branches(t *testing.T) {

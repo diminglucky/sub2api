@@ -127,6 +127,7 @@
           color="emerald"
         />
         <div class="flex items-center gap-1.5 mt-0.5">
+          <OpenAIQuotaResetCell :account="account" @reset="loadActiveUsage" />
           <button
             type="button"
             class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors"
@@ -163,7 +164,9 @@
           <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
+      <div v-else>
+        <OpenAIQuotaResetCell :account="account" @reset="loadActiveUsage" />
+      </div>
     </template>
 
     <!-- Antigravity OAuth accounts: fetch usage from API -->
@@ -503,6 +506,7 @@ import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
+import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()

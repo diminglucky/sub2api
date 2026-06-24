@@ -1643,6 +1643,18 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		require.False(t, reported)
 	})
 
+	t.Run("cyber policy after write", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		before := c.Writer.Size()
+		_, _ = c.Writer.WriteString(`{"error":{"code":"cyber_policy","message":"blocked"}}`)
+
+		reported := openAIForwardErrorAlreadyCommunicated(c, before, errors.New("openai cyber_policy: blocked"))
+
+		require.True(t, reported)
+	})
+
 	t.Run("generic error after write still needs fallback", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)

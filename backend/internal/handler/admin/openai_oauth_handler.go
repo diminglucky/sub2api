@@ -15,6 +15,7 @@ import (
 // OpenAIOAuthHandler handles OpenAI OAuth-related operations
 type OpenAIOAuthHandler struct {
 	openaiOAuthService *service.OpenAIOAuthService
+	openaiQuotaService *service.OpenAIQuotaService
 	adminService       service.AdminService
 }
 
@@ -23,9 +24,10 @@ func oauthPlatformFromPath(c *gin.Context) string {
 }
 
 // NewOpenAIOAuthHandler creates a new OpenAI OAuth handler
-func NewOpenAIOAuthHandler(openaiOAuthService *service.OpenAIOAuthService, adminService service.AdminService) *OpenAIOAuthHandler {
+func NewOpenAIOAuthHandler(openaiOAuthService *service.OpenAIOAuthService, openaiQuotaService *service.OpenAIQuotaService, adminService service.AdminService) *OpenAIOAuthHandler {
 	return &OpenAIOAuthHandler{
 		openaiOAuthService: openaiOAuthService,
+		openaiQuotaService: openaiQuotaService,
 		adminService:       adminService,
 	}
 }
@@ -195,6 +197,48 @@ func (h *OpenAIOAuthHandler) RefreshAccountToken(c *gin.Context) {
 	}
 
 	response.Success(c, dto.AccountFromService(updatedAccount))
+}
+
+// QueryQuota fetches ChatGPT/Codex upstream rate-limit credits for an OpenAI OAuth account.
+// GET /api/v1/admin/openai/accounts/:id/quota
+func (h *OpenAIOAuthHandler) QueryQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.openaiQuotaService == nil {
+		response.InternalError(c, "OpenAI quota service is not configured")
+		return
+	}
+
+	result, err := h.openaiQuotaService.QueryUsage(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ResetQuota consumes one ChatGPT/Codex upstream rate-limit reset credit.
+// POST /api/v1/admin/openai/accounts/:id/reset-quota
+func (h *OpenAIOAuthHandler) ResetQuota(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h.openaiQuotaService == nil {
+		response.InternalError(c, "OpenAI quota service is not configured")
+		return
+	}
+
+	result, err := h.openaiQuotaService.ResetCredit(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
 }
 
 // CreateAccountFromOAuth creates a new OpenAI OAuth account from token info

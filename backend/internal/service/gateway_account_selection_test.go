@@ -151,6 +151,74 @@ func TestFilterByMinLoadRate_SelectsMinLoadRate(t *testing.T) {
 	require.Equal(t, int64(3), result[1].account.ID)
 }
 
+// --- filterBySoonestReset ---
+
+func TestFilterBySoonestReset_SelectsSoonestFutureWindow(t *testing.T) {
+	now := time.Now()
+	soon := now.Add(time.Hour)
+	later := now.Add(24 * time.Hour)
+	accounts := []accountWithLoad{
+		makeAccWithLoad(1, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(2, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(3, 1, 10, nil, AccountTypeAPIKey),
+	}
+	accounts[0].account.SessionWindowEnd = testTimePtr(later)
+	accounts[1].account.SessionWindowEnd = testTimePtr(soon)
+	accounts[2].account.SessionWindowEnd = testTimePtr(later)
+
+	result := filterBySoonestReset(accounts)
+	require.Len(t, result, 1)
+	require.Equal(t, int64(2), result[0].account.ID)
+}
+
+func TestFilterBySoonestReset_IgnoresNilAndExpiredWindows(t *testing.T) {
+	now := time.Now()
+	expired := now.Add(-time.Hour)
+	active := now.Add(2 * time.Hour)
+	accounts := []accountWithLoad{
+		makeAccWithLoad(1, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(2, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(3, 1, 10, nil, AccountTypeAPIKey),
+	}
+	accounts[1].account.SessionWindowEnd = testTimePtr(expired)
+	accounts[2].account.SessionWindowEnd = testTimePtr(active)
+
+	result := filterBySoonestReset(accounts)
+	require.Len(t, result, 1)
+	require.Equal(t, int64(3), result[0].account.ID)
+}
+
+func TestFilterBySoonestReset_NoActiveWindowReturnsAll(t *testing.T) {
+	now := time.Now()
+	expired := now.Add(-30 * time.Minute)
+	accounts := []accountWithLoad{
+		makeAccWithLoad(1, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(2, 1, 10, nil, AccountTypeAPIKey),
+	}
+	accounts[1].account.SessionWindowEnd = testTimePtr(expired)
+
+	result := filterBySoonestReset(accounts)
+	require.Len(t, result, 2)
+}
+
+func TestFilterBySoonestReset_TiedSoonestKeepsAll(t *testing.T) {
+	now := time.Now()
+	end := now.Add(90 * time.Minute)
+	accounts := []accountWithLoad{
+		makeAccWithLoad(1, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(2, 1, 10, nil, AccountTypeAPIKey),
+		makeAccWithLoad(3, 1, 10, nil, AccountTypeAPIKey),
+	}
+	accounts[0].account.SessionWindowEnd = testTimePtr(end)
+	accounts[1].account.SessionWindowEnd = testTimePtr(end)
+	accounts[2].account.SessionWindowEnd = testTimePtr(now.Add(5 * time.Hour))
+
+	result := filterBySoonestReset(accounts)
+	require.Len(t, result, 2)
+	ids := map[int64]bool{result[0].account.ID: true, result[1].account.ID: true}
+	require.True(t, ids[1] && ids[2])
+}
+
 // --- selectByLRU ---
 
 func TestSelectByLRU_Empty(t *testing.T) {

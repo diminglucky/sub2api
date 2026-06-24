@@ -34,12 +34,15 @@ const (
 	openAIImagesGenerationsURL = "https://api.openai.com/v1/images/generations"
 	openAIImagesEditsURL       = "https://api.openai.com/v1/images/edits"
 
-	openAIChatGPTStartURL          = "https://chatgpt.com/"
-	openAIChatGPTFilesURL          = "https://chatgpt.com/backend-api/files"
-	openAIImageBackendUserAgent    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
-	openAIImageMaxDownloadBytes    = 20 << 20 // 20MB per image download
-	openAIImageMaxUploadPartSize   = 20 << 20 // 20MB per multipart upload part
-	openAIImagesResponsesMainModel = "gpt-5.4-mini"
+	openAIChatGPTStartURL        = "https://chatgpt.com/"
+	openAIChatGPTFilesURL        = "https://chatgpt.com/backend-api/files"
+	openAIImageBackendUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+	openAIImageMaxDownloadBytes  = 20 << 20 // 20MB per image download
+	openAIImageMaxUploadPartSize = 20 << 20 // 20MB per multipart upload part
+	// Use a full Responses-capable host model for image_generation tool calls.
+	// The mini variant can complete the response lifecycle without actually
+	// executing the image tool, which yields empty output / incomplete events.
+	openAIImagesResponsesMainModel = "gpt-5.4"
 )
 
 type OpenAIImagesCapability string
@@ -215,7 +218,7 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 	}
 
 	applyOpenAIImagesDefaults(req)
-	if err := validateOpenAIImagesModel(req.Model); err != nil {
+	if err := validateOpenAIImagesRequestModel(req.Model); err != nil {
 		return nil, err
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
@@ -458,15 +461,76 @@ func isOpenAIImageGenerationModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "gpt-image-")
 }
 
+func isOpenAIImagesEndpointModel(model string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	if normalized == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, "models/") {
+		normalized = strings.TrimPrefix(normalized, "models/")
+	}
+	if isOpenAIImageGenerationModel(normalized) {
+		return true
+	}
+	for _, marker := range []string{
+		"dall-e",
+		"imagen",
+		"flux",
+		"midjourney",
+		"stable-diffusion",
+		"sdxl",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return strings.Contains(normalized, "image")
+}
+
 func validateOpenAIImagesModel(model string) error {
 	model = strings.TrimSpace(model)
-	if isOpenAIImageGenerationModel(model) {
+	if isOpenAIImagesEndpointModel(model) {
 		return nil
 	}
 	if model == "" {
 		return fmt.Errorf("images endpoint requires an image model")
 	}
 	return fmt.Errorf("images endpoint requires an image model, got %q", model)
+}
+
+func validateOpenAIImagesRequestModel(model string) error {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return fmt.Errorf("images endpoint requires an image model")
+	}
+	if isOpenAIImagesEndpointModel(model) || !isKnownOpenAITextOnlyModel(model) {
+		return nil
+	}
+	return fmt.Errorf("images endpoint requires an image model, got %q", model)
+}
+
+func isKnownOpenAITextOnlyModel(model string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(model))
+	normalized = strings.TrimPrefix(normalized, "models/")
+	switch {
+	case strings.HasPrefix(normalized, "gpt-"),
+		strings.HasPrefix(normalized, "chatgpt-"),
+		strings.HasPrefix(normalized, "o1"),
+		strings.HasPrefix(normalized, "o3"),
+		strings.HasPrefix(normalized, "o4"),
+		strings.HasPrefix(normalized, "claude-"),
+		strings.HasPrefix(normalized, "gemini-"):
+		return true
+	default:
+		return false
+	}
+}
+
+func validateOpenAIImagesUpstreamModel(model string) error {
+	if strings.TrimSpace(model) == "" {
+		return fmt.Errorf("images endpoint requires an image model")
+	}
+	return nil
 }
 
 func normalizeOpenAIImagesEndpointPath(path string) string {
@@ -569,11 +633,8 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
 		requestModel = mapped
 	}
-	if err := validateOpenAIImagesModel(requestModel); err != nil {
-		return nil, err
-	}
 	upstreamModel := account.GetMappedModel(requestModel)
-	if err := validateOpenAIImagesModel(upstreamModel); err != nil {
+	if err := validateOpenAIImagesUpstreamModel(upstreamModel); err != nil {
 		return nil, err
 	}
 	logger.LegacyPrintf(

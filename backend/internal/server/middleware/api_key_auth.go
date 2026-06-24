@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -25,7 +26,7 @@ func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionS
 //   - 鉴权（Authentication）：验证 Key 有效性、用户状态、IP 限制 —— 始终执行
 //   - 计费执行（Billing Enforcement）：过期/配额/订阅/余额检查 —— skipBilling 时整块跳过
 //
-// /v1/usage 端点只需鉴权，不需要计费执行（允许过期/配额耗尽的 Key 查询自身用量）。
+// /v1/usage 和模型列表端点只需鉴权，不需要计费执行（允许过期/配额耗尽的 Key 查询自身用量/模型）。
 func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── 1. 提取 API Key ──────────────────────────────────────────
@@ -144,8 +145,8 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 
 		// ── 5. 加载订阅（订阅模式时始终加载） ───────────────────────
 
-		// skipBilling: /v1/usage 只需鉴权，跳过所有计费执行
-		skipBilling := c.Request.URL.Path == "/v1/usage"
+		// skipBilling: 非计费查询只需鉴权，跳过所有计费执行
+		skipBilling := shouldSkipAPIKeyBilling(c.Request.Method, c.Request.URL.Path)
 
 		var subscription *service.UserSubscription
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -235,6 +236,25 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		_ = apiKeyService.TouchLastUsed(c.Request.Context(), apiKey.ID)
 
 		c.Next()
+	}
+}
+
+func shouldSkipAPIKeyBilling(method, path string) bool {
+	if path == "/v1/usage" {
+		return true
+	}
+	if method != http.MethodGet {
+		return false
+	}
+	switch path {
+	case "/v1/models",
+		"/v1beta/models",
+		"/antigravity/models",
+		"/antigravity/v1/models",
+		"/antigravity/v1beta/models":
+		return true
+	default:
+		return false
 	}
 }
 
