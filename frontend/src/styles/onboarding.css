@@ -15,7 +15,8 @@
   pointer-events: none !important;
 }
 
-.driver-overlay svg {
+.driver-overlay,
+.driver-overlay * {
   pointer-events: none !important;
 }
 
