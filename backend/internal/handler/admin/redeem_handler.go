@@ -88,7 +88,7 @@ func (h *RedeemHandler) List(c *gin.Context) {
 	codeType := c.Query("type")
 	status := c.Query("status")
 	search := c.Query("search")
-	sortBy := c.DefaultQuery("sort_by", "id")
+	sortBy := c.DefaultQuery("sort_by", "activity_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 	// 标准化和验证 search 参数
 	search = strings.TrimSpace(search)

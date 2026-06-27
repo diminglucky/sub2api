@@ -169,6 +169,10 @@ func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Sele
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderDesc)
 
+	if sortBy == "activity_at" {
+		return redeemCodeActivityOrder(sortOrder)
+	}
+
 	var field string
 	switch sortBy {
 	case "type":
@@ -193,6 +197,28 @@ func redeemCodeListOrder(params pagination.PaginationParams) []func(*entsql.Sele
 		return []func(*entsql.Selector){dbent.Asc(field), dbent.Asc(redeemcode.FieldID)}
 	}
 	return []func(*entsql.Selector){dbent.Desc(field), dbent.Desc(redeemcode.FieldID)}
+}
+
+func redeemCodeActivityOrder(sortOrder string) []func(*entsql.Selector) {
+	direction := "DESC"
+	idOrder := dbent.Desc(redeemcode.FieldID)
+	if sortOrder == pagination.SortOrderAsc {
+		direction = "ASC"
+		idOrder = dbent.Asc(redeemcode.FieldID)
+	}
+
+	activityOrder := func(s *entsql.Selector) {
+		s.OrderExprFunc(func(b *entsql.Builder) {
+			b.WriteString("COALESCE(").
+				WriteString(s.C(redeemcode.FieldUsedAt)).
+				WriteString(", ").
+				WriteString(s.C(redeemcode.FieldCreatedAt)).
+				WriteString(") ").
+				WriteString(direction)
+		})
+	}
+
+	return []func(*entsql.Selector){activityOrder, idOrder}
 }
 
 func (r *redeemCodeRepository) Update(ctx context.Context, code *service.RedeemCode) error {

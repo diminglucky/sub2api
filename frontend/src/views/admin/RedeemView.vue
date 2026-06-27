@@ -61,8 +61,6 @@
           :data="codes"
           :loading="loading"
           :server-side-sort="true"
-          default-sort-key="id"
-          default-sort-order="desc"
           @sort="handleSort"
         >
           <template #header-select>
@@ -780,7 +778,7 @@ const pagination = reactive({
   pages: 0
 })
 const sortState = reactive({
-  sort_by: 'id',
+  sort_by: 'activity_at',
   sort_order: 'desc' as 'asc' | 'desc'
 })
 
