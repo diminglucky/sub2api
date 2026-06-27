@@ -1274,10 +1274,12 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
 const platformSortRank: Record<string, number> = {
   openai: 0,
   gpt: 0,
-  anthropic: 1,
-  claude: 1,
-  gemini: 2,
-  antigravity: 3
+  zhipu: 1,
+  glm: 1,
+  anthropic: 2,
+  claude: 2,
+  gemini: 3,
+  antigravity: 4
 }
 
 function groupPlatformRank(group: Pick<Group, 'platform'>): number {

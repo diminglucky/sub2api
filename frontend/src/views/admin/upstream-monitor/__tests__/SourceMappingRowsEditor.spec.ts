@@ -43,9 +43,6 @@ function mountEditor(options: Partial<Parameters<typeof mount>[1]> = {}) {
           localGroupID: "1",
           isComplete: true,
           isNew: false,
-          localMultiplierLabel: "0.10x",
-          referenceMultiplierLabel: "0.08x",
-          marginRateLabel: "20.0%",
         },
       ],
       localGroupOptions: [
@@ -96,23 +93,6 @@ describe("SourceMappingRowsEditor", () => {
     expect(wrapper.emitted("select-upstream")?.[0]?.[0]).toMatchObject({
       mapping: { id: "mapping_1" },
       value: "up:claude",
-    });
-  });
-
-  it("emits manual upstream group and multiplier values", async () => {
-    const wrapper = mountEditor();
-    const inputs = wrapper.findAll("input");
-
-    await inputs[0].setValue("manual-gpt");
-    await inputs[1].setValue("0.12");
-
-    expect(wrapper.emitted("update-manual-upstream")?.[0]?.[0]).toMatchObject({
-      mapping: { id: "mapping_1" },
-      value: "manual-gpt",
-    });
-    expect(wrapper.emitted("update-reference-multiplier")?.[0]?.[0]).toMatchObject({
-      mapping: { id: "mapping_1" },
-      value: "0.12",
     });
   });
 

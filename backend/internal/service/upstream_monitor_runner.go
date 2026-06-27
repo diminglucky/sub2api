@@ -17,23 +17,27 @@ const (
 )
 
 type UpstreamMonitorRunner struct {
-	settingService *SettingService
-	interval       time.Duration
-	stopCh         chan struct{}
-	stopOnce       sync.Once
-	wg             sync.WaitGroup
+	upstreamMonitorService upstreamMonitorRefreshRunner
+	interval               time.Duration
+	stopCh                 chan struct{}
+	stopOnce               sync.Once
+	wg                     sync.WaitGroup
 
 	lockCache  LeaderLockCache
 	db         *sql.DB
 	instanceID string
 }
 
-func NewUpstreamMonitorRunner(settingService *SettingService, interval time.Duration) *UpstreamMonitorRunner {
+type upstreamMonitorRefreshRunner interface {
+	RunDueUpstreamMonitorRefresh(ctx context.Context) (*UpstreamMonitorRefreshResult, error)
+}
+
+func NewUpstreamMonitorRunner(upstreamMonitorService upstreamMonitorRefreshRunner, interval time.Duration) *UpstreamMonitorRunner {
 	return &UpstreamMonitorRunner{
-		settingService: settingService,
-		interval:       interval,
-		stopCh:         make(chan struct{}),
-		instanceID:     uuid.NewString(),
+		upstreamMonitorService: upstreamMonitorService,
+		interval:               interval,
+		stopCh:                 make(chan struct{}),
+		instanceID:             uuid.NewString(),
 	}
 }
 
@@ -46,7 +50,7 @@ func (r *UpstreamMonitorRunner) SetLeaderLock(lockCache LeaderLockCache, db *sql
 }
 
 func (r *UpstreamMonitorRunner) Start() {
-	if r == nil || r.settingService == nil || r.interval <= 0 {
+	if r == nil || r.upstreamMonitorService == nil || r.interval <= 0 {
 		return
 	}
 	r.wg.Add(1)
@@ -89,7 +93,7 @@ func (r *UpstreamMonitorRunner) runOnce() {
 	runCtx, cancel := context.WithTimeout(context.Background(), upstreamMonitorRunnerTimeout)
 	defer cancel()
 
-	result, err := r.settingService.RunDueUpstreamMonitorRefresh(runCtx)
+	result, err := r.upstreamMonitorService.RunDueUpstreamMonitorRefresh(runCtx)
 	if err != nil {
 		slog.Warn("[UpstreamMonitorRunner] refresh due sources failed", "error", err)
 		return

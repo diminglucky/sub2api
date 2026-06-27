@@ -37,6 +37,8 @@
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
+                : account.platform === 'zhipu'
+                  ? 'https://open.bigmodel.cn/api/paas/v4'
                 : account.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
                   : account.platform === 'antigravity'
@@ -59,6 +61,8 @@
             :placeholder="
               account.platform === 'openai'
                 ? 'sk-proj-...'
+                : account.platform === 'zhipu'
+                  ? 'sk-...'
                 : account.platform === 'gemini'
                   ? 'AIza...'
                   : account.platform === 'antigravity'
@@ -2440,6 +2444,7 @@ const authStore = useAuthStore()
 const baseUrlHint = computed(() => {
   if (!props.account) return t('admin.accounts.baseUrlHint')
   if (props.account.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (props.account.platform === 'zhipu') return '智谱 GLM 使用 OpenAI-compatible 地址，默认 https://open.bigmodel.cn/api/paas/v4'
   if (props.account.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
@@ -2841,6 +2846,7 @@ const tempUnschedPresets = computed(() => [
 // Computed: default base URL based on platform
 const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'openai') return 'https://api.openai.com'
+  if (props.account?.platform === 'zhipu') return 'https://open.bigmodel.cn/api/paas/v4'
   if (props.account?.platform === 'gemini') return 'https://generativelanguage.googleapis.com'
   return 'https://api.anthropic.com'
 })
@@ -3095,6 +3101,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
+        : newAccount.platform === 'zhipu'
+          ? 'https://open.bigmodel.cn/api/paas/v4'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'
@@ -3163,6 +3171,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
+        : newAccount.platform === 'zhipu'
+          ? 'https://open.bigmodel.cn/api/paas/v4'
         : newAccount.platform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'

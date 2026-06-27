@@ -28,6 +28,7 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
     pricing_url: "https://api.example.com/pricing",
     pricing_path_hint: "",
     auth_mode: "none",
+    auth_username: "",
     auth_header_name: "",
     auth_token: "",
     auth_configured: false,
@@ -88,9 +89,6 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
         localGroupID: "1",
         isComplete: true,
         isNew: false,
-        localMultiplierLabel: "0.10x",
-        referenceMultiplierLabel: "0.08x",
-        marginRateLabel: "20.0%",
       },
     ],
     localGroupOptions: [
@@ -150,6 +148,7 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
     authModeOptions: [
       { value: "none", labelKey: "none" },
       { value: "bearer", labelKey: "bearer" },
+      { value: "login", labelKey: "login" },
     ],
     fetchModeOptions: [
       { value: "auto" as const, labelKey: "auto" },
@@ -184,8 +183,6 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
             "bind",
             "update-local",
             "select-upstream",
-            "update-manual-upstream",
-            "update-reference-multiplier",
           ],
           template: `
             <div data-test="mapping-editor">
@@ -194,8 +191,6 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
               <button type="button" data-test="mapping-bind" @click="$emit('bind', rows[0].mapping)">bind</button>
               <button type="button" data-test="mapping-update-local" @click="$emit('update-local', { mapping: rows[0].mapping, value: '2' })">local</button>
               <button type="button" data-test="mapping-select-upstream" @click="$emit('select-upstream', { mapping: rows[0].mapping, value: 'up:claude' })">upstream</button>
-              <button type="button" data-test="mapping-update-manual-upstream" @click="$emit('update-manual-upstream', { mapping: rows[0].mapping, value: 'manual-gpt' })">manual</button>
-              <button type="button" data-test="mapping-update-reference" @click="$emit('update-reference-multiplier', { mapping: rows[0].mapping, value: '0.12' })">reference</button>
             </div>
           `,
         },
@@ -211,17 +206,62 @@ function mountCard(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
 
 describe("UpstreamMonitorSourceCard", () => {
   it("emits explicit card actions without parent state coupling", async () => {
-    const wrapper = mountCard();
+    const wrapper = mountCard({
+      props: {
+        source: source({ auth_mode: "bearer", auth_configured: true, auth_token: "stored-token" }),
+      },
+    });
 
     await wrapper.find('[data-source-card-action="collapse"]').trigger("click");
     await wrapper.find('[data-source-card-action="remove"]').trigger("click");
-    await wrapper.find('[data-source-card-action="apply-preset"]').trigger("click");
     await wrapper.find('[data-source-card-action="sync"]').trigger("click");
+    await wrapper.find('[data-test="clear-auth-token"]').trigger("click");
 
     expect(wrapper.emitted("toggle-expanded")).toHaveLength(1);
     expect(wrapper.emitted("remove")).toHaveLength(1);
-    expect(wrapper.emitted("apply-preset")).toHaveLength(1);
     expect(wrapper.emitted("sync")).toHaveLength(1);
+    expect(wrapper.emitted("clear-auth-token")).toHaveLength(1);
+  });
+
+  it("renders auth controls in the main source card", () => {
+    const wrapper = mountCard({
+      props: {
+        source: source({ auth_mode: "login", auth_configured: true, auth_token: "stored-token" }),
+      },
+    });
+
+    expect(wrapper.get('[data-test="source-auth-section"]').text()).toContain("admin.upstreamMonitor.sources.fields.authMode");
+    expect(wrapper.get('[data-test="source-auth-section"]').text()).toContain("admin.upstreamMonitor.sources.fields.authUsername");
+    expect(wrapper.get('[data-test="source-auth-section"]').text()).toContain("admin.upstreamMonitor.sources.fields.authPassword");
+    expect(wrapper.get('[data-test="login-auth-hint"]').text()).toBe("admin.upstreamMonitor.sources.loginAuthHint");
+    expect(wrapper.get('[data-test="source-auth-section"]').text()).toContain("admin.upstreamMonitor.sources.authModeHints.login");
+  });
+
+  it("hides endpoint management controls for standard sources", () => {
+    const wrapper = mountCard();
+
+    expect(wrapper.text()).not.toContain("https://api.example.com/api/user/self/groups");
+    expect(wrapper.text()).not.toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
+  });
+
+  it("shows the pricing endpoint field only for custom sources", () => {
+    const wrapper = mountCard({
+      props: {
+        source: source({ kind: "custom", pricing_url: "" }),
+      },
+    });
+
+    expect(wrapper.text()).toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
+  });
+
+  it("does not show empty endpoint hints for standard sources", () => {
+    const wrapper = mountCard({
+      props: {
+        source: source({ pricing_url: "", base_url: "" }),
+      },
+    });
+
+    expect(wrapper.text()).not.toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
   });
 
   it("keeps the sync action disabled when the parent marks it unavailable", async () => {
@@ -243,8 +283,6 @@ describe("UpstreamMonitorSourceCard", () => {
     await wrapper.find('[data-test="mapping-bind"]').trigger("click");
     await wrapper.find('[data-test="mapping-update-local"]').trigger("click");
     await wrapper.find('[data-test="mapping-select-upstream"]').trigger("click");
-    await wrapper.find('[data-test="mapping-update-manual-upstream"]').trigger("click");
-    await wrapper.find('[data-test="mapping-update-reference"]').trigger("click");
 
     expect(wrapper.emitted("add-mapping")).toHaveLength(1);
     expect(wrapper.emitted("remove-mapping")?.[0]?.[0]).toMatchObject({ id: "mapping_1" });
@@ -256,14 +294,6 @@ describe("UpstreamMonitorSourceCard", () => {
     expect(wrapper.emitted("select-upstream-mapping")?.[0]?.[0]).toMatchObject({
       mapping: { id: "mapping_1" },
       value: "up:claude",
-    });
-    expect(wrapper.emitted("update-manual-upstream-mapping")?.[0]?.[0]).toMatchObject({
-      mapping: { id: "mapping_1" },
-      value: "manual-gpt",
-    });
-    expect(wrapper.emitted("update-reference-multiplier")?.[0]?.[0]).toMatchObject({
-      mapping: { id: "mapping_1" },
-      value: "0.12",
     });
   });
 

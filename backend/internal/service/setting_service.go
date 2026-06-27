@@ -177,23 +177,19 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
-	settingRepo                  SettingRepository
-	defaultSubGroupReader        DefaultSubscriptionGroupReader
-	upstreamMonitorGroupLister   upstreamMonitorGroupLister
-	upstreamMonitorAccountLister upstreamMonitorAccountLister
-	upstreamMonitorAdminReader   UpstreamMonitorAdminReader
-	notificationEmailService     *NotificationEmailService
-	proxyRepo                    ProxyRepository // for resolving websearch provider proxy URLs
-	cfg                          *config.Config
-	onUpdate                     func() // Callback when settings are updated (for cache invalidation)
-	version                      string // Application version
-	webSearchManagerBuilder      WebSearchManagerBuilder
-	antigravityUAVersionCache    atomic.Value // *cachedAntigravityUserAgentVersion
-	antigravityUAVersionSF       singleflight.Group
-	openAICodexUACache           atomic.Value // *cachedOpenAICodexUserAgent
-	openAICodexUASF              singleflight.Group
-	openAIAllowCodexPluginCache  atomic.Value // *cachedOpenAIAllowCodexPlugin
-	openAIAllowCodexPluginSF     singleflight.Group
+	settingRepo                 SettingRepository
+	defaultSubGroupReader       DefaultSubscriptionGroupReader
+	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
+	cfg                         *config.Config
+	onUpdate                    func() // Callback when settings are updated (for cache invalidation)
+	version                     string // Application version
+	webSearchManagerBuilder     WebSearchManagerBuilder
+	antigravityUAVersionCache   atomic.Value // *cachedAntigravityUserAgentVersion
+	antigravityUAVersionSF      singleflight.Group
+	openAICodexUACache          atomic.Value // *cachedOpenAICodexUserAgent
+	openAICodexUASF             singleflight.Group
+	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
+	openAIAllowCodexPluginSF    singleflight.Group
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
@@ -210,10 +206,6 @@ type DefaultPlatformQuotaSetting struct {
 	DailyLimitUSD   *float64 `json:"daily"`
 	WeeklyLimitUSD  *float64 `json:"weekly"`
 	MonthlyLimitUSD *float64 `json:"monthly"`
-}
-
-type UpstreamMonitorAdminReader interface {
-	GetFirstAdmin(ctx context.Context) (*User, error)
 }
 
 type ProviderDefaultGrantSettings struct {
@@ -661,24 +653,6 @@ func NewSettingService(settingRepo SettingRepository, cfg *config.Config) *Setti
 // SetDefaultSubscriptionGroupReader injects an optional group reader for default subscription validation.
 func (s *SettingService) SetDefaultSubscriptionGroupReader(reader DefaultSubscriptionGroupReader) {
 	s.defaultSubGroupReader = reader
-}
-
-// SetUpstreamMonitorGroupLister injects a group lister for upstream monitor previews.
-func (s *SettingService) SetUpstreamMonitorGroupLister(lister upstreamMonitorGroupLister) {
-	s.upstreamMonitorGroupLister = lister
-}
-
-// SetUpstreamMonitorAccountLister injects an account lister for upstream monitor previews.
-func (s *SettingService) SetUpstreamMonitorAccountLister(lister upstreamMonitorAccountLister) {
-	s.upstreamMonitorAccountLister = lister
-}
-
-func (s *SettingService) SetUpstreamMonitorAdminReader(reader UpstreamMonitorAdminReader) {
-	s.upstreamMonitorAdminReader = reader
-}
-
-func (s *SettingService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
-	s.notificationEmailService = notificationEmailService
 }
 
 // SetProxyRepository injects a proxy repo for resolving websearch provider proxy URLs.
@@ -3826,6 +3800,9 @@ func (s *SettingService) GetFallbackModel(ctx context.Context, platform string) 
 	case PlatformOpenAI:
 		key = SettingKeyFallbackModelOpenAI
 		defaultModel = "gpt-4o"
+	case PlatformZhipu:
+		key = SettingKeyFallbackModelOpenAI
+		defaultModel = "glm-4.5"
 	case PlatformGemini:
 		key = SettingKeyFallbackModelGemini
 		defaultModel = "gemini-2.5-pro"
@@ -4942,6 +4919,7 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 	out := map[string]*DefaultPlatformQuotaSetting{
 		"anthropic":   {},
 		"openai":      {},
+		"zhipu":       {},
 		"gemini":      {},
 		"antigravity": {},
 	}

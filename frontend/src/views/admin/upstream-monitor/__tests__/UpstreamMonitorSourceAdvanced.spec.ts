@@ -25,6 +25,7 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
     pricing_url: "https://api.example.com/pricing",
     pricing_path_hint: "",
     auth_mode: "none",
+    auth_username: "",
     auth_header_name: "",
     auth_token: "",
     auth_configured: false,
@@ -40,36 +41,38 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
   };
 }
 
-function mountAdvanced() {
+function mountAdvanced(overrides: Partial<Parameters<typeof mount>[1]> = {}) {
+  const defaultProps = {
+    source: source(),
+    accountOptions: [
+      {
+        account_id: 10,
+        account_name: "OpenAI key",
+        platform: "openai",
+        type: "api_key",
+        rate_multiplier: 1,
+        group_names: ["GPT"],
+      },
+      {
+        account_id: 11,
+        account_name: "Claude key",
+        platform: "anthropic",
+        type: "api_key",
+        rate_multiplier: 1,
+        group_names: ["Claude"],
+      },
+    ],
+    fetchModeOptions: [
+      { value: "auto", labelKey: "auto" },
+      { value: "json_path", labelKey: "json_path" },
+    ],
+  };
+
   return mount(UpstreamMonitorSourceAdvanced, {
+    ...overrides,
     props: {
-      source: source(),
-      accountOptions: [
-        {
-          account_id: 10,
-          account_name: "OpenAI key",
-          platform: "openai",
-          type: "api_key",
-          rate_multiplier: 1,
-          group_names: ["GPT"],
-        },
-        {
-          account_id: 11,
-          account_name: "Claude key",
-          platform: "anthropic",
-          type: "api_key",
-          rate_multiplier: 1,
-          group_names: ["Claude"],
-        },
-      ],
-      authModeOptions: [
-        { value: "none", labelKey: "none" },
-        { value: "bearer", labelKey: "bearer" },
-      ],
-      fetchModeOptions: [
-        { value: "auto", labelKey: "auto" },
-        { value: "json_path", labelKey: "json_path" },
-      ],
+      ...defaultProps,
+      ...(overrides.props || {}),
     },
     global: {
       stubs: {
@@ -106,4 +109,5 @@ describe("UpstreamMonitorSourceAdvanced", () => {
     expect(accountButtons[0].classes()).toContain("choice-card-selected");
     expect(accountButtons[1].classes()).not.toContain("choice-card-selected");
   });
+
 });

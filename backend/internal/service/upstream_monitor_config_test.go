@@ -139,16 +139,27 @@ func stubUpstreamMonitorClientFunc(
 	handler func(*http.Request) (int, string, string),
 ) {
 	t.Helper()
+	stubUpstreamMonitorClientHeaderFunc(t, func(r *http.Request) (int, http.Header, string) {
+		statusCode, contentType, body := handler(r)
+		return statusCode, http.Header{"Content-Type": []string{contentType}}, body
+	})
+}
+
+func stubUpstreamMonitorClientHeaderFunc(
+	t *testing.T,
+	handler func(*http.Request) (int, http.Header, string),
+) {
+	t.Helper()
 
 	original := newUpstreamMonitorHTTPClient
 	newUpstreamMonitorHTTPClient = func() *req.Client {
 		client := req.C().SetTimeout(5 * time.Second)
 		client.GetTransport().WrapRoundTripFunc(func(http.RoundTripper) req.HttpRoundTripFunc {
 			return func(r *http.Request) (*http.Response, error) {
-				statusCode, contentType, body := handler(r)
+				statusCode, header, body := handler(r)
 				return &http.Response{
 					StatusCode: statusCode,
-					Header:     http.Header{"Content-Type": []string{contentType}},
+					Header:     header,
 					Body:       io.NopCloser(strings.NewReader(body)),
 					Request:    r,
 				}, nil
@@ -190,7 +201,7 @@ func TestSettingServiceGetUpstreamMonitorConfig_DoesNotRefreshOnRead(t *testing.
 
 	repo := newUpstreamMonitorSettingRepo()
 	repo.data[SettingKeyUpstreamMonitorConfig] = string(raw)
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 
 	got, err := svc.GetUpstreamMonitorConfig(context.Background())
 	require.NoError(t, err)
@@ -205,10 +216,31 @@ func TestSettingServiceGetUpstreamMonitorConfig_DoesNotRefreshOnRead(t *testing.
 	require.Empty(t, persisted.Sources[0].LastSyncStatus)
 }
 
+func TestUpstreamMonitorService_ReturnsErrorWithoutSettingRepo(t *testing.T) {
+	svc := NewUpstreamMonitorService(nil)
+
+	_, err := svc.GetUpstreamMonitorConfig(context.Background())
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "settings repository not configured")
+
+	err = svc.SaveUpstreamMonitorConfig(context.Background(), &UpstreamMonitorConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "settings repository not configured")
+
+	_, err = svc.RefreshUpstreamMonitorConfig(context.Background(), &UpstreamMonitorConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "settings repository not configured")
+
+	var nilSvc *UpstreamMonitorService
+	_, err = nilSvc.PreviewUpstreamMonitorConfig(context.Background(), &UpstreamMonitorConfig{})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "service not configured")
+}
+
 func TestSettingServiceGetUpstreamMonitorConfig_ReturnsErrorOnInvalidJSON(t *testing.T) {
 	repo := newUpstreamMonitorSettingRepo()
 	repo.data[SettingKeyUpstreamMonitorConfig] = `{bad json`
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 
 	got, err := svc.GetUpstreamMonitorConfig(context.Background())
 	require.Error(t, err)
@@ -238,7 +270,7 @@ func TestSettingServiceGetUpstreamMonitorConfig_AllowsEmptyLastSyncAt(t *testing
 		}],
 		"group_mappings": []
 	}`
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 
 	got, err := svc.GetUpstreamMonitorConfig(context.Background())
 	require.NoError(t, err)
@@ -247,7 +279,7 @@ func TestSettingServiceGetUpstreamMonitorConfig_AllowsEmptyLastSyncAt(t *testing
 }
 
 func TestSettingServiceSaveUpstreamMonitorConfig_AllowsManualSourceWithoutURL(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
 	cfg := &UpstreamMonitorConfig{
 		Enabled:                true,
 		AutoRefreshEnabled:     true,
@@ -270,6 +302,67 @@ func TestSettingServiceSaveUpstreamMonitorConfig_AllowsManualSourceWithoutURL(t 
 	}
 
 	require.NoError(t, svc.SaveUpstreamMonitorConfig(context.Background(), cfg))
+}
+
+func TestSettingServiceSaveUpstreamMonitorConfig_AllowsClearingStoredAuthToken(t *testing.T) {
+	repo := newUpstreamMonitorSettingRepo()
+	repo.data[SettingKeyUpstreamMonitorConfig] = `{
+		"enabled": true,
+		"auto_refresh_enabled": true,
+		"refresh_interval_minutes": 10,
+		"default_exchange_rate": 7.2,
+		"sources": [{
+			"id": "relay",
+			"name": "Relay",
+			"kind": "custom",
+			"enabled": true,
+			"auto_sync_enabled": true,
+			"fetch_mode": "plain_text",
+			"pricing_url": "https://example.com/pricing",
+			"auth_mode": "header",
+			"auth_header_name": "Authorization",
+			"auth_token": "stored-token",
+			"currency": "CNY",
+			"exchange_rate": 7.2
+		}],
+		"group_mappings": []
+	}`
+
+	svc := NewUpstreamMonitorService(repo)
+	cfg := &UpstreamMonitorConfig{
+		Enabled:                true,
+		AutoRefreshEnabled:     true,
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:                  "relay",
+				Name:                "Relay",
+				Kind:                "custom",
+				Enabled:             true,
+				AutoSyncEnabled:     true,
+				FetchMode:           upstreamMonitorFetchModePlainText,
+				PricingURL:          "https://example.com/pricing",
+				AuthMode:            "header",
+				AuthHeaderName:      "Authorization",
+				AuthTokenCleared:    true,
+				Currency:            "CNY",
+				ExchangeRate:        7.2,
+				ReferenceMultiplier: 0,
+			},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{},
+	}
+
+	require.NoError(t, svc.SaveUpstreamMonitorConfig(context.Background(), cfg))
+	raw, err := repo.GetValue(context.Background(), SettingKeyUpstreamMonitorConfig)
+	require.NoError(t, err)
+
+	persisted := &UpstreamMonitorConfig{}
+	require.NoError(t, json.Unmarshal([]byte(raw), persisted))
+	require.Len(t, persisted.Sources, 1)
+	require.Empty(t, persisted.Sources[0].AuthToken)
+	require.False(t, persisted.Sources[0].AuthConfigured)
 }
 
 func TestNormalizeUpstreamMonitorConfig_DerivesKnownPricingURLs(t *testing.T) {
@@ -304,51 +397,266 @@ func TestNormalizeUpstreamMonitorConfig_DerivesKnownPricingURLs(t *testing.T) {
 
 	normalizeUpstreamMonitorConfig(cfg)
 
-	require.Equal(t, "https://pool.gptstore.club/api/v1/channels/available", cfg.Sources[0].PricingURL)
-	require.Equal(t, "https://relay.example.com/api/ratio_config", cfg.Sources[1].PricingURL)
+	require.Equal(t, "https://pool.gptstore.club/api/v1/groups/available", cfg.Sources[0].PricingURL)
+	require.Equal(t, "https://relay.example.com/api/user/self/groups", cfg.Sources[1].PricingURL)
+	require.NoError(t, validateUpstreamMonitorConfig(cfg))
+}
+
+func TestValidateUpstreamMonitorConfig_AllowsLegacyJSONPathOnStandardSources(t *testing.T) {
+	cfg := &UpstreamMonitorConfig{
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:              "newapi",
+				Name:            "New API",
+				Kind:            "newapi",
+				Enabled:         true,
+				AutoSyncEnabled: true,
+				FetchMode:       upstreamMonitorFetchModeJSONPath,
+				BaseURL:         "https://relay.example.com",
+				AuthMode:        "bearer",
+				AuthToken:       "token",
+				Currency:        "CNY",
+				ExchangeRate:    1,
+			},
+		},
+	}
+
+	normalizeUpstreamMonitorConfig(cfg)
+
+	require.Equal(t, "https://relay.example.com/api/user/self/groups", cfg.Sources[0].PricingURL)
 	require.NoError(t, validateUpstreamMonitorConfig(cfg))
 }
 
 func TestFetchUpstreamPricingSnapshot_SendsBearerTokenForSub2API(t *testing.T) {
 	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
 		require.Equal(t, "Bearer user-login-token", r.Header.Get("Authorization"))
-		return http.StatusOK, "application/json", `[
-			{
-				"name": "Pool",
-				"platforms": [
-					{
-						"platform": "openai",
-						"groups": [
-							{"id": 1, "name": "codex-cheap", "rate_multiplier": 0.08}
-						],
-						"supported_models": [
-							{"name": "gpt-5.5", "pricing": {"input_price": 0.000001}}
-						]
-					}
-				]
-			}
-		]`
+		switch r.URL.Path {
+		case "/api/v1/groups/available":
+			return http.StatusOK, "application/json", `[
+				{"id": 1, "name": "codex-cheap", "description": "cheap", "rate_multiplier": 0.08}
+			]`
+		case "/api/v1/groups/rates":
+			return http.StatusOK, "application/json", `{"1":0.09}`
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return http.StatusNotFound, "text/plain", ""
+		}
 	})
 
 	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
-		ID:         "pool",
-		Name:       "Pool",
-		Kind:       "sub2api",
-		PricingURL: "https://pool.gptstore.club/api/v1/channels/available",
-		AuthMode:   "bearer",
-		AuthToken:  "user-login-token",
+		ID:        "pool",
+		Name:      "Pool",
+		Kind:      "sub2api",
+		BaseURL:   "https://pool.gptstore.club",
+		AuthMode:  "bearer",
+		AuthToken: "user-login-token",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.GroupOptions, 1)
+	require.Equal(t, "codex-cheap", snapshot.GroupOptions[0].Name)
+	require.InDelta(t, 0.09, snapshot.GroupOptions[0].ReferenceMultiplier, 0.0001)
+	require.Len(t, snapshot.GroupMultipliers, 1)
+}
+
+func TestFetchUpstreamPricingSnapshot_SendsJSONAccessTokenForSub2API(t *testing.T) {
+	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
+		require.Equal(t, "Bearer json-token", r.Header.Get("Authorization"))
+		switch r.URL.Path {
+		case "/api/v1/groups/available":
+			return http.StatusOK, "application/json", `[
+				{"id": 1, "name": "codex-cheap", "description": "cheap", "rate_multiplier": 0.08}
+			]`
+		case "/api/v1/groups/rates":
+			return http.StatusOK, "application/json", `{}`
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return http.StatusNotFound, "text/plain", ""
+		}
+	})
+
+	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:        "pool",
+		Name:      "Pool",
+		Kind:      "sub2api",
+		BaseURL:   "https://pool.gptstore.club",
+		AuthMode:  "bearer",
+		AuthToken: `{"access_token":"json-token"}`,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.GroupOptions, 1)
+	require.Equal(t, "codex-cheap", snapshot.GroupOptions[0].Name)
+}
+
+func TestFetchUpstreamPricingSnapshot_SendsNewAPICookieCredential(t *testing.T) {
+	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
+		require.Equal(t, "session=abc; other=def", r.Header.Get("Cookie"))
+		require.Equal(t, "123", r.Header.Get("New-Api-User"))
+		require.Equal(t, "/api/user/self/groups", r.URL.Path)
+		return http.StatusOK, "application/json", `{
+			"default": {"ratio": 1, "desc": "default group"},
+			"vip": {"ratio": 0.2, "desc": "vip group"}
+		}`
+	})
+
+	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:        "newapi",
+		Name:      "NewAPI",
+		Kind:      "newapi",
+		BaseURL:   "https://relay.example.com",
+		AuthMode:  "cookie",
+		AuthToken: `{"cookie":"session=abc; other=def","user_id":"123"}`,
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.GroupOptions, 2)
+	require.InDelta(t, 1, snapshot.GroupMultipliers["default"], 0.0001)
+	require.InDelta(t, 0.2, snapshot.GroupMultipliers["vip"], 0.0001)
+}
+
+func TestFetchUpstreamPricingSnapshot_NewAPICookieRequiresUserID(t *testing.T) {
+	_, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:        "newapi",
+		Name:      "NewAPI",
+		Kind:      "newapi",
+		BaseURL:   "https://relay.example.com",
+		AuthMode:  "cookie",
+		AuthToken: "session=abc",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "newapi cookie auth requires JSON credential")
+	require.Contains(t, err.Error(), "user_id")
+}
+
+func TestFetchUpstreamPricingSnapshot_Sub2APICookieExplainsAccessToken(t *testing.T) {
+	_, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:        "pool",
+		Name:      "Pool",
+		Kind:      "sub2api",
+		BaseURL:   "https://pool.gptstore.club",
+		AuthMode:  "cookie",
+		AuthToken: "session=abc",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "sub2api standard endpoints use Bearer access_token")
+}
+
+func TestFetchUpstreamPricingSnapshot_LoginModeFetchesNewAPIGroups(t *testing.T) {
+	stubUpstreamMonitorClientHeaderFunc(t, func(r *http.Request) (int, http.Header, string) {
+		switch r.URL.Path {
+		case "/api/user/login":
+			require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			return http.StatusOK, http.Header{
+				"Content-Type": []string{"application/json"},
+				"Set-Cookie":   []string{"session=test-session; Path=/; HttpOnly"},
+			}, `{"success":true,"data":{"id":123}}`
+		case "/api/user/self/groups":
+			require.Equal(t, "123", r.Header.Get("New-Api-User"))
+			require.NotEmpty(t, r.Header.Get("Cookie"))
+			return http.StatusOK, http.Header{"Content-Type": []string{"application/json"}}, `{
+				"default": {"ratio": 1, "desc": "default group"},
+				"vip": {"ratio": 0.2, "desc": "vip group"},
+				"auto": {"ratio": "自动", "desc": "skip"}
+			}`
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return http.StatusNotFound, http.Header{"Content-Type": []string{"text/plain"}}, ""
+		}
+	})
+
+	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:           "newapi",
+		Name:         "NewAPI",
+		Kind:         "newapi",
+		BaseURL:      "https://relay.example.com",
+		AuthMode:     "login",
+		AuthUsername: "monitor@example.com",
+		AuthToken:    "secret-password",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, snapshot.GroupOptions, 2)
+	require.InDelta(t, 1, snapshot.GroupMultipliers["default"], 0.0001)
+	require.InDelta(t, 0.2, snapshot.GroupMultipliers["vip"], 0.0001)
+}
+
+func TestFetchUpstreamPricingSnapshot_LoginModeFetchesSessionForSub2API(t *testing.T) {
+	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
+		switch r.URL.Path {
+		case "/api/v1/auth/login":
+			require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			return http.StatusOK, "application/json", `{"code":0,"message":"ok","data":{"access_token":"session-token","expires_in":3600}}`
+		case "/api/v1/groups/available":
+			require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+			return http.StatusOK, "application/json", `[
+				{"id": 12, "name": "codex-cheap", "description": "cheap", "rate_multiplier": 0.08}
+			]`
+		case "/api/v1/groups/rates":
+			require.Equal(t, "Bearer session-token", r.Header.Get("Authorization"))
+			return http.StatusOK, "application/json", `{}`
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return http.StatusNotFound, "text/plain", ""
+		}
+	})
+
+	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:           "pool",
+		Name:         "Pool",
+		Kind:         "sub2api",
+		BaseURL:      "https://pool.gptstore.club",
+		PricingURL:   "https://pool.gptstore.club/api/v1/groups/available",
+		AuthMode:     "login",
+		AuthUsername: "monitor@example.com",
+		AuthToken:    "secret-password",
 	})
 
 	require.NoError(t, err)
 	require.Len(t, snapshot.GroupOptions, 1)
 	require.Equal(t, "codex-cheap", snapshot.GroupOptions[0].Name)
 	require.InDelta(t, 0.08, snapshot.GroupOptions[0].ReferenceMultiplier, 0.0001)
-	require.Len(t, snapshot.GroupMultipliers, 1)
+}
+
+func TestFetchUpstreamPricingSnapshot_401ShowsAuthHint(t *testing.T) {
+	stubUpstreamMonitorClient(t, http.StatusUnauthorized, "application/json", `{"error":"unauthorized"}`)
+
+	_, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:         "pool",
+		Name:       "Pool",
+		Kind:       "sub2api",
+		PricingURL: "https://pool.gptstore.club/api/v1/groups/available",
+		AuthMode:   "none",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "401 unauthorized")
+	require.Contains(t, err.Error(), "credential")
+}
+
+func TestFetchUpstreamPricingSnapshot_403ShowsForbiddenHint(t *testing.T) {
+	stubUpstreamMonitorClient(t, http.StatusForbidden, "application/json", `{"error":"forbidden"}`)
+
+	_, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:         "pool",
+		Name:       "Pool",
+		Kind:       "sub2api",
+		PricingURL: "https://pool.gptstore.club/api/v1/groups/available",
+		AuthMode:   "bearer",
+		AuthToken:  "user-login-token",
+	})
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "403 forbidden")
 }
 
 func TestSettingServicePreviewUpstreamMonitorConfig_UsesDefaultProfitThresholdAsWarningFallback(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -399,11 +707,89 @@ func TestSettingServicePreviewUpstreamMonitorConfig_UsesDefaultProfitThresholdAs
 	require.Equal(t, "warning", snapshot.GroupRows[0].Status)
 }
 
+func TestSettingServicePreviewUpstreamMonitorConfig_MergesStoredSecretsForAuthSources(t *testing.T) {
+	repo := newUpstreamMonitorSettingRepo()
+	repo.data[SettingKeyUpstreamMonitorConfig] = `{
+		"enabled": true,
+		"auto_refresh_enabled": true,
+		"refresh_interval_minutes": 10,
+		"default_exchange_rate": 7.2,
+		"sources": [{
+			"id": "relay",
+			"name": "Relay",
+			"kind": "custom",
+			"enabled": true,
+			"auto_sync_enabled": true,
+			"fetch_mode": "plain_text",
+			"pricing_url": "https://example.com/pricing",
+			"auth_mode": "header",
+			"auth_header_name": "Authorization",
+			"auth_token": "stored-token",
+			"currency": "CNY",
+			"exchange_rate": 7.2
+		}],
+		"group_mappings": [{
+			"id": "map_1",
+			"local_group": "VIP",
+			"model_family": "gpt",
+			"source_ids": ["relay"]
+		}]
+	}`
+
+	svc := NewUpstreamMonitorService(repo)
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
+		groups: []Group{
+			{
+				ID:             1,
+				Name:           "VIP",
+				Platform:       PlatformOpenAI,
+				RateMultiplier: 0.2,
+			},
+		},
+	})
+
+	input := &UpstreamMonitorConfig{
+		Enabled:                true,
+		AutoRefreshEnabled:     true,
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:              "relay",
+				Name:            "Relay",
+				Kind:            "custom",
+				Enabled:         true,
+				AutoSyncEnabled: true,
+				FetchMode:       upstreamMonitorFetchModePlainText,
+				PricingURL:      "https://example.com/pricing",
+				AuthMode:        "header",
+				AuthHeaderName:  "Authorization",
+				Currency:        "CNY",
+				ExchangeRate:    7.2,
+			},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{
+			{
+				ID:          "map_1",
+				LocalGroup:  "VIP",
+				ModelFamily: "gpt",
+				SourceIDs:   []string{"relay"},
+			},
+		},
+	}
+
+	snapshot, err := svc.PreviewUpstreamMonitorConfig(context.Background(), input)
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.Len(t, snapshot.SourceRows, 1)
+	require.True(t, snapshot.SourceRows[0].AuthConfigured)
+}
+
 func TestSettingServiceRefreshUpstreamMonitorConfig_BuildsSnapshot(t *testing.T) {
 	stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", "1.88")
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -469,8 +855,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_UpdatesMappingByUpstreamGrou
 		]
 	}`)
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -533,8 +919,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_UpdatesDuplicateUpstreamGrou
 		]
 	}`)
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -595,8 +981,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_AddsConfiguredGroupOptionWhe
 		"reference_multiplier": 0.08
 	}`)
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -709,6 +1095,46 @@ func TestNormalizeUpstreamMonitorConfig_KeepsMultipleUpstreamGroupsForSameLocalG
 	require.Len(t, cfg.GroupMappings, 2)
 	require.Equal(t, "id:cheap", cfg.GroupMappings[0].UpstreamGroupKey)
 	require.Equal(t, "id:fast", cfg.GroupMappings[1].UpstreamGroupKey)
+	require.NoError(t, validateUpstreamMonitorConfig(cfg))
+}
+
+func TestNormalizeUpstreamMonitorConfig_KeepsDistinctModelFamiliesForSameLocalGroup(t *testing.T) {
+	cfg := &UpstreamMonitorConfig{
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{ID: "source_a", Name: "A", Kind: "custom", Currency: "CNY", ExchangeRate: 7.2},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{
+			{
+				ID:                  "map_gpt",
+				LocalGroupID:        1,
+				LocalGroup:          "0.2倍率",
+				UpstreamGroupKey:    "id:cheap",
+				UpstreamGroup:       "codex-cheap",
+				ModelFamily:         "gpt",
+				ReferenceMultiplier: 0.08,
+				SourceIDs:           []string{"source_a"},
+			},
+			{
+				ID:                  "map_claude",
+				LocalGroupID:        1,
+				LocalGroup:          "0.2倍率",
+				UpstreamGroupKey:    "id:cheap",
+				UpstreamGroup:       "codex-cheap",
+				ModelFamily:         "claude",
+				ReferenceMultiplier: 0.10,
+				SourceIDs:           []string{"source_a"},
+			},
+		},
+	}
+
+	normalizeUpstreamMonitorConfig(cfg)
+	require.Len(t, cfg.GroupMappings, 2)
+	require.Equal(t, "gpt", cfg.GroupMappings[0].ModelFamily)
+	require.Equal(t, "claude", cfg.GroupMappings[1].ModelFamily)
+	require.InDelta(t, 0.08, cfg.GroupMappings[0].ReferenceMultiplier, 0.00000001)
+	require.InDelta(t, 0.10, cfg.GroupMappings[1].ReferenceMultiplier, 0.00000001)
 	require.NoError(t, validateUpstreamMonitorConfig(cfg))
 }
 
@@ -883,8 +1309,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_UpdatesMappingFromGroupRatio
 		}
 	}`)
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -938,8 +1364,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_UpdatesMappingFromGroupRatio
 }
 
 func TestSettingServicePreviewUpstreamMonitorConfig_UsesMappingReferenceMultiplier(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -995,8 +1421,8 @@ func TestSettingServicePreviewUpstreamMonitorConfig_UsesMappingReferenceMultipli
 }
 
 func TestSettingServicePreviewUpstreamMonitorConfig_AppliesExchangeRateForForeignCurrency(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -1048,8 +1474,8 @@ func TestSettingServicePreviewUpstreamMonitorConfig_AppliesExchangeRateForForeig
 }
 
 func TestSettingServicePreviewUpstreamMonitorConfig_UsesLocalGroupID(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -1107,9 +1533,105 @@ func TestSettingServicePreviewUpstreamMonitorConfig_UsesLocalGroupID(t *testing.
 	require.InDelta(t, 0.60, row.EstimatedMarginRate, 0.0001)
 }
 
+func TestValidateUpstreamMonitorConfig_RejectsDuplicateBusinessMappingOnSameSource(t *testing.T) {
+	cfg := &UpstreamMonitorConfig{
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:                  "source_a",
+				Name:                "Source A",
+				Kind:                "custom",
+				Enabled:             true,
+				AutoSyncEnabled:     true,
+				FetchMode:           upstreamMonitorFetchModeAuto,
+				PricingURL:          "https://example.com/a",
+				AuthMode:            "none",
+				Currency:            "CNY",
+				ExchangeRate:        7.2,
+				ReferenceMultiplier: 0.08,
+			},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{
+			{
+				ID:                  "map_1",
+				LocalGroupID:        1,
+				LocalGroup:          "GPT",
+				UpstreamGroupKey:    "up:gpt",
+				UpstreamGroup:       "GPT upstream",
+				ModelFamily:         "gpt",
+				SourceIDs:           []string{"source_a"},
+				ReferenceMultiplier: 0.08,
+			},
+			{
+				ID:                  "map_2",
+				LocalGroupID:        1,
+				LocalGroup:          "GPT",
+				UpstreamGroupKey:    "up:gpt",
+				UpstreamGroup:       "GPT upstream",
+				ModelFamily:         "gpt",
+				SourceIDs:           []string{"source_a"},
+				ReferenceMultiplier: 0.10,
+			},
+		},
+	}
+
+	normalizeUpstreamMonitorConfig(cfg)
+	err := validateUpstreamMonitorConfig(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "duplicate local/upstream mapping for source")
+}
+
+func TestValidateUpstreamMonitorConfig_AllowsSameLocalAndUpstreamForDifferentModelFamilies(t *testing.T) {
+	cfg := &UpstreamMonitorConfig{
+		RefreshIntervalMinutes: 10,
+		DefaultExchangeRate:    7.2,
+		Sources: []UpstreamMonitorSource{
+			{
+				ID:                  "source_a",
+				Name:                "Source A",
+				Kind:                "custom",
+				Enabled:             true,
+				AutoSyncEnabled:     true,
+				FetchMode:           upstreamMonitorFetchModeAuto,
+				PricingURL:          "https://example.com/a",
+				AuthMode:            "none",
+				Currency:            "CNY",
+				ExchangeRate:        7.2,
+				ReferenceMultiplier: 0.08,
+			},
+		},
+		GroupMappings: []UpstreamMonitorGroupMap{
+			{
+				ID:                  "map_1",
+				LocalGroupID:        1,
+				LocalGroup:          "GPT",
+				UpstreamGroupKey:    "up:gpt",
+				UpstreamGroup:       "GPT upstream",
+				ModelFamily:         "gpt",
+				SourceIDs:           []string{"source_a"},
+				ReferenceMultiplier: 0.08,
+			},
+			{
+				ID:                  "map_2",
+				LocalGroupID:        1,
+				LocalGroup:          "GPT",
+				UpstreamGroupKey:    "up:gpt",
+				UpstreamGroup:       "GPT upstream",
+				ModelFamily:         "claude",
+				SourceIDs:           []string{"source_a"},
+				ReferenceMultiplier: 0.10,
+			},
+		},
+	}
+
+	normalizeUpstreamMonitorConfig(cfg)
+	require.NoError(t, validateUpstreamMonitorConfig(cfg))
+}
+
 func TestSettingServiceRefreshStoredUpstreamMonitorConfig_InitializesMissingConfig(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{})
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{})
 
 	result, err := svc.RefreshStoredUpstreamMonitorConfig(context.Background())
 	require.NoError(t, err)
@@ -1171,8 +1693,8 @@ func TestSettingServiceRefreshStoredUpstreamMonitorSource_RefreshesOnlyRequested
 	require.NoError(t, err)
 	repo.data[SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := NewSettingService(repo, nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{})
+	svc := NewUpstreamMonitorService(repo)
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{})
 
 	result, err := svc.RefreshStoredUpstreamMonitorSource(context.Background(), "source_b")
 	require.NoError(t, err)
@@ -1192,8 +1714,8 @@ func TestSettingServiceRefreshStoredUpstreamMonitorSource_RefreshesOnlyRequested
 func TestSettingServiceRefreshUpstreamMonitorConfig_RecordsSyncError(t *testing.T) {
 	stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", "not-a-number")
 
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{})
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{})
 
 	cfg := &UpstreamMonitorConfig{
 		Enabled:                true,
@@ -1231,8 +1753,8 @@ func TestSettingServiceRefreshUpstreamMonitorConfig_RecordsSyncError(t *testing.
 }
 
 func TestSettingServicePreviewUpstreamMonitorConfig_IgnoresDisabledSourceMultiplier(t *testing.T) {
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{
 				ID:             1,
@@ -1308,13 +1830,13 @@ func TestSettingServicePreviewUpstreamMonitorConfig_IgnoresDisabledSourceMultipl
 
 func TestSettingServicePreviewUpstreamMonitorConfig_BuildsAccountRiskRows(t *testing.T) {
 	rate := 1.15
-	svc := NewSettingService(newUpstreamMonitorSettingRepo(), nil)
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{ID: 10, Name: "VIP", Platform: PlatformOpenAI, RateMultiplier: 1.30, Status: StatusActive},
 		},
 	})
-	svc.SetUpstreamMonitorAccountLister(upstreamMonitorTestAccountLister{
+	svc.SetAccountLister(upstreamMonitorTestAccountLister{
 		accounts: []Account{
 			{
 				ID:             20,

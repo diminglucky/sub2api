@@ -204,6 +204,7 @@ export function buildSourceMappingKey(
     sourceID.trim(),
     localGroupID || mapping.local_group.trim().toLowerCase(),
     (mapping.upstream_group_key || mapping.upstream_group).trim().toLowerCase(),
+    String(mapping.model_family || "").trim().toLowerCase(),
   ].join("|");
 }
 

@@ -1,8 +1,10 @@
-import { flushPromises, mount } from "@vue/test-utils";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { ref } from "vue";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import UpstreamMonitorView from "../UpstreamMonitorView.vue";
+
+enableAutoUnmount(afterEach);
 
 const {
   getUpstreamMonitorConfig,
@@ -99,7 +101,7 @@ function monitorConfig(overrides: Record<string, unknown> = {}) {
   };
 }
 
-async function mountView() {
+async function mountView(extraStubs: Record<string, unknown> = {}) {
   const wrapper = mount(UpstreamMonitorView, {
     global: {
       stubs: {
@@ -108,6 +110,7 @@ async function mountView() {
         Input: true,
         Toggle: true,
         UpstreamMonitorSourceCard: true,
+        ...extraStubs,
       },
     },
   });
@@ -117,6 +120,14 @@ async function mountView() {
 
 describe("UpstreamMonitorView sources page", () => {
   beforeEach(() => {
+    getUpstreamMonitorConfig.mockReset();
+    previewUpstreamMonitorConfig.mockReset();
+    refreshUpstreamMonitorConfig.mockReset();
+    updateUpstreamMonitorConfig.mockReset();
+    getGroups.mockReset();
+    showError.mockReset();
+    showSuccess.mockReset();
+
     getUpstreamMonitorConfig.mockResolvedValue(monitorConfig());
     previewUpstreamMonitorConfig.mockResolvedValue(previewSnapshot());
     refreshUpstreamMonitorConfig.mockResolvedValue({
@@ -130,8 +141,6 @@ describe("UpstreamMonitorView sources page", () => {
     });
     updateUpstreamMonitorConfig.mockResolvedValue(monitorConfig());
     getGroups.mockResolvedValue([]);
-    showError.mockReset();
-    showSuccess.mockReset();
   });
 
   it("renders upstream source management directly without overview tabs", async () => {
@@ -143,6 +152,23 @@ describe("UpstreamMonitorView sources page", () => {
     expect(wrapper.find("#overview-panel").exists()).toBe(false);
     expect(wrapper.find("#sources-panel").exists()).toBe(false);
     expect(wrapper.find(".upstream-monitor-page").attributes("data-active-tab")).toBeUndefined();
+  });
+
+  it("reloads monitor data after admin compliance is accepted", async () => {
+    getGroups
+      .mockRejectedValueOnce(new Error("ADMIN_COMPLIANCE_ACK_REQUIRED"))
+      .mockResolvedValueOnce([]);
+
+    await mountView();
+
+    expect(getUpstreamMonitorConfig).toHaveBeenCalledTimes(1);
+    expect(getGroups).toHaveBeenCalledTimes(1);
+
+    window.dispatchEvent(new CustomEvent("admin-compliance-accepted"));
+    await flushPromises();
+
+    expect(getUpstreamMonitorConfig).toHaveBeenCalledTimes(2);
+    expect(getGroups).toHaveBeenCalledTimes(2);
   });
 
   it("recalculates source summary margin from visible local and upstream multipliers", async () => {
@@ -250,9 +276,10 @@ describe("UpstreamMonitorView sources page", () => {
           account_ids: [],
           fetch_mode: "auto",
           base_url: "https://pool.example.com",
-          pricing_url: "https://pool.example.com/api/v1/channels/available",
+          pricing_url: "https://pool.example.com/api/v1/groups/available",
           pricing_path_hint: "",
           auth_mode: "bearer",
+          auth_username: "",
           auth_header_name: "",
           auth_token: "fresh-token",
           auth_configured: false,
@@ -288,5 +315,295 @@ describe("UpstreamMonitorView sources page", () => {
     );
     expect(updateUpstreamMonitorConfig.mock.calls.at(-1)?.[0].sources[0].auth_token).toBe("fresh-token");
     expect(refreshUpstreamMonitorConfig).toHaveBeenCalledWith();
+  });
+
+  it("auto-fills the standard endpoint internally when choosing a supported source kind", async () => {
+    getUpstreamMonitorConfig.mockResolvedValue(
+      monitorConfig({
+        sources: [
+          {
+            id: "source_1",
+            name: "Draft Pool",
+            kind: "manual",
+            enabled: true,
+            auto_sync_enabled: true,
+            account_ids: [],
+            fetch_mode: "auto",
+            base_url: "https://pool.example.com",
+            pricing_url: "",
+            pricing_path_hint: "",
+            auth_mode: "none",
+            auth_username: "",
+            auth_header_name: "",
+            auth_token: "",
+            auth_configured: false,
+            currency: "CNY",
+            exchange_rate: 1,
+            reference_multiplier: 0,
+            upstream_group_options: [],
+            last_sync_at: null,
+            last_sync_status: "idle",
+            last_sync_error: "",
+            notes: "",
+          },
+        ],
+      }),
+    );
+
+    const wrapper = await mountView({
+      UpstreamMonitorSourceCard: {
+        props: [
+          "source",
+          "sourceId",
+          "index",
+          "expanded",
+          "sourceSyncing",
+          "canSync",
+          "mappedGroupsCount",
+          "mappingRowsTotalCount",
+          "canAddMapping",
+          "mappingRows",
+          "localGroupOptions",
+          "upstreamGroupOptions",
+          "upstreamGroupOptionChips",
+          "hiddenUpstreamGroupOptionCount",
+          "summaryGroups",
+          "hiddenSummaryGroupCount",
+          "worstStatus",
+          "lowestMarginLabel",
+          "accountOptions",
+          "sourceKindOptions",
+          "authModeOptions",
+          "fetchModeOptions",
+        ],
+        emits: ["update-source"],
+        template: `
+          <div
+            data-test="source-props"
+            :data-auth-mode="source.auth_mode"
+            :data-pricing-url="source.pricing_url"
+            :data-fetch-mode="source.fetch_mode"
+          >
+            <button
+              type="button"
+              data-test="change-kind"
+              @click="$emit('update-source', { field: 'kind', value: 'sub2api' })"
+            >
+              change kind
+            </button>
+          </div>
+        `,
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="change-kind"]').trigger("click");
+    await flushPromises();
+
+    const sourceProps = wrapper.get('[data-test="source-props"]');
+    expect(sourceProps.attributes("data-pricing-url")).toBe(
+      "https://pool.example.com/api/v1/groups/available",
+    );
+    expect(sourceProps.attributes("data-auth-mode")).toBe("login");
+    expect(sourceProps.attributes("data-fetch-mode")).toBe("auto");
+  });
+
+  it("uses site URL instead of pricing URL to enable sync for standard sources", async () => {
+    const draftConfig = monitorConfig({
+      sources: [
+        {
+          id: "source_1",
+          name: "NewAPI Pool",
+          kind: "newapi",
+          enabled: true,
+          auto_sync_enabled: true,
+          account_ids: [],
+          fetch_mode: "auto",
+          base_url: "https://relay.example.com",
+          pricing_url: "",
+          pricing_path_hint: "",
+          auth_mode: "login",
+          auth_username: "monitor@example.com",
+          auth_header_name: "",
+          auth_token: "password",
+          auth_configured: false,
+          currency: "CNY",
+          exchange_rate: 1,
+          reference_multiplier: 0,
+          upstream_group_options: [],
+          last_sync_at: null,
+          last_sync_status: "idle",
+          last_sync_error: "",
+          notes: "",
+        },
+      ],
+    });
+    getUpstreamMonitorConfig.mockResolvedValue(draftConfig);
+    updateUpstreamMonitorConfig.mockResolvedValue(draftConfig);
+    refreshUpstreamMonitorConfig.mockResolvedValue({
+      config: draftConfig,
+      summary: {
+        attempted_count: 1,
+        success_count: 1,
+        failed_count: 0,
+        skipped_count: 0,
+      },
+    });
+
+    const wrapper = await mountView({
+      UpstreamMonitorSourceCard: {
+        props: ["source", "canSync"],
+        emits: ["sync"],
+        template: `
+          <button
+            type="button"
+            data-test="sync-source"
+            :data-can-sync="String(canSync)"
+            @click="$emit('sync')"
+          >
+            sync
+          </button>
+        `,
+      },
+    });
+    await flushPromises();
+
+    const syncButton = wrapper.get('[data-test="sync-source"]');
+    expect(syncButton.attributes("data-can-sync")).toBe("true");
+
+    await syncButton.trigger("click");
+    await flushPromises();
+
+    expect(showError).not.toHaveBeenCalledWith("admin.upstreamMonitor.sources.pullGroupsMissingUrl");
+    expect(refreshUpstreamMonitorConfig).toHaveBeenCalledWith("source_1");
+  });
+
+  it("shows the source sync error instead of a success toast when pulling groups fails", async () => {
+    const failedConfig = monitorConfig({
+      sources: [
+        {
+          id: "source_1",
+          name: "NB",
+          kind: "newapi",
+          enabled: true,
+          auto_sync_enabled: true,
+          account_ids: [],
+          fetch_mode: "auto",
+          base_url: "https://pool.gptstore.club",
+          pricing_url: "",
+          pricing_path_hint: "",
+          auth_mode: "cookie",
+          auth_username: "",
+          auth_header_name: "",
+          auth_token: "",
+          auth_configured: true,
+          currency: "CNY",
+          exchange_rate: 1,
+          reference_multiplier: 0,
+          upstream_group_options: [],
+          last_sync_at: "2026-06-27T09:24:02Z",
+          last_sync_status: "error",
+          last_sync_error: "newapi cookie auth requires JSON credential",
+          notes: "",
+        },
+      ],
+    });
+    getUpstreamMonitorConfig.mockResolvedValue(failedConfig);
+    updateUpstreamMonitorConfig.mockResolvedValue(failedConfig);
+    refreshUpstreamMonitorConfig.mockResolvedValue({
+      config: failedConfig,
+      summary: {
+        attempted_count: 1,
+        success_count: 0,
+        failed_count: 1,
+        skipped_count: 0,
+      },
+    });
+
+    const wrapper = await mountView({
+      UpstreamMonitorSourceCard: {
+        props: ["source", "canSync"],
+        emits: ["sync"],
+        template: `
+          <button
+            type="button"
+            data-test="sync-source"
+            :data-can-sync="String(canSync)"
+            @click="$emit('sync')"
+          >
+            sync
+          </button>
+        `,
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="sync-source"]').trigger("click");
+    await flushPromises();
+
+    expect(showError).toHaveBeenCalledWith("newapi cookie auth requires JSON credential");
+    expect(showSuccess).not.toHaveBeenCalledWith(
+      expect.stringContaining("admin.upstreamMonitor.sources.pullGroupsSuccess"),
+    );
+  });
+
+  it("replaces legacy NewAPI pricing endpoints internally when the site URL changes", async () => {
+    getUpstreamMonitorConfig.mockResolvedValue(
+      monitorConfig({
+        sources: [
+          {
+            id: "source_1",
+            name: "Draft Pool",
+            kind: "newapi",
+            enabled: true,
+            auto_sync_enabled: true,
+            account_ids: [],
+            fetch_mode: "auto",
+            base_url: "https://relay.example.com",
+            pricing_url: "https://relay.example.com/api/ratio_config",
+            pricing_path_hint: "",
+            auth_mode: "none",
+            auth_username: "",
+            auth_header_name: "",
+            auth_token: "",
+            auth_configured: false,
+            currency: "CNY",
+            exchange_rate: 1,
+            reference_multiplier: 0,
+            upstream_group_options: [],
+            last_sync_at: null,
+            last_sync_status: "idle",
+            last_sync_error: "",
+            notes: "",
+          },
+        ],
+      }),
+    );
+
+    const wrapper = await mountView({
+      UpstreamMonitorSourceCard: {
+        props: ["source"],
+        emits: ["update-source"],
+        template: `
+          <div data-test="source-props" :data-pricing-url="source.pricing_url">
+            <button
+              type="button"
+              data-test="change-base-url"
+              @click="$emit('update-source', { field: 'base_url', value: 'https://relay.example.com' })"
+            >
+              change
+            </button>
+          </div>
+        `,
+      },
+    });
+    await flushPromises();
+
+    await wrapper.get('[data-test="change-base-url"]').trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get('[data-test="source-props"]').attributes("data-pricing-url")).toBe(
+      "https://relay.example.com/api/user/self/groups",
+    );
   });
 });

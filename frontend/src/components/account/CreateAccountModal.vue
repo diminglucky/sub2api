@@ -111,6 +111,19 @@
           </button>
           <button
             type="button"
+            @click="form.platform = 'zhipu'"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'zhipu'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <Icon name="sparkles" size="sm" />
+            智谱 GLM
+          </button>
+          <button
+            type="button"
             @click="form.platform = 'gemini'"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
@@ -336,6 +349,38 @@
             </div>
           </button>
 
+        </div>
+      </div>
+
+      <!-- Account Type Selection (Zhipu GLM) -->
+      <div v-if="form.platform === 'zhipu'">
+        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3" data-tour="account-form-type">
+          <button
+            type="button"
+            @click="accountCategory = 'apikey'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountCategory === 'apikey'
+                ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20'
+                : 'border-gray-200 hover:border-cyan-300 dark:border-dark-600 dark:hover:border-cyan-700'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountCategory === 'apikey'
+                  ? 'bg-cyan-500 text-white'
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="key" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">API Key</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">OpenAI-compatible GLM API</span>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -1019,6 +1064,8 @@
             :placeholder="
               form.platform === 'openai'
                 ? 'https://api.openai.com'
+                : form.platform === 'zhipu'
+                  ? 'https://open.bigmodel.cn/api/paas/v4'
                 : form.platform === 'gemini'
                   ? 'https://generativelanguage.googleapis.com'
                   : 'https://api.anthropic.com'
@@ -1036,6 +1083,8 @@
             :placeholder="
               form.platform === 'openai'
                 ? 'sk-proj-...'
+                : form.platform === 'zhipu'
+                  ? 'sk-...'
                 : form.platform === 'gemini'
                   ? 'AIza...'
                   : 'sk-ant-...'
@@ -3279,12 +3328,14 @@ const oauthStepTitle = computed(() => {
 // Platform-specific hints for API Key type
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
+  if (form.platform === 'zhipu') return '智谱 GLM 使用 OpenAI-compatible 地址，默认 https://open.bigmodel.cn/api/paas/v4'
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
+  if (form.platform === 'zhipu') return '填写智谱开放平台 API Key。'
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
@@ -3796,6 +3847,8 @@ watch(
     apiKeyBaseUrl.value =
       (newPlatform === 'openai')
         ? 'https://api.openai.com'
+        : newPlatform === 'zhipu'
+          ? 'https://open.bigmodel.cn/api/paas/v4'
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : 'https://api.anthropic.com'
@@ -3822,6 +3875,10 @@ watch(
     }
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
+    }
+    if (newPlatform === 'zhipu') {
+      accountCategory.value = 'apikey'
+      addMethod.value = 'oauth'
     }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
@@ -4615,6 +4672,8 @@ const handleSubmit = async () => {
   const defaultBaseUrl =
     form.platform === 'openai'
       ? 'https://api.openai.com'
+      : form.platform === 'zhipu'
+        ? 'https://open.bigmodel.cn/api/paas/v4'
       : form.platform === 'gemini'
         ? 'https://generativelanguage.googleapis.com'
         : 'https://api.anthropic.com'

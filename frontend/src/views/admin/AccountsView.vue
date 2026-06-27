@@ -547,6 +547,7 @@ const HIDDEN_COLUMNS_VERSION = 2
 const platformDisplayMeta: Record<AccountPlatform, { label: string; dotClass: string }> = {
   anthropic: { label: 'Anthropic', dotClass: 'bg-orange-500' },
   openai: { label: 'OpenAI', dotClass: 'bg-emerald-500' },
+  zhipu: { label: '智谱 GLM', dotClass: 'bg-cyan-500' },
   gemini: { label: 'Gemini', dotClass: 'bg-blue-500' },
   antigravity: { label: 'Antigravity', dotClass: 'bg-violet-500' }
 }

@@ -43,9 +43,10 @@ func TestSettingHandler_RefreshUpstreamMonitorConfig_UsesStoredConfigWithoutBody
 	require.NoError(t, err)
 	repo.values[service.SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := service.NewSettingService(repo, &config.Config{})
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorHandlerGroupLister{})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	upstreamMonitorSvc := service.NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorHandlerGroupLister{})
+	handler := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), nil, nil, nil, nil, nil, nil)
+	handler.SetUpstreamMonitorService(upstreamMonitorSvc)
 
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
@@ -57,7 +58,7 @@ func TestSettingHandler_RefreshUpstreamMonitorConfig_UsesStoredConfigWithoutBody
 	var resp response.Response
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, 0, resp.Code)
-	persisted, err := svc.GetUpstreamMonitorConfig(ctx)
+	persisted, err := upstreamMonitorSvc.GetUpstreamMonitorConfig(ctx)
 	require.NoError(t, err)
 	require.Len(t, persisted.Sources, 1)
 	require.Equal(t, "manual", persisted.Sources[0].ID)
@@ -91,9 +92,10 @@ func TestSettingHandler_RefreshUpstreamMonitorConfig_AcceptsSourceIDBody(t *test
 	require.NoError(t, err)
 	repo.values[service.SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := service.NewSettingService(repo, &config.Config{})
-	svc.SetUpstreamMonitorGroupLister(upstreamMonitorHandlerGroupLister{})
-	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	upstreamMonitorSvc := service.NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorHandlerGroupLister{})
+	handler := NewSettingHandler(service.NewSettingService(repo, &config.Config{}), nil, nil, nil, nil, nil, nil)
+	handler.SetUpstreamMonitorService(upstreamMonitorSvc)
 
 	body := bytes.NewBufferString(`{"source_id":"manual"}`)
 	rec := httptest.NewRecorder()

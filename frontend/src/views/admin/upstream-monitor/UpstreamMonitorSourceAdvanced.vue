@@ -31,7 +31,7 @@
         />
       </div>
 
-      <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div v-if="!usesStandardEndpoint" class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div>
           <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.fetchMode') }}</label>
           <select
@@ -50,43 +50,9 @@
           :hint="t('admin.upstreamMonitor.sources.fields.pricingHintHint')"
           @update:model-value="updateSourceField('pricing_path_hint', $event)"
         />
-        <div>
-          <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.authMode') }}</label>
-          <select
-            :value="source.auth_mode"
-            class="input w-full"
-            @change="updateAuthMode(($event.target as HTMLSelectElement).value)"
-          >
-            <option v-for="option in authModeOptions" :key="option.value" :value="option.value">
-              {{ t(option.labelKey) }}
-            </option>
-          </select>
-        </div>
-        <Input
-          v-if="source.auth_mode === 'header'"
-          :model-value="source.auth_header_name"
-          :label="t('admin.upstreamMonitor.sources.fields.authHeaderName')"
-          :hint="t('admin.upstreamMonitor.sources.fields.authHeaderNameHint')"
-          @update:model-value="updateSourceField('auth_header_name', $event)"
-        />
-        <div v-else class="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60">
-          <div class="text-sm font-medium text-gray-900 dark:text-white">
-            {{ t('admin.upstreamMonitor.sources.fields.status') }}
-          </div>
-          <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            {{ source.auth_configured ? t('admin.upstreamMonitor.sources.statusConfigured') : t('admin.upstreamMonitor.sources.statusPending') }}
-          </p>
-        </div>
       </div>
 
       <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Input
-          :model-value="source.auth_token"
-          :label="t('admin.upstreamMonitor.sources.fields.authToken')"
-          :placeholder="source.auth_configured ? t('admin.upstreamMonitor.sources.tokenMasked') : ''"
-          :hint="source.auth_configured ? t('admin.upstreamMonitor.sources.tokenConfigured') : t('admin.upstreamMonitor.sources.tokenHint')"
-          @update:model-value="updateSourceField('auth_token', $event)"
-        />
         <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60">
           <div class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t('admin.upstreamMonitor.sources.fields.status') }}
@@ -167,12 +133,12 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "@/components/icons/Icon.vue";
 import Input from "@/components/common/Input.vue";
 import TextArea from "@/components/common/TextArea.vue";
 import type {
-  UpstreamMonitorAuthMode,
   UpstreamMonitorCurrency,
   UpstreamMonitorFetchMode,
   UpstreamMonitorPreviewAccountInfo,
@@ -184,12 +150,11 @@ import {
   sourceSyncDetail,
   uniqueSourceNumberIDs,
 } from "./sourceCardFormat";
-import type { SourceFetchModeOptionConfig, SourceSelectOptionConfig } from "./sourceCardTypes";
+import type { SourceFetchModeOptionConfig } from "./sourceCardTypes";
 
 const props = defineProps<{
   source: UpstreamMonitorSourceConfig;
   accountOptions: UpstreamMonitorPreviewAccountInfo[];
-  authModeOptions: ReadonlyArray<SourceSelectOptionConfig>;
   fetchModeOptions: ReadonlyArray<SourceFetchModeOptionConfig>;
 }>();
 
@@ -199,6 +164,7 @@ const emit = defineEmits<{
 }>();
 
 const { t, locale } = useI18n();
+const usesStandardEndpoint = computed(() => props.source.kind === "sub2api" || props.source.kind === "newapi");
 
 type SourceFieldUpdatePayload<K extends keyof UpstreamMonitorSourceConfig = keyof UpstreamMonitorSourceConfig> = {
   field: K;
@@ -215,10 +181,6 @@ function updateCurrency(value: string) {
 
 function updateFetchMode(value: string) {
   updateSourceField("fetch_mode", value as UpstreamMonitorFetchMode);
-}
-
-function updateAuthMode(value: string) {
-  updateSourceField("auth_mode", value as UpstreamMonitorAuthMode);
 }
 
 function isAccountSelected(accountID: number): boolean {

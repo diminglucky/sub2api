@@ -57,6 +57,7 @@ func firstNonEmpty(values ...string) string {
 // SettingHandler 系统设置处理器
 type SettingHandler struct {
 	settingService           *service.SettingService
+	upstreamMonitorService   *service.UpstreamMonitorService
 	emailService             *service.EmailService
 	turnstileService         *service.TurnstileService
 	opsService               *service.OpsService
@@ -83,6 +84,28 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+// SetUpstreamMonitorService attaches the focused upstream monitor service without
+// changing the constructor signature used by existing unit tests.
+func (h *SettingHandler) SetUpstreamMonitorService(upstreamMonitorService *service.UpstreamMonitorService) {
+	h.upstreamMonitorService = upstreamMonitorService
+}
+
+func (h *SettingHandler) upstreamMonitor() *service.UpstreamMonitorService {
+	if h == nil {
+		return nil
+	}
+	return h.upstreamMonitorService
+}
+
+func (h *SettingHandler) requireUpstreamMonitor(c *gin.Context) *service.UpstreamMonitorService {
+	svc := h.upstreamMonitor()
+	if svc == nil {
+		response.InternalError(c, "upstream monitor service not configured")
+		return nil
+	}
+	return svc
 }
 
 // GetSettings 获取所有系统设置
@@ -3407,7 +3430,11 @@ func (h *SettingHandler) UpdateStreamTimeoutSettings(c *gin.Context) {
 // GetUpstreamMonitorConfig 获取上游监测配置
 // GET /api/v1/admin/settings/upstream-monitor
 func (h *SettingHandler) GetUpstreamMonitorConfig(c *gin.Context) {
-	cfg, err := h.settingService.GetUpstreamMonitorConfig(c.Request.Context())
+	svc := h.requireUpstreamMonitor(c)
+	if svc == nil {
+		return
+	}
+	cfg, err := svc.GetUpstreamMonitorConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -3424,12 +3451,16 @@ func (h *SettingHandler) UpdateUpstreamMonitorConfig(c *gin.Context) {
 		return
 	}
 
-	if err := h.settingService.SaveUpstreamMonitorConfig(c.Request.Context(), &req); err != nil {
+	svc := h.requireUpstreamMonitor(c)
+	if svc == nil {
+		return
+	}
+	if err := svc.SaveUpstreamMonitorConfig(c.Request.Context(), &req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 
-	updated, err := h.settingService.GetUpstreamMonitorConfig(c.Request.Context())
+	updated, err := svc.GetUpstreamMonitorConfig(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -3445,7 +3476,11 @@ func (h *SettingHandler) PreviewUpstreamMonitorConfig(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
-	snapshot, err := h.settingService.PreviewUpstreamMonitorConfig(c.Request.Context(), &req)
+	svc := h.requireUpstreamMonitor(c)
+	if svc == nil {
+		return
+	}
+	snapshot, err := svc.PreviewUpstreamMonitorConfig(c.Request.Context(), &req)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -3469,10 +3504,14 @@ func (h *SettingHandler) RefreshUpstreamMonitorConfig(c *gin.Context) {
 	var result *service.UpstreamMonitorRefreshResult
 	var err error
 	sourceID := strings.TrimSpace(req.SourceID)
+	svc := h.requireUpstreamMonitor(c)
+	if svc == nil {
+		return
+	}
 	if sourceID != "" {
-		result, err = h.settingService.RefreshStoredUpstreamMonitorSource(c.Request.Context(), sourceID)
+		result, err = svc.RefreshStoredUpstreamMonitorSource(c.Request.Context(), sourceID)
 	} else {
-		result, err = h.settingService.RefreshStoredUpstreamMonitorConfig(c.Request.Context())
+		result, err = svc.RefreshStoredUpstreamMonitorConfig(c.Request.Context())
 	}
 	if err != nil {
 		response.BadRequest(c, err.Error())

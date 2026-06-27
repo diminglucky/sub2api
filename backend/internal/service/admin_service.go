@@ -1767,6 +1767,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 	switch platform {
 	case PlatformOpenAI:
 		return openai.DefaultModelIDs()
+	case PlatformZhipu:
+		return defaultZhipuModelIDs()
 	case PlatformGemini:
 		ids := make([]string, 0, len(geminicli.DefaultModels))
 		for _, model := range geminicli.DefaultModels {
@@ -1786,6 +1788,20 @@ func defaultModelsListCandidateIDs(platform string) []string {
 			ids = append(ids, model.ID)
 		}
 		return ids
+	}
+}
+
+func defaultZhipuModelIDs() []string {
+	return []string{
+		"glm-5.1", "glm-5", "glm-5-turbo",
+		"glm-4.7", "glm-4.7-flashx", "glm-4.7-flash",
+		"glm-4.5-airx", "glm-4.5-flash",
+		"glm-4", "glm-4v", "glm-4-plus", "glm-4-0520",
+		"glm-4-air", "glm-4-airx", "glm-4-long", "glm-4-flash",
+		"glm-4v-plus", "glm-4.5", "glm-4.6",
+		"glm-3-turbo", "glm-4-alltools",
+		"chatglm_turbo", "chatglm_pro", "chatglm_std", "chatglm_lite",
+		"cogview-3", "cogvideo",
 	}
 }
 

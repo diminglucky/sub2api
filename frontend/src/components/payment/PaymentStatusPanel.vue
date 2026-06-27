@@ -132,7 +132,7 @@ import { getPaymentPopupFeatures } from '@/components/payment/providerConfig'
 import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
-import QRCode from 'qrcode'
+import * as QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 

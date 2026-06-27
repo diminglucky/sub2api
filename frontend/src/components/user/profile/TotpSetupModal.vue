@@ -172,7 +172,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { totpAPI } from '@/api'
 import type { TotpSetupResponse } from '@/types'
-import QRCode from 'qrcode'
+import * as QRCode from 'qrcode'
 
 const emit = defineEmits<{
   close: []

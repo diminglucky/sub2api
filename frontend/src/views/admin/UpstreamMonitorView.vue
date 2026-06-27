@@ -91,7 +91,7 @@
               @toggle-expanded="toggleSourceExpanded(source)"
               @remove="removeSource(index)"
               @update-source="updateSourceField(source, $event)"
-              @apply-preset="applySourcePreset(source)"
+              @clear-auth-token="clearSourceAuthToken(source)"
               @sync="syncSource(source)"
               @toggle-account="toggleSourceAccount(source, $event)"
               @add-mapping="addSourceGroupMapping(source)"
@@ -99,8 +99,6 @@
               @bind-mapping="bindSourceGroupMapping(source, $event)"
               @update-local-mapping="updateMappingLocalGroup(source, $event)"
               @select-upstream-mapping="selectUpstreamGroupOption(source, $event)"
-              @update-manual-upstream-mapping="updateManualUpstreamGroup(source, $event)"
-              @update-reference-multiplier="updateMappingReferenceMultiplier(source, $event)"
             />
           </div>
         </section>
@@ -120,7 +118,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
@@ -237,6 +235,7 @@ const authModeOptions = [
   { value: "bearer", labelKey: "admin.upstreamMonitor.authModes.bearer" },
   { value: "header", labelKey: "admin.upstreamMonitor.authModes.header" },
   { value: "cookie", labelKey: "admin.upstreamMonitor.authModes.cookie" },
+  { value: "login", labelKey: "admin.upstreamMonitor.authModes.login" },
 ] as const;
 
 const fetchModeOptions: Array<{ value: UpstreamMonitorFetchMode; labelKey: string }> = [
@@ -296,8 +295,10 @@ function createSource(): UpstreamMonitorSourceConfig {
     pricing_url: "",
     pricing_path_hint: "",
     auth_mode: "none",
+    auth_username: "",
     auth_header_name: "",
     auth_token: "",
+    auth_token_cleared: false,
     auth_configured: false,
     currency: "CNY",
     exchange_rate: form.value.default_exchange_rate || 7.2,
@@ -331,6 +332,26 @@ type SourceFieldUpdatePayload = {
 
 function updateSourceField(source: UpstreamMonitorSourceConfig, payload: SourceFieldUpdatePayload) {
   source[payload.field] = payload.value as never;
+  if (payload.field === "auth_token" && String(payload.value || "").trim()) {
+    source.auth_token_cleared = false;
+  }
+  if (payload.field === "kind" || payload.field === "base_url") {
+    const nextPricingURL = defaultPricingURLForSource(source);
+    if (nextPricingURL && (usesStandardRateEndpoint(source) || !String(source.pricing_url || "").trim())) {
+      source.pricing_url = nextPricingURL;
+      source.fetch_mode = "auto";
+      source.pricing_path_hint = "";
+    }
+    if (payload.field === "kind") {
+      applyDefaultAuthModeForSource(source);
+    }
+  }
+}
+
+function clearSourceAuthToken(source: UpstreamMonitorSourceConfig) {
+  source.auth_token = "";
+  source.auth_token_cleared = true;
+  source.auth_configured = false;
 }
 
 function uniqueNumberIDs(values: Array<number | string>): number[] {
@@ -432,7 +453,7 @@ function isSourceSyncing(source: UpstreamMonitorSourceConfig): boolean {
 }
 
 function canSyncSource(source: UpstreamMonitorSourceConfig): boolean {
-  return Boolean(sourceID(source) && source.pricing_url.trim()) && !saving.value && !syncing.value && !isSourceSyncing(source);
+  return Boolean(sourceID(source) && sourceHasSyncEndpoint(source)) && !saving.value && !syncing.value && !isSourceSyncing(source);
 }
 
 function setSourceSyncing(sourceID: string, value: boolean) {
@@ -499,20 +520,6 @@ function updateMappingLocalGroup(
   mappingRows.updateLocalGroup(source, payload.mapping, payload.value);
 }
 
-function updateManualUpstreamGroup(
-  source: UpstreamMonitorSourceConfig,
-  payload: SourceMappingUpdatePayload,
-) {
-  mappingRows.updateManualUpstreamGroup(source, payload.mapping, payload.value);
-}
-
-function updateMappingReferenceMultiplier(
-  source: UpstreamMonitorSourceConfig,
-  payload: SourceMappingUpdatePayload,
-) {
-  mappingRows.updateReferenceMultiplier(source, payload.mapping, payload.value);
-}
-
 function ensureSourceID(source: UpstreamMonitorSourceConfig): string {
   const currentID = sourceID(source);
   if (currentID) {
@@ -562,30 +569,29 @@ function defaultPricingURLForSource(source: UpstreamMonitorSourceConfig): string
   const base = sourceBaseCandidate(source);
   if (!base) return "";
   if (source.kind === "sub2api") {
-    return `${base}/api/v1/channels/available`;
+    return `${base}/api/v1/groups/available`;
   }
   if (source.kind === "newapi") {
-    return `${base}/api/ratio_config`;
+    return `${base}/api/user/self/groups`;
   }
   return "";
 }
 
-function applySourcePreset(source: UpstreamMonitorSourceConfig) {
-  const pricingURL = defaultPricingURLForSource(source);
-  if (!pricingURL) {
-    appStore.showError(t("admin.upstreamMonitor.sources.applyPresetMissingBaseUrl"));
-    return;
+function usesStandardRateEndpoint(source: UpstreamMonitorSourceConfig): boolean {
+  return source.kind === "sub2api" || source.kind === "newapi";
+}
+
+function sourceHasSyncEndpoint(source: UpstreamMonitorSourceConfig): boolean {
+  if (usesStandardRateEndpoint(source)) {
+    return Boolean(sourceBaseCandidate(source));
   }
-  if (!source.base_url.trim()) {
-    source.base_url = sourceBaseCandidate(source);
+  return Boolean(String(source.pricing_url || "").trim());
+}
+
+function applyDefaultAuthModeForSource(source: UpstreamMonitorSourceConfig) {
+  if ((source.kind === "sub2api" || source.kind === "newapi") && source.auth_mode === "none") {
+    source.auth_mode = "login";
   }
-  source.pricing_url = pricingURL;
-  source.fetch_mode = "auto";
-  source.pricing_path_hint = "";
-  if (source.kind === "sub2api") {
-    source.auth_mode = "bearer";
-  }
-  appStore.showSuccess(t("admin.upstreamMonitor.sources.applyPresetSuccess"));
 }
 
 async function addSourceGroupMapping(source: UpstreamMonitorSourceConfig) {
@@ -733,8 +739,10 @@ function sanitizeConfig(options: { dropIncompleteMappings: boolean }): UpstreamM
       base_url: source.base_url.trim(),
       pricing_url: source.pricing_url.trim(),
       pricing_path_hint: source.pricing_path_hint.trim(),
+      auth_username: source.auth_username.trim(),
       auth_header_name: source.auth_header_name.trim(),
       auth_token: (source.auth_token || "").trim(),
+      auth_token_cleared: Boolean(source.auth_token_cleared) && !String(source.auth_token || "").trim(),
       account_ids: Array.isArray(source.account_ids) ? uniqueNumberIDs(source.account_ids) : [],
       last_sync_at: source.last_sync_at || null,
       last_sync_status: source.last_sync_status || "idle",
@@ -808,7 +816,7 @@ async function syncSources() {
 
 async function syncSource(source: UpstreamMonitorSourceConfig) {
   const sid = sourceID(source);
-  if (!sid || !source.pricing_url.trim()) {
+  if (!sid || !sourceHasSyncEndpoint(source)) {
     appStore.showError(t("admin.upstreamMonitor.sources.pullGroupsMissingUrl"));
     return;
   }
@@ -825,6 +833,10 @@ async function syncSource(source: UpstreamMonitorSourceConfig) {
       await refreshPreview();
     }
     const refreshedSource = form.value.sources.find((item) => sourceID(item) === sid);
+    if (refreshedSource?.last_sync_status === "error") {
+      appStore.showError(refreshedSource.last_sync_error || t("admin.upstreamMonitor.failedToRefresh"));
+      return;
+    }
     appStore.showSuccess(
       t("admin.upstreamMonitor.sources.pullGroupsSuccess", {
         count: refreshedSource?.upstream_group_options.length || 0,
@@ -873,8 +885,17 @@ async function save() {
   }
 }
 
+function handleAdminComplianceAccepted() {
+  void reload();
+}
+
 onMounted(() => {
-  reload();
+  window.addEventListener("admin-compliance-accepted", handleAdminComplianceAccepted);
+  void reload();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("admin-compliance-accepted", handleAdminComplianceAccepted);
 });
 
 </script>

@@ -131,7 +131,7 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 	switch {
 	case account.Platform == PlatformAntigravity:
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
-	case account.IsOpenAI():
+	case account.IsOpenAICompatibleAPIKey():
 		return s.buildOpenAIUpstreamModelsRequest(ctx, account)
 	case account.IsGemini():
 		return s.buildGeminiUpstreamModelsRequest(ctx, account)
@@ -383,14 +383,7 @@ func buildV1ModelsURL(base string) string {
 }
 
 func buildOpenAIModelsURL(base string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
-	if strings.HasSuffix(normalized, "/v1/models") {
-		return normalized
-	}
-	if strings.HasSuffix(normalized, "/v1") {
-		return normalized + "/models"
-	}
-	return normalized + "/v1/models"
+	return buildOpenAIEndpointURL(base, "/v1/models")
 }
 
 func buildGeminiModelsURL(base string) string {

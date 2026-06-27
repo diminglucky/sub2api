@@ -83,6 +83,9 @@ const antigravityModels = [
 
 // 智谱 GLM
 const zhipuModels = [
+  'glm-5.1', 'glm-5', 'glm-5-turbo',
+  'glm-4.7', 'glm-4.7-flashx', 'glm-4.7-flash',
+  'glm-4.5-airx', 'glm-4.5-flash',
   'glm-4', 'glm-4v', 'glm-4-plus', 'glm-4-0520',
   'glm-4-air', 'glm-4-airx', 'glm-4-long', 'glm-4-flash',
   'glm-4v-plus', 'glm-4.5', 'glm-4.6',

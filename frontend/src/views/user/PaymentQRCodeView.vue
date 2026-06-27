@@ -41,7 +41,7 @@ import { usePaymentStore } from '@/stores/payment'
 import { paymentAPI } from '@/api/payment'
 import { extractI18nErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores'
-import QRCode from 'qrcode'
+import * as QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 

@@ -514,7 +514,7 @@ import { formatPaymentAmount, normalizePaymentCurrency } from '@/components/paym
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
-import QRCode from 'qrcode'
+import * as QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'

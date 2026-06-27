@@ -21,9 +21,6 @@
           </span>
         </div>
         <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          {{ source.pricing_url || source.base_url || t('admin.upstreamMonitor.sources.noUrl') }}
-        </p>
-        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
           {{ sourceSyncDetail(t, locale, source) }}
         </p>
       </div>
@@ -109,20 +106,14 @@
           />
           <div class="space-y-2">
             <Input
+              v-if="!usesStandardEndpoint"
               :model-value="source.pricing_url"
               :label="t('admin.upstreamMonitor.sources.fields.pricingUrl')"
+              :placeholder="t('admin.upstreamMonitor.sources.fields.pricingUrlPlaceholder')"
+              :hint="t('admin.upstreamMonitor.sources.fields.pricingUrlHint')"
               @update:model-value="updateSourceField('pricing_url', $event)"
             />
             <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="btn btn-secondary btn-sm"
-                data-source-card-action="apply-preset"
-                @click="emit('apply-preset')"
-              >
-                <Icon name="sparkles" size="sm" />
-                <span>{{ t('admin.upstreamMonitor.sources.applyPreset') }}</span>
-              </button>
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
@@ -170,6 +161,89 @@
           </div>
         </div>
 
+        <div class="mt-4 rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60" data-test="source-auth-section">
+          <div class="flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-dark-700 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                {{ t('admin.upstreamMonitor.sources.auth.title') }}
+              </h3>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t('admin.upstreamMonitor.sources.auth.description') }}
+              </p>
+            </div>
+            <span
+              v-if="source.auth_mode !== 'none' || source.auth_configured"
+              class="status-pill"
+              :class="source.auth_configured ? 'status-healthy' : 'status-unknown'"
+            >
+              {{ source.auth_configured ? t('admin.upstreamMonitor.sources.statusConfigured') : t('admin.upstreamMonitor.sources.statusPending') }}
+            </span>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+            <div>
+              <label class="input-label mb-1.5 block">{{ t('admin.upstreamMonitor.sources.fields.authMode') }}</label>
+              <select
+                :value="source.auth_mode"
+                class="input w-full"
+                @change="handleAuthModeChange(($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="option in authModeOptions" :key="option.value" :value="option.value">
+                  {{ t(option.labelKey) }}
+                </option>
+              </select>
+              <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                {{ authModeHint }}
+              </p>
+            </div>
+
+            <div v-if="source.auth_mode !== 'none'" class="space-y-4">
+              <div
+                v-if="source.auth_mode === 'login'"
+                class="rounded-xl border border-primary-100 bg-primary-50/70 p-3 text-sm text-primary-800 dark:border-primary-900/40 dark:bg-primary-950/20 dark:text-primary-200"
+                data-test="login-auth-hint"
+              >
+                {{ t('admin.upstreamMonitor.sources.loginAuthHint') }}
+              </div>
+              <Input
+                v-if="source.auth_mode === 'login'"
+                :model-value="source.auth_username"
+                :label="t('admin.upstreamMonitor.sources.fields.authUsername')"
+                :hint="t('admin.upstreamMonitor.sources.fields.authUsernameHint')"
+                @update:model-value="updateSourceField('auth_username', $event)"
+              />
+              <Input
+                v-else-if="source.auth_mode === 'header'"
+                :model-value="source.auth_header_name"
+                :label="t('admin.upstreamMonitor.sources.fields.authHeaderName')"
+                :hint="t('admin.upstreamMonitor.sources.fields.authHeaderNameHint')"
+                @update:model-value="updateSourceField('auth_header_name', $event)"
+              />
+
+              <div class="space-y-2">
+                <Input
+                  :model-value="source.auth_token"
+                  :label="source.auth_mode === 'login' ? t('admin.upstreamMonitor.sources.fields.authPassword') : t('admin.upstreamMonitor.sources.fields.authToken')"
+                  :type="source.auth_mode === 'login' ? 'password' : 'text'"
+                  :placeholder="source.auth_configured ? t('admin.upstreamMonitor.sources.tokenMasked') : ''"
+                  :hint="authTokenHint"
+                  @update:model-value="updateSourceField('auth_token', $event)"
+                />
+                <button
+                  v-if="source.auth_configured || source.auth_token"
+                  type="button"
+                  data-test="clear-auth-token"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:border-red-200 hover:text-red-600 dark:border-dark-600 dark:text-gray-300 dark:hover:border-red-800/40 dark:hover:text-red-300"
+                  @click="emit('clear-auth-token')"
+                >
+                  <Icon name="x" size="xs" />
+                  <span>{{ t('admin.upstreamMonitor.sources.clearToken') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <div class="rounded-xl border border-dashed border-gray-200 bg-gray-50/70 p-4 dark:border-dark-600 dark:bg-dark-800/60">
             <div class="flex items-center justify-between gap-4">
@@ -211,15 +285,12 @@
           @bind="emit('bind-mapping', $event)"
           @update-local="handleUpdateLocalMapping"
           @select-upstream="handleSelectUpstreamMapping"
-          @update-manual-upstream="handleUpdateManualUpstreamMapping"
-          @update-reference-multiplier="handleUpdateReferenceMultiplier"
         />
       </section>
 
       <UpstreamMonitorSourceAdvanced
         :source="source"
         :account-options="accountOptions"
-        :auth-mode-options="authModeOptions"
         :fetch-mode-options="fetchModeOptions"
         @update-source="emit('update-source', $event)"
         @toggle-account="emit('toggle-account', $event)"
@@ -229,6 +300,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import Icon from "@/components/icons/Icon.vue";
 import Input from "@/components/common/Input.vue";
@@ -261,7 +333,7 @@ import type {
   SourceMappingUpdatePayload,
 } from "./useSourceMappingRows";
 
-defineProps<{
+const props = defineProps<{
   source: UpstreamMonitorSourceConfig;
   sourceId: string;
   index: number;
@@ -295,19 +367,48 @@ const emit = defineEmits<{
   (event: "toggle-expanded"): void;
   (event: "remove"): void;
   (event: "sync"): void;
-  (event: "apply-preset"): void;
   (event: "update-source", payload: SourceFieldUpdatePayload): void;
   (event: "toggle-account", accountID: number): void;
+  (event: "clear-auth-token"): void;
   (event: "add-mapping"): void;
   (event: "remove-mapping", mapping: UpstreamMonitorGroupMapping): void;
   (event: "bind-mapping", mapping: UpstreamMonitorGroupMapping): void;
   (event: "update-local-mapping", payload: SourceMappingUpdatePayload): void;
   (event: "select-upstream-mapping", payload: SourceMappingUpdatePayload): void;
-  (event: "update-manual-upstream-mapping", payload: SourceMappingUpdatePayload): void;
-  (event: "update-reference-multiplier", payload: SourceMappingUpdatePayload): void;
 }>();
 
 const { t, locale } = useI18n();
+
+const usesStandardEndpoint = computed(() => props.source.kind === "sub2api" || props.source.kind === "newapi");
+const authModeHint = computed(() => {
+  switch (props.source.auth_mode) {
+    case "login":
+      return t("admin.upstreamMonitor.sources.authModeHints.login");
+    case "bearer":
+      return t("admin.upstreamMonitor.sources.authModeHints.bearer");
+    case "header":
+      return t("admin.upstreamMonitor.sources.authModeHints.header");
+    case "cookie":
+      return t("admin.upstreamMonitor.sources.authModeHints.cookie");
+    default:
+      return t("admin.upstreamMonitor.sources.authModeHints.none");
+  }
+});
+const authTokenHint = computed(() => {
+  if (props.source.auth_configured) {
+    return t("admin.upstreamMonitor.sources.tokenConfigured");
+  }
+  switch (props.source.auth_mode) {
+    case "login":
+      return t("admin.upstreamMonitor.sources.authPasswordHint");
+    case "cookie":
+      return t("admin.upstreamMonitor.sources.fields.authTokenHintCookie");
+    case "bearer":
+      return t("admin.upstreamMonitor.sources.fields.authTokenHintBearer");
+    default:
+      return t("admin.upstreamMonitor.sources.tokenHint");
+  }
+});
 
 function updateSourceField<K extends keyof UpstreamMonitorSourceConfig>(field: K, value: UpstreamMonitorSourceConfig[K]) {
   emit("update-source", { field, value });
@@ -317,20 +418,23 @@ function updateSourceKind(value: string) {
   updateSourceField("kind", value as UpstreamMonitorSourceKind);
 }
 
+function handleAuthModeChange(value: string) {
+  const nextMode = value as UpstreamMonitorSourceConfig["auth_mode"];
+  updateSourceField("auth_mode", nextMode);
+  if (nextMode !== "login") {
+    updateSourceField("auth_username", "");
+  }
+  if (nextMode !== "header") {
+    updateSourceField("auth_header_name", "");
+  }
+}
+
 function handleUpdateLocalMapping(payload: SourceMappingUpdatePayload) {
   emit("update-local-mapping", payload);
 }
 
 function handleSelectUpstreamMapping(payload: SourceMappingUpdatePayload) {
   emit("select-upstream-mapping", payload);
-}
-
-function handleUpdateManualUpstreamMapping(payload: SourceMappingUpdatePayload) {
-  emit("update-manual-upstream-mapping", payload);
-}
-
-function handleUpdateReferenceMultiplier(payload: SourceMappingUpdatePayload) {
-  emit("update-reference-multiplier", payload);
 }
 </script>
 

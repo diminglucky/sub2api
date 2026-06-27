@@ -53,8 +53,10 @@ type UpstreamMonitorSource struct {
 	PricingURL           string                               `json:"pricing_url"`
 	PricingPathHint      string                               `json:"pricing_path_hint"`
 	AuthMode             string                               `json:"auth_mode"`
+	AuthUsername         string                               `json:"auth_username"`
 	AuthHeaderName       string                               `json:"auth_header_name"`
 	AuthToken            string                               `json:"auth_token,omitempty"`
+	AuthTokenCleared     bool                                 `json:"auth_token_cleared,omitempty"`
 	AuthConfigured       bool                                 `json:"auth_configured"`
 	Currency             string                               `json:"currency"`
 	ExchangeRate         float64                              `json:"exchange_rate"`
@@ -131,6 +133,61 @@ type upstreamMonitorGroupLister interface {
 
 type upstreamMonitorAccountLister interface {
 	ListActive(ctx context.Context) ([]Account, error)
+}
+
+type UpstreamMonitorAdminReader interface {
+	GetFirstAdmin(ctx context.Context) (*User, error)
+}
+
+// UpstreamMonitorService owns upstream source configuration, refresh, preview,
+// and alerting. It intentionally keeps this feature out of the large
+// SettingService surface while continuing to use the settings repository as its
+// persistence backend during the migration.
+type UpstreamMonitorService struct {
+	settingRepo              SettingRepository
+	groupLister              upstreamMonitorGroupLister
+	accountLister            upstreamMonitorAccountLister
+	adminReader              UpstreamMonitorAdminReader
+	notificationEmailService *NotificationEmailService
+}
+
+func NewUpstreamMonitorService(settingRepo SettingRepository) *UpstreamMonitorService {
+	return &UpstreamMonitorService{settingRepo: settingRepo}
+}
+
+func (s *UpstreamMonitorService) requireSettingRepo() error {
+	if s == nil || s.settingRepo == nil {
+		return fmt.Errorf("upstream monitor settings repository not configured")
+	}
+	return nil
+}
+
+func (s *UpstreamMonitorService) SetGroupLister(lister upstreamMonitorGroupLister) {
+	if s == nil {
+		return
+	}
+	s.groupLister = lister
+}
+
+func (s *UpstreamMonitorService) SetAccountLister(lister upstreamMonitorAccountLister) {
+	if s == nil {
+		return
+	}
+	s.accountLister = lister
+}
+
+func (s *UpstreamMonitorService) SetAdminReader(reader UpstreamMonitorAdminReader) {
+	if s == nil {
+		return
+	}
+	s.adminReader = reader
+}
+
+func (s *UpstreamMonitorService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
+	if s == nil {
+		return
+	}
+	s.notificationEmailService = notificationEmailService
 }
 
 type UpstreamMonitorPreviewSnapshot struct {
@@ -358,7 +415,11 @@ func normalizeUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) {
 		}
 		src.PricingPathHint = strings.TrimSpace(src.PricingPathHint)
 		src.AuthMode = normalizeUpstreamSourceAuthMode(src.AuthMode)
+		src.AuthUsername = strings.TrimSpace(src.AuthUsername)
 		src.AuthHeaderName = strings.TrimSpace(src.AuthHeaderName)
+		if src.AuthMode == "header" && src.AuthHeaderName == "" {
+			src.AuthHeaderName = http.CanonicalHeaderKey("Authorization")
+		}
 		src.Currency = normalizeUpstreamCurrency(src.Currency)
 		src.AccountIDs = cleanUpstreamMonitorInt64IDs(src.AccountIDs)
 		src.UpstreamGroupOptions = normalizeUpstreamGroupOptions(src.UpstreamGroupOptions)
@@ -371,7 +432,8 @@ func normalizeUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) {
 		if src.ReferenceMultiplier < 0 {
 			src.ReferenceMultiplier = 0
 		}
-		src.AuthConfigured = strings.TrimSpace(src.AuthToken) != ""
+		src.AuthConfigured = upstreamMonitorSourceAuthConfigured(src)
+		src.AuthTokenCleared = false
 	}
 
 	for i := range cfg.GroupMappings {
@@ -446,6 +508,8 @@ func splitUpstreamMonitorGroupMappingsBySource(values []UpstreamMonitorGroupMap)
 				strings.ToLower(strings.TrimSpace(item.LocalGroup)),
 				strings.ToLower(strings.TrimSpace(item.UpstreamGroupKey)),
 				strings.ToLower(strings.TrimSpace(item.UpstreamGroup)),
+				strings.ToLower(strings.TrimSpace(item.ModelFamily)),
+				strconv.FormatFloat(item.ReferenceMultiplier, 'f', 8, 64),
 				sourceID,
 			}, "|")
 			if _, ok := seen[dedupeKey]; ok {
@@ -459,6 +523,23 @@ func splitUpstreamMonitorGroupMappingsBySource(values []UpstreamMonitorGroupMap)
 		return []UpstreamMonitorGroupMap{}
 	}
 	return out
+}
+
+func upstreamMonitorGroupMappingBusinessKey(sourceID string, mapping UpstreamMonitorGroupMap) string {
+	localKey := strconv.FormatInt(mapping.LocalGroupID, 10)
+	if mapping.LocalGroupID <= 0 {
+		localKey = strings.ToLower(strings.TrimSpace(mapping.LocalGroup))
+	}
+	upstreamKey := strings.ToLower(strings.TrimSpace(mapping.UpstreamGroupKey))
+	if upstreamKey == "" {
+		upstreamKey = strings.ToLower(strings.TrimSpace(mapping.UpstreamGroup))
+	}
+	return strings.Join([]string{
+		strings.TrimSpace(sourceID),
+		localKey,
+		upstreamKey,
+		strings.ToLower(strings.TrimSpace(mapping.ModelFamily)),
+	}, "|")
 }
 
 func upstreamMonitorSourceMappingID(baseID, sourceID string) string {
@@ -518,8 +599,19 @@ func validateUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) error {
 		default:
 			return fmt.Errorf("source[%d]: unsupported fetch_mode %q", i, src.FetchMode)
 		}
-		if src.Enabled && src.AutoSyncEnabled && src.PricingURL == "" {
+		if src.Enabled && src.AutoSyncEnabled && !upstreamMonitorSourceHasSyncEndpoint(src) {
+			if upstreamMonitorUsesStandardRateEndpoint(src.Kind) {
+				return fmt.Errorf("source[%d]: base_url is required", i)
+			}
 			return fmt.Errorf("source[%d]: pricing_url is required", i)
+		}
+		if src.AuthMode == "login" {
+			if strings.TrimSpace(src.AuthUsername) == "" {
+				return fmt.Errorf("source[%d]: auth_username is required for login auth_mode", i)
+			}
+			if strings.TrimSpace(src.AuthToken) == "" {
+				return fmt.Errorf("source[%d]: auth_token is required for login auth_mode", i)
+			}
 		}
 		if src.ExchangeRate <= 0 || src.ExchangeRate > 1000 {
 			return fmt.Errorf("source[%d]: exchange_rate must be between 0 and 1000", i)
@@ -532,11 +624,8 @@ func validateUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) error {
 				return fmt.Errorf("source[%d]: account_ids must be positive", i)
 			}
 		}
-		if src.Enabled && src.FetchMode == upstreamMonitorFetchModeJSONPath && src.AutoSyncEnabled && src.PricingPathHint == "" {
+		if src.Enabled && src.FetchMode == upstreamMonitorFetchModeJSONPath && src.AutoSyncEnabled && !upstreamMonitorUsesStandardRateEndpoint(src.Kind) && src.PricingPathHint == "" {
 			return fmt.Errorf("source[%d]: pricing_path_hint is required for json_path fetch mode", i)
-		}
-		if src.AuthMode == "header" && src.AuthHeaderName == "" {
-			src.AuthHeaderName = http.CanonicalHeaderKey("Authorization")
 		}
 		if _, exists := sourceIDs[src.ID]; exists {
 			return fmt.Errorf("source[%d]: duplicate id %q", i, src.ID)
@@ -545,6 +634,7 @@ func validateUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) error {
 	}
 
 	groupMapIDs := make(map[string]struct{}, len(cfg.GroupMappings))
+	groupMapBusinessKeys := make(map[string]struct{}, len(cfg.GroupMappings))
 	for i, mapping := range cfg.GroupMappings {
 		if mapping.ID == "" {
 			return fmt.Errorf("group_mappings[%d]: id is required", i)
@@ -575,6 +665,11 @@ func validateUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) error {
 			if _, ok := sourceIDs[sourceID]; !ok {
 				return fmt.Errorf("group_mappings[%d]: source_id %q not found", i, sourceID)
 			}
+			businessKey := upstreamMonitorGroupMappingBusinessKey(sourceID, mapping)
+			if _, exists := groupMapBusinessKeys[businessKey]; exists {
+				return fmt.Errorf("group_mappings[%d]: duplicate local/upstream mapping for source %q", i, sourceID)
+			}
+			groupMapBusinessKeys[businessKey] = struct{}{}
 		}
 	}
 
@@ -619,6 +714,8 @@ func normalizeUpstreamSourceAuthMode(raw string) string {
 		return "header"
 	case "cookie":
 		return "cookie"
+	case "login":
+		return "login"
 	case "none", "":
 		return "none"
 	default:
@@ -641,11 +738,74 @@ func defaultUpstreamPricingURL(kind, baseURL string) string {
 
 	switch normalizeUpstreamSourceKind(kind) {
 	case "sub2api":
-		return baseURL + "/api/v1/channels/available"
+		return baseURL + "/api/v1/groups/available"
 	case "newapi":
-		return baseURL + "/api/ratio_config"
+		return baseURL + "/api/user/self/groups"
 	default:
 		return ""
+	}
+}
+
+func upstreamMonitorUsesStandardRateEndpoint(kind string) bool {
+	switch normalizeUpstreamSourceKind(kind) {
+	case "sub2api", "newapi":
+		return true
+	default:
+		return false
+	}
+}
+
+func upstreamMonitorSourceHasSyncEndpoint(src UpstreamMonitorSource) bool {
+	if upstreamMonitorUsesStandardRateEndpoint(src.Kind) {
+		return upstreamMonitorSourceOrigin(src.BaseURL, src.PricingURL) != ""
+	}
+	return strings.TrimSpace(src.PricingURL) != ""
+}
+
+func defaultUpstreamLoginURL(kind, baseURL, pricingURL string) string {
+	origin := upstreamMonitorSourceOrigin(baseURL, pricingURL)
+	if origin == "" {
+		return ""
+	}
+	switch normalizeUpstreamSourceKind(kind) {
+	case "newapi":
+		return origin + "/api/user/login"
+	case "sub2api", "custom", "openai_compatible":
+		return origin + "/api/v1/auth/login"
+	default:
+		return ""
+	}
+}
+
+func upstreamMonitorSourceOrigin(baseURL, pricingURL string) string {
+	for _, raw := range []string{baseURL, pricingURL} {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		if !strings.Contains(trimmed, "://") {
+			trimmed = "https://" + trimmed
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			continue
+		}
+		return parsed.Scheme + "://" + parsed.Host
+	}
+	return ""
+}
+
+func upstreamMonitorSourceAuthConfigured(src *UpstreamMonitorSource) bool {
+	if src == nil {
+		return false
+	}
+	switch src.AuthMode {
+	case "login":
+		return strings.TrimSpace(src.AuthUsername) != "" && strings.TrimSpace(src.AuthToken) != ""
+	case "none":
+		return false
+	default:
+		return strings.TrimSpace(src.AuthToken) != ""
 	}
 }
 
@@ -690,7 +850,10 @@ func normalizeUpstreamModelFamily(raw string) string {
 	}
 }
 
-func (s *SettingService) GetUpstreamMonitorConfig(ctx context.Context) (*UpstreamMonitorConfig, error) {
+func (s *UpstreamMonitorService) GetUpstreamMonitorConfig(ctx context.Context) (*UpstreamMonitorConfig, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -717,9 +880,12 @@ func (s *SettingService) GetUpstreamMonitorConfig(ctx context.Context) (*Upstrea
 	return cfg, nil
 }
 
-func (s *SettingService) SaveUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) error {
+func (s *UpstreamMonitorService) SaveUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config cannot be nil")
+	}
+	if err := s.requireSettingRepo(); err != nil {
+		return err
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -739,7 +905,10 @@ func (s *SettingService) SaveUpstreamMonitorConfig(ctx context.Context, cfg *Ups
 	return nil
 }
 
-func (s *SettingService) RefreshUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) (*UpstreamMonitorRefreshResult, error) {
+func (s *UpstreamMonitorService) RefreshUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) (*UpstreamMonitorRefreshResult, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	result, err := s.refreshUpstreamMonitorConfig(ctx, cfg, upstreamMonitorRefreshOptions{
 		force:           true,
 		persist:         true,
@@ -754,7 +923,10 @@ func (s *SettingService) RefreshUpstreamMonitorConfig(ctx context.Context, cfg *
 	return result, nil
 }
 
-func (s *SettingService) RefreshStoredUpstreamMonitorConfig(ctx context.Context) (*UpstreamMonitorRefreshResult, error) {
+func (s *UpstreamMonitorService) RefreshStoredUpstreamMonitorConfig(ctx context.Context) (*UpstreamMonitorRefreshResult, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	result, err := s.refreshUpstreamMonitorConfig(ctx, nil, upstreamMonitorRefreshOptions{
 		force:           true,
 		persist:         true,
@@ -769,7 +941,10 @@ func (s *SettingService) RefreshStoredUpstreamMonitorConfig(ctx context.Context)
 	return result, nil
 }
 
-func (s *SettingService) RefreshStoredUpstreamMonitorSource(ctx context.Context, sourceID string) (*UpstreamMonitorRefreshResult, error) {
+func (s *UpstreamMonitorService) RefreshStoredUpstreamMonitorSource(ctx context.Context, sourceID string) (*UpstreamMonitorRefreshResult, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	result, err := s.refreshUpstreamMonitorConfig(ctx, nil, upstreamMonitorRefreshOptions{
 		force:           true,
 		persist:         true,
@@ -785,7 +960,10 @@ func (s *SettingService) RefreshStoredUpstreamMonitorSource(ctx context.Context,
 	return result, nil
 }
 
-func (s *SettingService) RunDueUpstreamMonitorRefresh(ctx context.Context) (*UpstreamMonitorRefreshResult, error) {
+func (s *UpstreamMonitorService) RunDueUpstreamMonitorRefresh(ctx context.Context) (*UpstreamMonitorRefreshResult, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -816,9 +994,14 @@ func (s *SettingService) RunDueUpstreamMonitorRefresh(ctx context.Context) (*Ups
 	})
 }
 
-func (s *SettingService) refreshUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig, opts upstreamMonitorRefreshOptions) (*UpstreamMonitorRefreshResult, error) {
+func (s *UpstreamMonitorService) refreshUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig, opts upstreamMonitorRefreshOptions) (*UpstreamMonitorRefreshResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if opts.persist {
+		if err := s.requireSettingRepo(); err != nil {
+			return nil, err
+		}
 	}
 
 	var working *UpstreamMonitorConfig
@@ -920,36 +1103,42 @@ func (s *SettingService) refreshUpstreamMonitorConfig(ctx context.Context, cfg *
 	return result, nil
 }
 
-func (s *SettingService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) (*UpstreamMonitorPreviewSnapshot, error) {
+func (s *UpstreamMonitorService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) (*UpstreamMonitorPreviewSnapshot, error) {
+	if s == nil {
+		return nil, fmt.Errorf("upstream monitor service not configured")
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if cfg == nil {
-		current, err := s.GetUpstreamMonitorConfig(ctx)
+		current, err := s.getUpstreamMonitorConfigRaw(ctx)
 		if err != nil {
-			return nil, err
+			if errors.Is(err, ErrSettingNotFound) {
+				current = defaultUpstreamMonitorConfig()
+			} else {
+				return nil, err
+			}
 		}
 		cfg = current
 	}
 
-	previewCfg := *cfg
-	previewCfg.Sources = append([]UpstreamMonitorSource(nil), cfg.Sources...)
-	previewCfg.GroupMappings = append([]UpstreamMonitorGroupMap(nil), cfg.GroupMappings...)
-	normalizeUpstreamMonitorConfig(&previewCfg)
-	if err := validateUpstreamMonitorConfig(&previewCfg); err != nil {
+	previewCfg := cloneUpstreamMonitorConfig(cfg)
+	s.mergeExistingUpstreamMonitorSecrets(ctx, previewCfg)
+	normalizeUpstreamMonitorConfig(previewCfg)
+	if err := validateUpstreamMonitorConfig(previewCfg); err != nil {
 		return nil, err
 	}
 
-	if s.upstreamMonitorGroupLister == nil {
+	if s.groupLister == nil {
 		return nil, fmt.Errorf("upstream monitor group lister not configured")
 	}
-	groups, err := s.upstreamMonitorGroupLister.ListActive(ctx)
+	groups, err := s.groupLister.ListActive(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list active groups: %w", err)
 	}
 	accounts := []Account{}
-	if s.upstreamMonitorAccountLister != nil {
-		accounts, err = s.upstreamMonitorAccountLister.ListActive(ctx)
+	if s.accountLister != nil {
+		accounts, err = s.accountLister.ListActive(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("list active accounts: %w", err)
 		}
@@ -1512,32 +1701,31 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 	if source == nil {
 		return nil, fmt.Errorf("source is nil")
 	}
+	switch normalizeUpstreamSourceKind(source.Kind) {
+	case "sub2api":
+		return fetchSub2APIUpstreamPricingSnapshot(ctx, source)
+	case "newapi":
+		return fetchNewAPIUpstreamPricingSnapshot(ctx, source)
+	}
 	if strings.TrimSpace(source.PricingURL) == "" {
 		return nil, fmt.Errorf("pricing url is empty")
 	}
 
-	request := newUpstreamMonitorHTTPClient().
+	client := newUpstreamMonitorHTTPClient()
+	request := client.
 		R().
 		SetContext(ctx).
 		SetHeader("Accept", "application/json, text/plain;q=0.9, */*;q=0.8")
 
-	switch source.AuthMode {
-	case "bearer":
-		if token := strings.TrimSpace(source.AuthToken); token != "" {
-			request.SetBearerAuthToken(token)
+	headers, err := upstreamMonitorRequestHeaders(ctx, client, source)
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range headers {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
 		}
-	case "header":
-		if token := strings.TrimSpace(source.AuthToken); token != "" {
-			headerName := strings.TrimSpace(source.AuthHeaderName)
-			if headerName == "" {
-				headerName = http.CanonicalHeaderKey("Authorization")
-			}
-			request.SetHeader(headerName, token)
-		}
-	case "cookie":
-		if token := strings.TrimSpace(source.AuthToken); token != "" {
-			request.SetHeader("Cookie", token)
-		}
+		request.SetHeader(key, value)
 	}
 
 	resp, err := request.Get(source.PricingURL)
@@ -1545,7 +1733,14 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 		return nil, fmt.Errorf("request pricing endpoint: %w", err)
 	}
 	if !resp.IsSuccessState() {
-		return nil, fmt.Errorf("pricing endpoint returned status %d", resp.StatusCode)
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("pricing endpoint returned 401 unauthorized: check auth_mode and auth_token")
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("pricing endpoint returned 403 forbidden: the upstream rejected this request")
+		default:
+			return nil, fmt.Errorf("pricing endpoint returned status %d", resp.StatusCode)
+		}
 	}
 	pricing, err := parseUpstreamPricingSnapshot(
 		resp.Bytes(),
@@ -1555,6 +1750,147 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 	)
 	if err != nil {
 		return nil, err
+	}
+	return validateUpstreamPricingSnapshot(pricing)
+}
+
+func fetchSub2APIUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSource) (*upstreamMonitorPricingSnapshot, error) {
+	origin := upstreamMonitorSourceOrigin(source.BaseURL, source.PricingURL)
+	if origin == "" {
+		return nil, fmt.Errorf("source site url is empty")
+	}
+	client := newUpstreamMonitorHTTPClient()
+	headers, err := upstreamMonitorRequestHeaders(ctx, client, source)
+	if err != nil {
+		return nil, err
+	}
+	body, err := requestUpstreamMonitorJSON(ctx, client, origin+"/api/v1/groups/available", headers)
+	if err != nil {
+		return nil, fmt.Errorf("sub2api groups available: %w", err)
+	}
+
+	var groups []struct {
+		ID             uint64  `json:"id"`
+		Name           string  `json:"name"`
+		Description    string  `json:"description"`
+		RateMultiplier float64 `json:"rate_multiplier"`
+	}
+	if err := json.Unmarshal(body, &groups); err != nil {
+		return nil, fmt.Errorf("sub2api groups available decode: %w", err)
+	}
+
+	overrides := map[string]float64{}
+	if ratesBody, err := requestUpstreamMonitorJSON(ctx, client, origin+"/api/v1/groups/rates", headers); err == nil {
+		_ = json.Unmarshal(ratesBody, &overrides)
+	}
+
+	options := make([]UpstreamMonitorUpstreamGroupOption, 0, len(groups))
+	groupMultipliers := make(map[string]float64, len(groups))
+	for _, group := range groups {
+		name := strings.TrimSpace(group.Name)
+		if name == "" {
+			continue
+		}
+		multiplier := group.RateMultiplier
+		if value, ok := overrides[strconv.FormatUint(group.ID, 10)]; ok {
+			multiplier = value
+		}
+		options = append(options, UpstreamMonitorUpstreamGroupOption{
+			Key:                 upstreamGroupOptionKey(strconv.FormatUint(group.ID, 10), name, ""),
+			Name:                name,
+			Description:         strings.TrimSpace(group.Description),
+			ReferenceMultiplier: multiplier,
+			RawID:               strconv.FormatUint(group.ID, 10),
+		})
+		groupMultipliers[strings.ToLower(name)] = multiplier
+	}
+	return validateUpstreamPricingSnapshot(&upstreamMonitorPricingSnapshot{
+		GroupMultipliers: groupMultipliers,
+		GroupOptions:     options,
+	})
+}
+
+func fetchNewAPIUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSource) (*upstreamMonitorPricingSnapshot, error) {
+	origin := upstreamMonitorSourceOrigin(source.BaseURL, source.PricingURL)
+	if origin == "" {
+		return nil, fmt.Errorf("source site url is empty")
+	}
+	client := newUpstreamMonitorHTTPClient()
+	headers, err := upstreamMonitorRequestHeaders(ctx, client, source)
+	if err != nil {
+		return nil, err
+	}
+	body, err := requestUpstreamMonitorJSON(ctx, client, origin+"/api/user/self/groups", headers)
+	if err != nil {
+		return nil, fmt.Errorf("newapi groups: %w", err)
+	}
+	var raw map[string]struct {
+		Ratio json.RawMessage `json:"ratio"`
+		Desc  string          `json:"desc"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("newapi groups decode: %w", err)
+	}
+
+	options := make([]UpstreamMonitorUpstreamGroupOption, 0, len(raw))
+	groupMultipliers := make(map[string]float64, len(raw))
+	for name, value := range raw {
+		groupName := strings.TrimSpace(name)
+		if groupName == "" {
+			continue
+		}
+		var multiplier float64
+		if err := json.Unmarshal(value.Ratio, &multiplier); err != nil {
+			continue
+		}
+		options = append(options, UpstreamMonitorUpstreamGroupOption{
+			Key:                 upstreamGroupOptionKey("", groupName, ""),
+			Name:                groupName,
+			Description:         strings.TrimSpace(value.Desc),
+			ReferenceMultiplier: multiplier,
+		})
+		groupMultipliers[strings.ToLower(groupName)] = multiplier
+	}
+	return validateUpstreamPricingSnapshot(&upstreamMonitorPricingSnapshot{
+		GroupMultipliers: groupMultipliers,
+		GroupOptions:     options,
+	})
+}
+
+func requestUpstreamMonitorJSON(ctx context.Context, client *req.Client, url string, headers map[string]string) ([]byte, error) {
+	request := client.
+		R().
+		SetContext(ctx).
+		SetHeader("Accept", "application/json, text/plain;q=0.9, */*;q=0.8")
+	for key, value := range headers {
+		if strings.TrimSpace(key) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		request.SetHeader(key, value)
+	}
+	resp, err := request.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	if !resp.IsSuccessState() {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("returned 401 unauthorized: check credential mode and credential")
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("returned 403 forbidden: the upstream rejected this request")
+		default:
+			return nil, fmt.Errorf("returned status %d", resp.StatusCode)
+		}
+	}
+	return resp.Bytes(), nil
+}
+
+func validateUpstreamPricingSnapshot(pricing *upstreamMonitorPricingSnapshot) (*upstreamMonitorPricingSnapshot, error) {
+	if pricing == nil {
+		return nil, fmt.Errorf("pricing snapshot is nil")
+	}
+	if pricing.GroupMultipliers == nil {
+		pricing.GroupMultipliers = map[string]float64{}
 	}
 	if pricing.HasReference && (pricing.ReferenceMultiplier < 0 || pricing.ReferenceMultiplier > 1000) {
 		return nil, fmt.Errorf("parsed reference multiplier %.4f out of range", pricing.ReferenceMultiplier)
@@ -1570,6 +1906,238 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 		}
 	}
 	return pricing, nil
+}
+
+func upstreamMonitorRequestHeaders(ctx context.Context, client *req.Client, source *UpstreamMonitorSource) (map[string]string, error) {
+	if source == nil {
+		return nil, fmt.Errorf("source is nil")
+	}
+
+	switch source.AuthMode {
+	case "login":
+		return upstreamMonitorLoginHeaders(ctx, client, source)
+	case "bearer":
+		if token := upstreamMonitorBearerToken(source); token != "" {
+			return map[string]string{"Authorization": "Bearer " + token}, nil
+		}
+	case "header":
+		if token := strings.TrimSpace(source.AuthToken); token != "" {
+			headerName := strings.TrimSpace(source.AuthHeaderName)
+			if headerName == "" {
+				headerName = http.CanonicalHeaderKey("Authorization")
+			}
+			return map[string]string{headerName: token}, nil
+		}
+	case "cookie":
+		headers, err := upstreamMonitorCookieHeaders(source)
+		if err != nil {
+			return nil, err
+		}
+		if len(headers) > 0 {
+			return headers, nil
+		}
+	}
+	return map[string]string{}, nil
+}
+
+type upstreamMonitorNewAPITokenCredential struct {
+	Cookie string `json:"cookie"`
+	UserID string `json:"user_id"`
+}
+
+type upstreamMonitorSub2APITokenCredential struct {
+	AccessToken string `json:"access_token"`
+}
+
+func upstreamMonitorBearerToken(source *UpstreamMonitorSource) string {
+	if source == nil {
+		return ""
+	}
+	token := strings.TrimSpace(source.AuthToken)
+	if token == "" {
+		return ""
+	}
+	var credential upstreamMonitorSub2APITokenCredential
+	if err := json.Unmarshal([]byte(token), &credential); err == nil {
+		if accessToken := strings.TrimSpace(credential.AccessToken); accessToken != "" {
+			return trimUpstreamMonitorBearerPrefix(accessToken)
+		}
+	}
+	return trimUpstreamMonitorBearerPrefix(token)
+}
+
+func trimUpstreamMonitorBearerPrefix(token string) string {
+	token = strings.TrimSpace(token)
+	if len(token) >= len("Bearer ") && strings.EqualFold(token[:len("Bearer ")], "Bearer ") {
+		return strings.TrimSpace(token[len("Bearer "):])
+	}
+	return token
+}
+
+func upstreamMonitorCookieHeaders(source *UpstreamMonitorSource) (map[string]string, error) {
+	if source == nil {
+		return nil, nil
+	}
+	token := strings.TrimSpace(source.AuthToken)
+	if token == "" {
+		return nil, nil
+	}
+
+	headers := map[string]string{}
+	var credential upstreamMonitorNewAPITokenCredential
+	if err := json.Unmarshal([]byte(token), &credential); err == nil {
+		if cookie := strings.TrimSpace(credential.Cookie); cookie != "" {
+			headers["Cookie"] = cookie
+		}
+		if userID := strings.TrimSpace(credential.UserID); userID != "" {
+			headers["New-Api-User"] = userID
+		}
+		if normalizeUpstreamSourceKind(source.Kind) == "newapi" && (headers["Cookie"] == "" || headers["New-Api-User"] == "") {
+			return nil, fmt.Errorf("newapi cookie auth requires JSON credential {\"cookie\":\"session=...\",\"user_id\":\"123\"}")
+		}
+		if len(headers) > 0 {
+			return headers, nil
+		}
+	}
+
+	if normalizeUpstreamSourceKind(source.Kind) == "newapi" {
+		return nil, fmt.Errorf("newapi cookie auth requires JSON credential {\"cookie\":\"session=...\",\"user_id\":\"123\"}")
+	}
+	if normalizeUpstreamSourceKind(source.Kind) == "sub2api" {
+		return nil, fmt.Errorf("sub2api standard endpoints use Bearer access_token; choose username/password login or Bearer Token auth")
+	}
+	headers["Cookie"] = token
+	return headers, nil
+}
+
+func upstreamMonitorLoginHeaders(ctx context.Context, client *req.Client, source *UpstreamMonitorSource) (map[string]string, error) {
+	loginURL := defaultUpstreamLoginURL(source.Kind, source.BaseURL, source.PricingURL)
+	if loginURL == "" {
+		return nil, fmt.Errorf("unsupported login auth_mode for source kind %q", source.Kind)
+	}
+	username := strings.TrimSpace(source.AuthUsername)
+	password := strings.TrimSpace(source.AuthToken)
+	if username == "" {
+		return nil, fmt.Errorf("auth_username is required for login auth_mode")
+	}
+	if password == "" {
+		return nil, fmt.Errorf("auth_token is required for login auth_mode")
+	}
+
+	body := map[string]any{
+		"email":    username,
+		"username": username,
+		"password": password,
+	}
+
+	resp, err := client.R().
+		SetContext(ctx).
+		SetHeader("Content-Type", "application/json").
+		SetBody(body).
+		Post(loginURL)
+	if err != nil {
+		return nil, fmt.Errorf("login upstream: %w", err)
+	}
+	if !resp.IsSuccessState() {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized:
+			return nil, fmt.Errorf("login upstream returned 401 unauthorized")
+		case http.StatusForbidden:
+			return nil, fmt.Errorf("login upstream returned 403 forbidden")
+		default:
+			return nil, fmt.Errorf("login upstream returned status %d", resp.StatusCode)
+		}
+	}
+
+	switch normalizeUpstreamSourceKind(source.Kind) {
+	case "newapi":
+		return upstreamMonitorParseNewAPILoginHeaders(resp)
+	default:
+		return upstreamMonitorParseSub2APILoginHeaders(resp)
+	}
+}
+
+func upstreamMonitorParseSub2APILoginHeaders(resp *req.Response) (map[string]string, error) {
+	var wrapped struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Bytes(), &wrapped); err != nil {
+		return nil, fmt.Errorf("decode sub2api login response: %w", err)
+	}
+	if wrapped.Code != 0 {
+		msg := strings.TrimSpace(wrapped.Message)
+		if msg == "" {
+			msg = "login failed"
+		}
+		return nil, fmt.Errorf("sub2api login failed: %s", msg)
+	}
+	var data struct {
+		Requires2FA bool   `json:"requires_2fa"`
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+	}
+	if err := json.Unmarshal(wrapped.Data, &data); err != nil {
+		return nil, fmt.Errorf("decode sub2api login data: %w", err)
+	}
+	if data.Requires2FA {
+		return nil, errors.New("sub2api account requires 2FA; disable 2FA for monitoring credentials")
+	}
+	token := strings.TrimSpace(data.AccessToken)
+	if token == "" {
+		return nil, errors.New("sub2api login: empty access_token")
+	}
+	return map[string]string{
+		"Authorization": "Bearer " + token,
+	}, nil
+}
+
+func upstreamMonitorParseNewAPILoginHeaders(resp *req.Response) (map[string]string, error) {
+	var wrapped struct {
+		Success bool            `json:"success"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Bytes(), &wrapped); err != nil {
+		return nil, fmt.Errorf("decode newapi login response: %w", err)
+	}
+	if !wrapped.Success {
+		msg := strings.TrimSpace(wrapped.Message)
+		if msg == "" {
+			msg = "login failed"
+		}
+		return nil, fmt.Errorf("newapi login failed: %s", msg)
+	}
+	var data struct {
+		Require2FA bool  `json:"require_2fa"`
+		ID         int64 `json:"id"`
+	}
+	if err := json.Unmarshal(wrapped.Data, &data); err != nil {
+		return nil, fmt.Errorf("decode newapi login data: %w", err)
+	}
+	if data.Require2FA {
+		return nil, errors.New("newapi account requires 2FA; disable 2FA for monitoring credentials")
+	}
+	cookies := resp.Cookies()
+	cookieParts := make([]string, 0, len(cookies))
+	for _, cookie := range cookies {
+		if cookie == nil {
+			continue
+		}
+		cookieParts = append(cookieParts, cookie.Name+"="+cookie.Value)
+	}
+	cookie := strings.TrimSpace(strings.Join(cookieParts, "; "))
+	if cookie == "" {
+		return nil, errors.New("newapi login: no session cookie returned")
+	}
+	if data.ID == 0 {
+		return nil, errors.New("newapi login: missing user id in response")
+	}
+	return map[string]string{
+		"Cookie":       cookie,
+		"New-Api-User": strconv.FormatInt(data.ID, 10),
+	}, nil
 }
 
 func parseUpstreamPricingSnapshot(body []byte, contentType, fetchMode, pathHint string) (*upstreamMonitorPricingSnapshot, error) {
@@ -2264,9 +2832,12 @@ func limitUpstreamMonitorError(message string) string {
 	return message[:240]
 }
 
-func (s *SettingService) persistUpstreamMonitorConfigRaw(ctx context.Context, cfg *UpstreamMonitorConfig) error {
+func (s *UpstreamMonitorService) persistUpstreamMonitorConfigRaw(ctx context.Context, cfg *UpstreamMonitorConfig) error {
 	if cfg == nil {
 		return fmt.Errorf("config cannot be nil")
+	}
+	if err := s.requireSettingRepo(); err != nil {
+		return err
 	}
 	data, err := json.Marshal(cfg)
 	if err != nil {
@@ -2278,7 +2849,7 @@ func (s *SettingService) persistUpstreamMonitorConfigRaw(ctx context.Context, cf
 	return nil
 }
 
-func (s *SettingService) mergeExistingUpstreamMonitorSecrets(ctx context.Context, cfg *UpstreamMonitorConfig) {
+func (s *UpstreamMonitorService) mergeExistingUpstreamMonitorSecrets(ctx context.Context, cfg *UpstreamMonitorConfig) {
 	existing, err := s.getUpstreamMonitorConfigRaw(ctx)
 	if err != nil || existing == nil {
 		return
@@ -2291,6 +2862,13 @@ func (s *SettingService) mergeExistingUpstreamMonitorSecrets(ctx context.Context
 	}
 	for i := range cfg.Sources {
 		cfg.Sources[i].ID = strings.TrimSpace(cfg.Sources[i].ID)
+		if strings.TrimSpace(cfg.Sources[i].AuthUsername) == "" {
+			cfg.Sources[i].AuthUsername = strings.TrimSpace(findUpstreamMonitorSourceAuthUsername(existing, cfg.Sources[i].ID))
+		}
+		if cfg.Sources[i].AuthTokenCleared {
+			cfg.Sources[i].AuthToken = ""
+			continue
+		}
 		if strings.TrimSpace(cfg.Sources[i].AuthToken) == "" {
 			if token, ok := existingByID[cfg.Sources[i].ID]; ok {
 				cfg.Sources[i].AuthToken = token
@@ -2299,7 +2877,26 @@ func (s *SettingService) mergeExistingUpstreamMonitorSecrets(ctx context.Context
 	}
 }
 
-func (s *SettingService) getUpstreamMonitorConfigRaw(ctx context.Context) (*UpstreamMonitorConfig, error) {
+func findUpstreamMonitorSourceAuthUsername(cfg *UpstreamMonitorConfig, sourceID string) string {
+	if cfg == nil {
+		return ""
+	}
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		return ""
+	}
+	for _, src := range cfg.Sources {
+		if strings.TrimSpace(src.ID) == sourceID {
+			return strings.TrimSpace(src.AuthUsername)
+		}
+	}
+	return ""
+}
+
+func (s *UpstreamMonitorService) getUpstreamMonitorConfigRaw(ctx context.Context) (*UpstreamMonitorConfig, error) {
+	if err := s.requireSettingRepo(); err != nil {
+		return nil, err
+	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyUpstreamMonitorConfig)
 	if err != nil {
 		return nil, err
@@ -2320,12 +2917,13 @@ func maskUpstreamMonitorSecrets(cfg *UpstreamMonitorConfig) {
 		return
 	}
 	for i := range cfg.Sources {
-		cfg.Sources[i].AuthConfigured = strings.TrimSpace(cfg.Sources[i].AuthToken) != ""
+		cfg.Sources[i].AuthConfigured = upstreamMonitorSourceAuthConfigured(&cfg.Sources[i])
 		cfg.Sources[i].AuthToken = ""
+		cfg.Sources[i].AuthTokenCleared = false
 	}
 }
 
-func (s *SettingService) notifyUpstreamMonitorAlerts(ctx context.Context, cfg *UpstreamMonitorConfig) {
+func (s *UpstreamMonitorService) notifyUpstreamMonitorAlerts(ctx context.Context, cfg *UpstreamMonitorConfig) {
 	if s == nil || s.notificationEmailService == nil || cfg == nil {
 		return
 	}
@@ -2456,7 +3054,7 @@ func upstreamMonitorAlertRowWithIssue(row UpstreamMonitorPreviewGroupRow, status
 	return out
 }
 
-func (s *SettingService) shouldSendUpstreamMonitorAlert(ctx context.Context, cfg *UpstreamMonitorConfig, row UpstreamMonitorPreviewGroupRow, severity string) (bool, string) {
+func (s *UpstreamMonitorService) shouldSendUpstreamMonitorAlert(ctx context.Context, cfg *UpstreamMonitorConfig, row UpstreamMonitorPreviewGroupRow, severity string) (bool, string) {
 	if s == nil || s.settingRepo == nil || cfg == nil {
 		return false, ""
 	}
@@ -2479,7 +3077,7 @@ func (s *SettingService) shouldSendUpstreamMonitorAlert(ctx context.Context, cfg
 	return true, key
 }
 
-func (s *SettingService) shouldSendUpstreamMonitorMultiplierChangeAlert(ctx context.Context, row UpstreamMonitorPreviewGroupRow) (bool, string, string) {
+func (s *UpstreamMonitorService) shouldSendUpstreamMonitorMultiplierChangeAlert(ctx context.Context, row UpstreamMonitorPreviewGroupRow) (bool, string, string) {
 	if s == nil || s.settingRepo == nil {
 		return false, "", ""
 	}
@@ -2503,7 +3101,7 @@ func (s *SettingService) shouldSendUpstreamMonitorMultiplierChangeAlert(ctx cont
 	return true, key, currentState
 }
 
-func (s *SettingService) shouldSendUpstreamMonitorAccountAlert(ctx context.Context, cfg *UpstreamMonitorConfig, row UpstreamMonitorPreviewAccountRow, severity string) (bool, string) {
+func (s *UpstreamMonitorService) shouldSendUpstreamMonitorAccountAlert(ctx context.Context, cfg *UpstreamMonitorConfig, row UpstreamMonitorPreviewAccountRow, severity string) (bool, string) {
 	if s == nil || s.settingRepo == nil || cfg == nil {
 		return false, ""
 	}
@@ -2554,7 +3152,7 @@ func upstreamMonitorAccountAlertStateKey(sourceID string, accountID int64) strin
 	return "upstream_monitor_alert_state:account:" + sourceID + ":" + strconv.FormatInt(accountID, 10)
 }
 
-func (s *SettingService) getUpstreamMonitorAlertRecipients(ctx context.Context) []upstreamMonitorAlertRecipient {
+func (s *UpstreamMonitorService) getUpstreamMonitorAlertRecipients(ctx context.Context) []upstreamMonitorAlertRecipient {
 	seen := make(map[string]struct{})
 	recipients := make([]upstreamMonitorAlertRecipient, 0, 4)
 
@@ -2581,8 +3179,8 @@ func (s *SettingService) getUpstreamMonitorAlertRecipients(ctx context.Context) 
 		}
 	}
 
-	if len(recipients) == 0 && s.upstreamMonitorAdminReader != nil {
-		admin, err := s.upstreamMonitorAdminReader.GetFirstAdmin(ctx)
+	if len(recipients) == 0 && s.adminReader != nil {
+		admin, err := s.adminReader.GetFirstAdmin(ctx)
 		if err == nil && admin != nil {
 			email := strings.TrimSpace(admin.Email)
 			if email != "" {

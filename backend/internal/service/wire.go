@@ -467,19 +467,26 @@ func ProvideOpsService(
 	return svc
 }
 
-// ProvideSettingService wires SettingService with group/account readers and proxy repo.
-func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, accountRepo AccountRepository, userRepo UserRepository, proxyRepo ProxyRepository, cfg *config.Config, notificationEmailService *NotificationEmailService) *SettingService {
+// ProvideSettingService wires SettingService with group reader and proxy repo.
+func ProvideSettingService(settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
-	svc.SetUpstreamMonitorGroupLister(groupRepo)
-	svc.SetUpstreamMonitorAccountLister(accountRepo)
-	svc.SetUpstreamMonitorAdminReader(userRepo)
-	svc.SetNotificationEmailService(notificationEmailService)
 	svc.SetProxyRepository(proxyRepo)
 	if err := svc.LoadAPIKeyACLTrustForwardedIPSetting(context.Background()); err != nil {
 		logger.LegacyPrintf("service.setting", "Warning: load api key acl forwarded ip setting failed: %v", err)
 	}
 	antigravity.SetUserAgentVersionResolver(svc.GetAntigravityUserAgentVersion)
+	return svc
+}
+
+// ProvideUpstreamMonitorService wires the upstream monitor as a focused service
+// while it still persists its JSON config through the settings repository.
+func ProvideUpstreamMonitorService(settingRepo SettingRepository, groupRepo GroupRepository, accountRepo AccountRepository, userRepo UserRepository, notificationEmailService *NotificationEmailService) *UpstreamMonitorService {
+	svc := NewUpstreamMonitorService(settingRepo)
+	svc.SetGroupLister(groupRepo)
+	svc.SetAccountLister(accountRepo)
+	svc.SetAdminReader(userRepo)
+	svc.SetNotificationEmailService(notificationEmailService)
 	return svc
 }
 
@@ -553,6 +560,7 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,
+	ProvideUpstreamMonitorService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -629,8 +637,8 @@ func ProvideLotteryDrawRunner(lotterySvc *LotteryService) *LotteryDrawRunner {
 }
 
 // ProvideUpstreamMonitorRunner creates and starts the upstream monitor refresh runner.
-func ProvideUpstreamMonitorRunner(settingSvc *SettingService, lockCache LeaderLockCache, db *sql.DB) *UpstreamMonitorRunner {
-	runner := NewUpstreamMonitorRunner(settingSvc, time.Minute)
+func ProvideUpstreamMonitorRunner(upstreamMonitorSvc *UpstreamMonitorService, lockCache LeaderLockCache, db *sql.DB) *UpstreamMonitorRunner {
+	runner := NewUpstreamMonitorRunner(upstreamMonitorSvc, time.Minute)
 	runner.SetLeaderLock(lockCache, db)
 	runner.Start()
 	return runner

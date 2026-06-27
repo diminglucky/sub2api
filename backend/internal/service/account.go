@@ -1052,20 +1052,24 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
+func (a *Account) IsOpenAICompatibleAPIKey() bool {
+	return a.Type == AccountTypeAPIKey && (a.Platform == PlatformOpenAI || a.Platform == PlatformZhipu)
+}
+
 func (a *Account) IsAnthropic() bool {
 	return a.Platform == PlatformAnthropic
 }
 
 func (a *Account) IsOpenAIOAuth() bool {
-	return a.IsOpenAI() && a.Type == AccountTypeOAuth
+	return a.Platform == PlatformOpenAI && a.Type == AccountTypeOAuth
 }
 
 func (a *Account) IsOpenAIApiKey() bool {
-	return a.IsOpenAI() && a.Type == AccountTypeAPIKey
+	return a.IsOpenAICompatibleAPIKey()
 }
 
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() {
+	if !a.IsOpenAICompatibleAPIKey() && !a.IsOpenAIOAuth() {
 		return ""
 	}
 	if a.Type == AccountTypeAPIKey {
@@ -1073,12 +1077,15 @@ func (a *Account) GetOpenAIBaseURL() string {
 		if baseURL != "" {
 			return baseURL
 		}
+		if a.Platform == PlatformZhipu {
+			return "https://open.bigmodel.cn/api/paas/v4"
+		}
 	}
 	return "https://api.openai.com"
 }
 
 func (a *Account) GetOpenAIAccessToken() string {
-	if !a.IsOpenAI() {
+	if !a.IsOpenAIOAuth() {
 		return ""
 	}
 	return a.GetCredential("access_token")
@@ -1106,7 +1113,7 @@ func (a *Account) GetOpenAIApiKey() string {
 }
 
 func (a *Account) GetOpenAIUserAgent() string {
-	if !a.IsOpenAI() {
+	if !a.IsOpenAIOAuth() && !a.IsOpenAICompatibleAPIKey() {
 		return ""
 	}
 	return a.GetCredential("user_agent")

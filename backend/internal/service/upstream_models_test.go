@@ -74,6 +74,16 @@ func TestExtractUpstreamModelIDs(t *testing.T) {
 	}
 }
 
+func TestDefaultModelsListCandidateIDsIncludesZhipuModels(t *testing.T) {
+	t.Parallel()
+
+	models := defaultModelsListCandidateIDs(PlatformZhipu)
+
+	require.Contains(t, models, "glm-5.1")
+	require.Contains(t, models, "glm-4.5")
+	require.NotContains(t, models, "claude-sonnet-4-5")
+}
+
 func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	t.Parallel()
 
@@ -104,6 +114,17 @@ func TestBuildUpstreamModelsRequestsForAPIKeyAccounts(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "https://openai.example.com/v1/models", openAIReq.URL.String())
 	require.Equal(t, "Bearer openai-key", openAIReq.Header.Get("Authorization"))
+
+	zhipuReq, err := svc.buildUpstreamModelsRequest(ctx, &Account{
+		Platform: PlatformZhipu,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key": "zhipu-key",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/models", zhipuReq.URL.String())
+	require.Equal(t, "Bearer zhipu-key", zhipuReq.Header.Get("Authorization"))
 
 	geminiReq, err := svc.buildGeminiUpstreamModelsRequest(ctx, &Account{
 		Platform: PlatformGemini,

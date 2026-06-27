@@ -42,7 +42,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_UsesStoredConfig(t *testing.
 	repo := newUpstreamMonitorSettingRepo()
 	repo.data[SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 	result, err := svc.RunDueUpstreamMonitorRefresh(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -79,7 +79,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SkipsWhenDisabled(t *testing
 	repo := newUpstreamMonitorSettingRepo()
 	repo.data[SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 	result, err := svc.RunDueUpstreamMonitorRefresh(context.Background())
 	require.NoError(t, err)
 	require.NotNil(t, result)
@@ -117,7 +117,7 @@ func TestUpstreamMonitorRunnerRunOnce_RefreshesWhenLeader(t *testing.T) {
 	repo := newUpstreamMonitorSettingRepo()
 	repo.data[SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 	runner := NewUpstreamMonitorRunner(svc, time.Minute)
 	runner.SetLeaderLock(&fakeLeaderLockCache{}, nil)
 	runner.runOnce()
@@ -162,7 +162,7 @@ func TestUpstreamMonitorRunnerRunOnce_SkipsWhenPeerHoldsLock(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, acquired)
 
-	svc := NewSettingService(repo, nil)
+	svc := NewUpstreamMonitorService(repo)
 	runner := NewUpstreamMonitorRunner(svc, time.Minute)
 	runner.SetLeaderLock(lockCache, nil)
 	runner.runOnce()
@@ -221,9 +221,9 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsUpstreamAlertEmail(t *t
 
 	emailSvc := NewEmailService(repo, nil)
 	notificationSvc := NewNotificationEmailService(repo, emailSvc)
-	settingSvc := NewSettingService(repo, nil)
-	settingSvc.SetNotificationEmailService(notificationSvc)
-	settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	upstreamMonitorSvc := NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetNotificationEmailService(notificationSvc)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{ID: 1, Name: "VIP", Platform: "openai", RateMultiplier: 2.0},
 		},
@@ -248,7 +248,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsUpstreamAlertEmail(t *t
 		}
 		repo.mu.Unlock()
 		stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", body)
-		result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+		result, err := upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 	}
@@ -336,9 +336,9 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsEmailWhenUpstreamMultip
 
 	emailSvc := NewEmailService(repo, nil)
 	notificationSvc := NewNotificationEmailService(repo, emailSvc)
-	settingSvc := NewSettingService(repo, nil)
-	settingSvc.SetNotificationEmailService(notificationSvc)
-	settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	upstreamMonitorSvc := NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetNotificationEmailService(notificationSvc)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{ID: 1, Name: "VIP", Platform: "openai", RateMultiplier: 2.0},
 		},
@@ -363,7 +363,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsEmailWhenUpstreamMultip
 		}
 		repo.mu.Unlock()
 		stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", body)
-		result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+		result, err := upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 	}
@@ -428,14 +428,14 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 
 	emailSvc := NewEmailService(repo, nil)
 	notificationSvc := NewNotificationEmailService(repo, emailSvc)
-	settingSvc := NewSettingService(repo, nil)
-	settingSvc.SetNotificationEmailService(notificationSvc)
-	settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	upstreamMonitorSvc := NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetNotificationEmailService(notificationSvc)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{ID: 10, Name: "VIP", Platform: PlatformOpenAI, RateMultiplier: 1.30, Status: StatusActive},
 		},
 	})
-	settingSvc.SetUpstreamMonitorAccountLister(upstreamMonitorTestAccountLister{
+	upstreamMonitorSvc.SetAccountLister(upstreamMonitorTestAccountLister{
 		accounts: []Account{
 			{
 				ID:             20,
@@ -454,7 +454,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 		return nil
 	}
 
-	result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+	result, err := upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, sent, 0)
@@ -467,7 +467,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 	require.NoError(t, err)
 	repo.values[SettingKeyUpstreamMonitorConfig] = string(raw)
 
-	result, err = settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+	result, err = upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	require.Len(t, sent, 1)
@@ -478,7 +478,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_DoesNotEmailAccountWarningUn
 func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsWarningOnlyWhenConfigured(t *testing.T) {
 	ctx := context.Background()
 
-	buildService := func(notifyOnCriticalOnly bool) (*SettingService, *notificationEmailMemorySettingRepo, *[]string) {
+	buildService := func(notifyOnCriticalOnly bool) (*UpstreamMonitorService, *notificationEmailMemorySettingRepo, *[]string) {
 		repo := newNotificationEmailMemorySettingRepo()
 		repo.values[SettingKeySMTPHost] = "smtp.example.com"
 		repo.values[SettingKeySMTPPort] = "587"
@@ -525,9 +525,9 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsWarningOnlyWhenConfigur
 
 		emailSvc := NewEmailService(repo, nil)
 		notificationSvc := NewNotificationEmailService(repo, emailSvc)
-		settingSvc := NewSettingService(repo, nil)
-		settingSvc.SetNotificationEmailService(notificationSvc)
-		settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+		upstreamMonitorSvc := NewUpstreamMonitorService(repo)
+		upstreamMonitorSvc.SetNotificationEmailService(notificationSvc)
+		upstreamMonitorSvc.SetGroupLister(upstreamMonitorTestGroupLister{
 			groups: []Group{
 				{ID: 1, Name: "VIP", Platform: PlatformOpenAI, RateMultiplier: 2.0},
 			},
@@ -537,12 +537,12 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_SendsWarningOnlyWhenConfigur
 			sent = append(sent, to+"\n"+subject+"\n"+body)
 			return nil
 		}
-		return settingSvc, repo, &sent
+		return upstreamMonitorSvc, repo, &sent
 	}
 
-	runRefresh := func(settingSvc *SettingService) {
+	runRefresh := func(upstreamMonitorSvc *UpstreamMonitorService) {
 		stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", "1.60")
-		result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+		result, err := upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 	}
@@ -610,9 +610,9 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_RetriesUpstreamAlertWhenEmai
 
 	emailSvc := NewEmailService(repo, nil)
 	notificationSvc := NewNotificationEmailService(repo, emailSvc)
-	settingSvc := NewSettingService(repo, nil)
-	settingSvc.SetNotificationEmailService(notificationSvc)
-	settingSvc.SetUpstreamMonitorGroupLister(upstreamMonitorTestGroupLister{
+	upstreamMonitorSvc := NewUpstreamMonitorService(repo)
+	upstreamMonitorSvc.SetNotificationEmailService(notificationSvc)
+	upstreamMonitorSvc.SetGroupLister(upstreamMonitorTestGroupLister{
 		groups: []Group{
 			{ID: 1, Name: "VIP", Platform: "openai", RateMultiplier: 2.0},
 		},
@@ -641,7 +641,7 @@ func TestSettingServiceRunDueUpstreamMonitorRefresh_RetriesUpstreamAlertWhenEmai
 		}
 		repo.mu.Unlock()
 		stubUpstreamMonitorClient(t, http.StatusOK, "text/plain", "2.10")
-		result, err := settingSvc.RunDueUpstreamMonitorRefresh(ctx)
+		result, err := upstreamMonitorSvc.RunDueUpstreamMonitorRefresh(ctx)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 	}

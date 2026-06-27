@@ -18,7 +18,7 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity"
+export type PlatformType = "anthropic" | "openai" | "zhipu" | "gemini" | "antigravity"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -31,7 +31,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "gemini", "antigravity"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "zhipu", "gemini", "antigravity"]
 
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
@@ -1312,7 +1312,7 @@ export type UpstreamMonitorSourceKind =
   | "openai_compatible"
   | "custom";
 
-export type UpstreamMonitorAuthMode = "none" | "bearer" | "header" | "cookie";
+export type UpstreamMonitorAuthMode = "none" | "bearer" | "header" | "cookie" | "login";
 export type UpstreamMonitorCurrency = "CNY" | "USD";
 export type UpstreamMonitorFetchMode = "auto" | "json_path" | "plain_text";
 export type UpstreamMonitorSyncStatus = "idle" | "success" | "error";
@@ -1344,8 +1344,10 @@ export interface UpstreamMonitorSourceConfig {
   pricing_url: string;
   pricing_path_hint: string;
   auth_mode: UpstreamMonitorAuthMode;
+  auth_username: string;
   auth_header_name: string;
   auth_token?: string;
+  auth_token_cleared?: boolean;
   auth_configured: boolean;
   currency: UpstreamMonitorCurrency;
   exchange_rate: number;
@@ -1594,8 +1596,10 @@ export function normalizeUpstreamMonitorConfig(
           pricing_url: String(source.pricing_url || ""),
           pricing_path_hint: String(source.pricing_path_hint || ""),
           auth_mode: (source.auth_mode || "none") as UpstreamMonitorAuthMode,
+          auth_username: String(source.auth_username || ""),
           auth_header_name: String(source.auth_header_name || ""),
           auth_token: String(source.auth_token || ""),
+          auth_token_cleared: Boolean(source.auth_token_cleared),
           auth_configured: Boolean(source.auth_configured),
           currency: (source.currency || "CNY") as UpstreamMonitorCurrency,
           exchange_rate: toFiniteNumber(source.exchange_rate) ?? defaultExchangeRate ?? 7.2,

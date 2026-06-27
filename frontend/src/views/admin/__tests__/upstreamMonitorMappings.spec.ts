@@ -170,6 +170,36 @@ describe("upstreamMonitorMappings", () => {
     ).toBe(false);
   });
 
+  it("allows the same local/upstream binding when model families differ", () => {
+    const rows = [
+      mapping({
+        id: "existing",
+        local_group_id: 10,
+        local_group: "GPT",
+        upstream_group_key: "up-1",
+        upstream_group: "OpenAI",
+        model_family: "gpt",
+        source_ids: ["s1"],
+      }),
+    ];
+    const candidate = mapping({
+      id: "candidate",
+      local_group_id: 10,
+      local_group: "GPT",
+      upstream_group_key: "up-1",
+      upstream_group: "OpenAI",
+      model_family: "claude",
+      source_ids: ["s1"],
+    });
+
+    expect(
+      hasDuplicateSourceMappingRow(rows, "s1", candidate, {
+        localGroupIDForMapping: (item) => item.local_group_id,
+        isCompleteMapping: isComplete,
+      }),
+    ).toBe(false);
+  });
+
   it("keeps scoped mapping ids stable when flattening shared mappings", () => {
     expect(buildSourceScopedMappingID("mapping_base", "source_a")).toBe("mapping_base__source_a");
     expect(buildSourceScopedMappingID("mapping_base__source_a", "source_a")).toBe("mapping_base__source_a");

@@ -22,6 +22,7 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
     pricing_url: "https://example.test/pricing",
     pricing_path_hint: "",
     auth_mode: "none",
+    auth_username: "",
     auth_header_name: "",
     auth_token: "",
     auth_configured: false,
@@ -132,9 +133,6 @@ describe("useSourceMappingRows", () => {
     expect(controller.sourceMappingRowViews(currentSource)[0]).toMatchObject({
       localGroupID: "1",
       isComplete: true,
-      localMultiplierLabel: "0.10x",
-      referenceMultiplierLabel: "0.08x",
-      marginRateLabel: "20.0%",
     });
 
     expect(controller.serializeMappings({ dropIncompleteMappings: true })).toEqual([
@@ -160,7 +158,7 @@ describe("useSourceMappingRows", () => {
     expect(errors).toEqual(["duplicate"]);
   });
 
-  it("binds a manual upstream group when no upstream options were fetched", async () => {
+  it("requires a pulled upstream group before binding", async () => {
     const { controller, form } = mountController({
       sources: [
         source({
@@ -175,30 +173,13 @@ describe("useSourceMappingRows", () => {
     expect(added.ok).toBe(true);
 
     controller.updateLocalGroup(currentSource, form.value.group_mappings[0], "1");
-    controller.updateManualUpstreamGroup(currentSource, form.value.group_mappings[0], "manual-upstream-gpt");
-    controller.updateReferenceMultiplier(currentSource, form.value.group_mappings[0], "0.07");
 
     const bindResult = controller.bindMapping(currentSource, form.value.group_mappings[0]);
-    expect(bindResult.ok).toBe(true);
-    expect(form.value.group_mappings[0]).toMatchObject({
-      local_group_id: 1,
-      local_group: "GPT",
-      upstream_group_key: "",
-      upstream_group: "manual-upstream-gpt",
-      reference_multiplier: 0.07,
-      source_ids: ["source_1"],
-    });
-    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toMatchObject([
-      {
-        local_group_id: 1,
-        upstream_group_key: "",
-        upstream_group: "manual-upstream-gpt",
-        reference_multiplier: 0.07,
-      },
-    ]);
+    expect(bindResult).toEqual({ ok: false, reason: "reference required" });
+    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toEqual([]);
   });
 
-  it("rejects manual bindings without a mapping or source reference multiplier", async () => {
+  it("keeps legacy complete mappings serializable even when the upstream option is missing", () => {
     const { controller, errors, form } = mountController({
       sources: [
         source({
@@ -206,22 +187,29 @@ describe("useSourceMappingRows", () => {
           reference_multiplier: 0,
         }),
       ],
+      group_mappings: [
+        mapping({
+          upstream_group_key: "",
+          upstream_group: "legacy-upstream-gpt",
+          reference_multiplier: 0.07,
+        }),
+      ],
     });
     const currentSource = form.value.sources[0];
 
-    const added = await controller.addMapping(currentSource);
-    expect(added.ok).toBe(true);
-
-    controller.updateLocalGroup(currentSource, form.value.group_mappings[0], "1");
-    controller.updateManualUpstreamGroup(currentSource, form.value.group_mappings[0], "manual-upstream-gpt");
-
     const bindResult = controller.bindMapping(currentSource, form.value.group_mappings[0]);
-    expect(bindResult).toEqual({ ok: false, reason: "reference required" });
-    expect(errors).toEqual(["reference required"]);
-    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toEqual([]);
+    expect(bindResult.ok).toBe(true);
+    expect(errors).toEqual([]);
+    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toMatchObject([
+      {
+        upstream_group_key: "",
+        upstream_group: "legacy-upstream-gpt",
+        reference_multiplier: 0.07,
+      },
+    ]);
   });
 
-  it("persists the source reference multiplier for manual bindings when mapping multiplier is empty", async () => {
+  it("does not create new manual mappings from the source reference multiplier", async () => {
     const { controller, form } = mountController({
       sources: [
         source({
@@ -234,21 +222,14 @@ describe("useSourceMappingRows", () => {
 
     const added = await controller.addMapping(currentSource);
     expect(added.ok).toBe(true);
-
     controller.updateLocalGroup(currentSource, form.value.group_mappings[0], "1");
-    controller.updateManualUpstreamGroup(currentSource, form.value.group_mappings[0], "manual-upstream-gpt");
 
     const bindResult = controller.bindMapping(currentSource, form.value.group_mappings[0]);
-    expect(bindResult.ok).toBe(true);
-    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toMatchObject([
-      {
-        upstream_group: "manual-upstream-gpt",
-        reference_multiplier: 0.09,
-      },
-    ]);
+    expect(bindResult).toEqual({ ok: false, reason: "reference required" });
+    expect(controller.serializeMappings({ dropIncompleteMappings: true })).toEqual([]);
   });
 
-  it("uses exchange rate for foreign currency reference multiplier previews", () => {
+  it("uses exchange rate for foreign currency reference multipliers", () => {
     const { controller, form } = mountController({
       sources: [
         source({
@@ -264,10 +245,7 @@ describe("useSourceMappingRows", () => {
     });
 
     const currentSource = form.value.sources[0];
-    expect(controller.sourceMappingRowViews(currentSource)[0]).toMatchObject({
-      referenceMultiplierLabel: "0.56x",
-      marginRateLabel: "-460.0%",
-    });
+    expect(controller.effectiveReferenceMultiplier(currentSource, form.value.group_mappings[0])).toBe(0.56);
   });
 
   it("shows a clear error when there is no local group to add", async () => {

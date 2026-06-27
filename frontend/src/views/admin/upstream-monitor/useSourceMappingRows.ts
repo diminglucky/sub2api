@@ -39,9 +39,6 @@ export interface SourceMappingRowView {
   localGroupID: string;
   isComplete: boolean;
   isNew: boolean;
-  localMultiplierLabel: string;
-  referenceMultiplierLabel: string;
-  marginRateLabel: string;
 }
 
 export interface SourceMappingControllerMessages {
@@ -86,10 +83,6 @@ function normalizeModelFamily(value: string): UpstreamMonitorGroupMapping["model
 
 function multiplierValueLabel(formatMultiplier: (value: number) => string, value: number): string {
   return Number(value || 0) > 0 ? `${formatMultiplier(value)}x` : "--";
-}
-
-function nullablePercentLabel(formatPercent: (value: number) => string, value: number | null): string {
-  return value === null ? "--" : formatPercent(value);
 }
 
 function effectiveSourceCostMultiplier(source: UpstreamMonitorSourceConfig, referenceMultiplier: number): number {
@@ -277,10 +270,6 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     return effectiveSourceCostMultiplier(source, mappingReferenceMultiplier(source, mapping, true));
   }
 
-  function mappingMarginRate(source: UpstreamMonitorSourceConfig, mapping: UpstreamMonitorGroupMapping): number | null {
-    return estimatedMarginRate(effectiveLocalMultiplier(source, mapping), effectiveReferenceMultiplier(source, mapping));
-  }
-
   function isMappingLocalGroup(
     mapping: UpstreamMonitorGroupMapping,
     group: UpstreamMonitorPreviewGroupOption,
@@ -354,9 +343,6 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       localGroupID: String(localGroupIDForMapping(mapping) || ""),
       isComplete: isCompleteMapping(mapping),
       isNew: mapping.id === lastAddedMappingID.value,
-      localMultiplierLabel: multiplierValueLabel(options.formatMultiplier, effectiveLocalMultiplier(source, mapping)),
-      referenceMultiplierLabel: multiplierValueLabel(options.formatMultiplier, effectiveReferenceMultiplier(source, mapping)),
-      marginRateLabel: nullablePercentLabel(options.formatPercent, mappingMarginRate(source, mapping)),
     }));
   }
 
@@ -429,46 +415,6 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     return { ok: false, reason };
   }
 
-  function updateManualUpstreamGroup(
-    source: UpstreamMonitorSourceConfig,
-    mapping: UpstreamMonitorGroupMapping,
-    value: string,
-  ): SourceMappingControllerResult {
-    const nextMapping = {
-      ...mapping,
-      upstream_group_key: "",
-      upstream_group: value,
-    };
-    const result = replaceSourceMappingRowForSource(options.form.value.group_mappings, sanitizeSourceID(source), nextMapping);
-    if (result.replaced) {
-      replaceGroupMappings(result.mappings);
-      return { ok: true, mapping: nextMapping };
-    }
-    const reason = options.messages().mappingBindFailed;
-    options.onError(reason);
-    return { ok: false, reason };
-  }
-
-  function updateReferenceMultiplier(
-    source: UpstreamMonitorSourceConfig,
-    mapping: UpstreamMonitorGroupMapping,
-    value: string,
-  ): SourceMappingControllerResult {
-    const parsed = Number(value || 0);
-    const nextMapping = {
-      ...mapping,
-      reference_multiplier: Number.isFinite(parsed) && parsed > 0 ? parsed : 0,
-    };
-    const result = replaceSourceMappingRowForSource(options.form.value.group_mappings, sanitizeSourceID(source), nextMapping);
-    if (result.replaced) {
-      replaceGroupMappings(result.mappings);
-      return { ok: true, mapping: nextMapping };
-    }
-    const reason = options.messages().mappingBindFailed;
-    options.onError(reason);
-    return { ok: false, reason };
-  }
-
   function updateLocalGroup(
     source: UpstreamMonitorSourceConfig,
     mapping: UpstreamMonitorGroupMapping,
@@ -510,7 +456,17 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       return { ok: false, reason };
     }
     const upstreamOption = selectedUpstreamGroupOption(source, mapping);
-    const manualUpstreamGroup = String(mapping.upstream_group || "").trim() || group.group_name;
+    const isLegacyManualMapping = Boolean(
+      !mapping.upstream_group_key.trim() &&
+      mapping.upstream_group.trim() &&
+      Number(mapping.reference_multiplier || 0) > 0,
+    );
+    if (!upstreamOption && !isLegacyManualMapping) {
+      const reason = options.messages().referenceMultiplierRequired;
+      options.onError(reason);
+      return { ok: false, reason };
+    }
+    const fallbackUpstreamGroup = String(mapping.upstream_group || "").trim() || group.group_name;
     const referenceMultiplier = upstreamOption
       ? Number(upstreamOption.reference_multiplier || 0)
       : mappingReferenceMultiplier(source, mapping, true);
@@ -520,7 +476,7 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
       local_group: group.group_name,
       model_family: options.modelFamilyForGroup(group),
       upstream_group_key: upstreamOption?.key || "",
-      upstream_group: upstreamOption?.name || manualUpstreamGroup,
+      upstream_group: upstreamOption?.name || fallbackUpstreamGroup,
       reference_multiplier: Number.isFinite(referenceMultiplier) && referenceMultiplier > 0 ? referenceMultiplier : 0,
       source_ids: [sid],
     };
@@ -577,7 +533,7 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
             local_group_id: localGroupIDForMapping(mapping),
             local_group: mapping.local_group.trim(),
             upstream_group_key: (mapping.upstream_group_key || "").trim(),
-            upstream_group: (mapping.upstream_group || mapping.local_group).trim(),
+            upstream_group: mapping.upstream_group.trim(),
             source_ids: [mappingSourceID],
             reference_multiplier: source
               ? mappingReferenceMultiplier(source, mapping, true)
@@ -609,7 +565,6 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     isCompleteMapping,
     localGroupIDForMapping,
     localGroupSelectOptionsForSource,
-    mappingMarginRate,
     mappingReferenceMultiplier,
     removeMapping,
     removeSourceFromMappingRows,
@@ -623,8 +578,6 @@ export function useSourceMappingRows(options: SourceMappingControllerOptions) {
     sourceMappingRowsBySourceID,
     sourceMappingRowViews,
     updateLocalGroup,
-    updateManualUpstreamGroup,
-    updateReferenceMultiplier,
     upstreamGroupOptionsForSource,
     upstreamGroupSelectOptionsForSource,
     normalizeModelFamily,
