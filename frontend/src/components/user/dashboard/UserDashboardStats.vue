@@ -140,7 +140,7 @@
         {{ t('dashboard.platformCount', { count: sortedPlatforms.length }) }}
       </span>
     </div>
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <div
         v-for="item in platformCards"
         :key="item.platform"
