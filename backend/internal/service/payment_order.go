@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"entgo.io/ent/dialect"
+	entsql "entgo.io/ent/dialect/sql"
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
@@ -151,6 +153,47 @@ func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrder
 	return nil, nil
 }
 
+func (s *PaymentService) checkSubscriptionPurchaseLimit(ctx context.Context, tx *dbent.Tx, userID int64, plan *dbent.SubscriptionPlan) error {
+	if plan == nil || plan.PurchaseLimitPerUser <= 0 {
+		return nil
+	}
+	if err := s.lockSubscriptionPurchaseScope(ctx, tx, userID, plan.ID); err != nil {
+		return err
+	}
+	count, err := s.countSubscriptionOrdersForPurchaseLimit(ctx, tx, userID, plan.ID)
+	if err != nil {
+		return err
+	}
+	if count >= plan.PurchaseLimitPerUser {
+		return infraerrors.Conflict("PLAN_PURCHASE_LIMIT_REACHED", "subscription plan purchase limit reached").
+			WithMetadata(map[string]string{"limit": strconv.Itoa(plan.PurchaseLimitPerUser)})
+	}
+	return nil
+}
+
+func (s *PaymentService) lockSubscriptionPurchaseScope(ctx context.Context, tx *dbent.Tx, userID, planID int64) error {
+	if s == nil || tx == nil || tx.Client() == nil || tx.Client().Driver() == nil || tx.Client().Driver().Dialect() != dialect.Postgres {
+		return nil
+	}
+	key := fmt.Sprintf("subscription-plan-purchase:%d:%d", userID, planID)
+	var rows entsql.Rows
+	if err := tx.Client().Driver().Query(ctx, "SELECT pg_advisory_xact_lock($1)", []any{hashAdvisoryLockID(key)}, &rows); err != nil {
+		return fmt.Errorf("lock purchase scope: %w", err)
+	}
+	_ = rows.Close()
+	return nil
+}
+
+func (s *PaymentService) countSubscriptionOrdersForPurchaseLimit(ctx context.Context, tx *dbent.Tx, userID, planID int64) (int, error) {
+	return tx.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.PlanIDEQ(planID),
+			paymentorder.OrderTypeEQ(payment.OrderTypeSubscription),
+			paymentorder.StatusIn(OrderStatusPending, OrderStatusPaid, OrderStatusRecharging, OrderStatusCompleted),
+		).Count(ctx)
+}
+
 func resolveRechargePackage(req CreateOrderRequest, cfg *PaymentConfig) (*RechargePackage, error) {
 	if req.OrderType != payment.OrderTypeBalance || strings.TrimSpace(req.RechargePackageID) == "" {
 		return nil, nil
@@ -186,6 +229,11 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if plan != nil {
+		if err := s.checkSubscriptionPurchaseLimit(ctx, tx, req.UserID, plan); err != nil {
+			return nil, err
+		}
+	}
 	if err := s.checkPendingLimit(ctx, tx, req.UserID, cfg.MaxPendingOrders); err != nil {
 		return nil, err
 	}

@@ -7788,6 +7788,8 @@ export default {
       price: '价格',
       validityDays: '有效期（天）',
       validityUnit: '有效期单位',
+      purchaseLimitPerUser: '每账号可购次数',
+      purchaseLimitPerUserHint: '0 表示不限制，正整数表示每个账号最多可购买次数',
       sortOrder: '排序',
       forSale: '上架状态',
       onSale: '上架',

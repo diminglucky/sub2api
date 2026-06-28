@@ -7608,6 +7608,8 @@ export default {
       price: 'Price',
       validityDays: 'Validity (days)',
       validityUnit: 'Validity Unit',
+      purchaseLimitPerUser: 'Per-user Purchase Limit',
+      purchaseLimitPerUserHint: '0 means unlimited; a positive number is the max purchases per user',
       sortOrder: 'Sort Order',
       forSale: 'For Sale',
       onSale: 'On Sale',

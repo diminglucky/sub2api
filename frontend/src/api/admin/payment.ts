@@ -31,6 +31,7 @@ export interface AdminPaymentConfig {
   product_name_suffix: string
   help_image_url: string
   help_text: string
+  purchase_limit_per_user?: number
   recharge_packages: RechargePackage[]
   recharge_card_products: Array<{
     name: string
@@ -59,6 +60,7 @@ export interface UpdatePaymentConfigRequest {
   product_name_suffix?: string
   help_image_url?: string
   help_text?: string
+  purchase_limit_per_user?: number
   recharge_packages?: RechargePackage[]
   recharge_card_products?: Array<{
     name: string

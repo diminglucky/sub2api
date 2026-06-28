@@ -31350,31 +31350,33 @@ func (m *SettingMutation) ResetEdge(name string) error {
 // SubscriptionPlanMutation represents an operation that mutates the SubscriptionPlan nodes in the graph.
 type SubscriptionPlanMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	group_id          *int64
-	addgroup_id       *int64
-	name              *string
-	description       *string
-	price             *float64
-	addprice          *float64
-	original_price    *float64
-	addoriginal_price *float64
-	validity_days     *int
-	addvalidity_days  *int
-	validity_unit     *string
-	features          *string
-	product_name      *string
-	for_sale          *bool
-	sort_order        *int
-	addsort_order     *int
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*SubscriptionPlan, error)
-	predicates        []predicate.SubscriptionPlan
+	op                         Op
+	typ                        string
+	id                         *int64
+	group_id                   *int64
+	addgroup_id                *int64
+	name                       *string
+	description                *string
+	price                      *float64
+	addprice                   *float64
+	original_price             *float64
+	addoriginal_price          *float64
+	validity_days              *int
+	addvalidity_days           *int
+	validity_unit              *string
+	features                   *string
+	product_name               *string
+	for_sale                   *bool
+	purchase_limit_per_user    *int
+	addpurchase_limit_per_user *int
+	sort_order                 *int
+	addsort_order              *int
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	done                       bool
+	oldValue                   func(context.Context) (*SubscriptionPlan, error)
+	predicates                 []predicate.SubscriptionPlan
 }
 
 var _ ent.Mutation = (*SubscriptionPlanMutation)(nil)
@@ -31929,6 +31931,62 @@ func (m *SubscriptionPlanMutation) ResetForSale() {
 	m.for_sale = nil
 }
 
+// SetPurchaseLimitPerUser sets the "purchase_limit_per_user" field.
+func (m *SubscriptionPlanMutation) SetPurchaseLimitPerUser(i int) {
+	m.purchase_limit_per_user = &i
+	m.addpurchase_limit_per_user = nil
+}
+
+// PurchaseLimitPerUser returns the value of the "purchase_limit_per_user" field in the mutation.
+func (m *SubscriptionPlanMutation) PurchaseLimitPerUser() (r int, exists bool) {
+	v := m.purchase_limit_per_user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPurchaseLimitPerUser returns the old "purchase_limit_per_user" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldPurchaseLimitPerUser(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPurchaseLimitPerUser is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPurchaseLimitPerUser requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPurchaseLimitPerUser: %w", err)
+	}
+	return oldValue.PurchaseLimitPerUser, nil
+}
+
+// AddPurchaseLimitPerUser adds i to the "purchase_limit_per_user" field.
+func (m *SubscriptionPlanMutation) AddPurchaseLimitPerUser(i int) {
+	if m.addpurchase_limit_per_user != nil {
+		*m.addpurchase_limit_per_user += i
+	} else {
+		m.addpurchase_limit_per_user = &i
+	}
+}
+
+// AddedPurchaseLimitPerUser returns the value that was added to the "purchase_limit_per_user" field in this mutation.
+func (m *SubscriptionPlanMutation) AddedPurchaseLimitPerUser() (r int, exists bool) {
+	v := m.addpurchase_limit_per_user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPurchaseLimitPerUser resets all changes to the "purchase_limit_per_user" field.
+func (m *SubscriptionPlanMutation) ResetPurchaseLimitPerUser() {
+	m.purchase_limit_per_user = nil
+	m.addpurchase_limit_per_user = nil
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (m *SubscriptionPlanMutation) SetSortOrder(i int) {
 	m.sort_order = &i
@@ -32091,7 +32149,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 13)
+	fields := make([]string, 0, 14)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}
@@ -32121,6 +32179,9 @@ func (m *SubscriptionPlanMutation) Fields() []string {
 	}
 	if m.for_sale != nil {
 		fields = append(fields, subscriptionplan.FieldForSale)
+	}
+	if m.purchase_limit_per_user != nil {
+		fields = append(fields, subscriptionplan.FieldPurchaseLimitPerUser)
 	}
 	if m.sort_order != nil {
 		fields = append(fields, subscriptionplan.FieldSortOrder)
@@ -32159,6 +32220,8 @@ func (m *SubscriptionPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.ProductName()
 	case subscriptionplan.FieldForSale:
 		return m.ForSale()
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		return m.PurchaseLimitPerUser()
 	case subscriptionplan.FieldSortOrder:
 		return m.SortOrder()
 	case subscriptionplan.FieldCreatedAt:
@@ -32194,6 +32257,8 @@ func (m *SubscriptionPlanMutation) OldField(ctx context.Context, name string) (e
 		return m.OldProductName(ctx)
 	case subscriptionplan.FieldForSale:
 		return m.OldForSale(ctx)
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		return m.OldPurchaseLimitPerUser(ctx)
 	case subscriptionplan.FieldSortOrder:
 		return m.OldSortOrder(ctx)
 	case subscriptionplan.FieldCreatedAt:
@@ -32279,6 +32344,13 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetForSale(v)
 		return nil
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPurchaseLimitPerUser(v)
+		return nil
 	case subscriptionplan.FieldSortOrder:
 		v, ok := value.(int)
 		if !ok {
@@ -32320,6 +32392,9 @@ func (m *SubscriptionPlanMutation) AddedFields() []string {
 	if m.addvalidity_days != nil {
 		fields = append(fields, subscriptionplan.FieldValidityDays)
 	}
+	if m.addpurchase_limit_per_user != nil {
+		fields = append(fields, subscriptionplan.FieldPurchaseLimitPerUser)
+	}
 	if m.addsort_order != nil {
 		fields = append(fields, subscriptionplan.FieldSortOrder)
 	}
@@ -32339,6 +32414,8 @@ func (m *SubscriptionPlanMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedOriginalPrice()
 	case subscriptionplan.FieldValidityDays:
 		return m.AddedValidityDays()
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		return m.AddedPurchaseLimitPerUser()
 	case subscriptionplan.FieldSortOrder:
 		return m.AddedSortOrder()
 	}
@@ -32377,6 +32454,13 @@ func (m *SubscriptionPlanMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddValidityDays(v)
+		return nil
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPurchaseLimitPerUser(v)
 		return nil
 	case subscriptionplan.FieldSortOrder:
 		v, ok := value.(int)
@@ -32450,6 +32534,9 @@ func (m *SubscriptionPlanMutation) ResetField(name string) error {
 		return nil
 	case subscriptionplan.FieldForSale:
 		m.ResetForSale()
+		return nil
+	case subscriptionplan.FieldPurchaseLimitPerUser:
+		m.ResetPurchaseLimitPerUser()
 		return nil
 	case subscriptionplan.FieldSortOrder:
 		m.ResetSortOrder()

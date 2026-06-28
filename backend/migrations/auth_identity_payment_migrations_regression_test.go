@@ -181,3 +181,11 @@ func TestMigration154AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
 	require.Contains(t, sql, "auto_pause_on_expired = TRUE")
 	require.Contains(t, sql, "expires_at IS NOT NULL")
 }
+
+func TestMigration155AddsSubscriptionPlanPurchaseLimitColumn(t *testing.T) {
+	content, err := FS.ReadFile("155_subscription_plan_purchase_limit.sql")
+	require.NoError(t, err)
+
+	sql := string(content)
+	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS purchase_limit_per_user INTEGER NOT NULL DEFAULT 0")
+}
