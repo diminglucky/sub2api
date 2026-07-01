@@ -1032,6 +1032,10 @@ const exportToCSV = async () => {
   }
 }
 
+const ALWAYS_VISIBLE = ['created_at']
+const DEFAULT_HIDDEN_COLUMNS = ['user_agent']
+const HIDDEN_COLUMNS_KEY = 'user-usage-hidden-columns'
+
 // Tooltip functions
 const showTooltip = (event: MouseEvent, row: UsageLog) => {
   const target = event.currentTarget as HTMLElement
