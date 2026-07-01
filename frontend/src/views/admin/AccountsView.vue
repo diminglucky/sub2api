@@ -160,7 +160,7 @@
               </template>
             </AccountTableActions>
           </div>
-          <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div class="grid grid-cols-5 gap-2">
             <button
               v-for="summary in platformSummaries"
               :key="summary.key"
@@ -1825,7 +1825,7 @@ onUnmounted(() => {
 
 <style scoped>
 .account-platform-card {
-  @apply flex h-20 min-w-0 items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40 dark:border-dark-700 dark:bg-dark-900/70 dark:hover:border-primary-500/50 dark:hover:bg-primary-500/10;
+  @apply flex h-16 min-w-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-left transition-colors hover:border-primary-300 hover:bg-primary-50/40 dark:border-dark-700 dark:bg-dark-900/70 dark:hover:border-primary-500/50 dark:hover:bg-primary-500/10;
 }
 
 .account-platform-card-active {
