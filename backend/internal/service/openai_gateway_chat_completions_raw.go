@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -120,19 +121,33 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	)
 
 	// 5. Build upstream request
-	apiKey := account.GetOpenAIApiKey()
-	if apiKey == "" {
-		return nil, fmt.Errorf("account %d missing api_key", account.ID)
+	authToken := ""
+	targetURL := ""
+	if account.Platform == PlatformGrok {
+		var err error
+		authToken, _, err = s.GetAccessToken(ctx, account)
+		if err != nil {
+			return nil, fmt.Errorf("get grok access token: %w", err)
+		}
+		targetURL, err = xai.BuildChatCompletionsURL(account.GetGrokBaseURL())
+		if err != nil {
+			return nil, fmt.Errorf("invalid grok base_url: %w", err)
+		}
+	} else {
+		authToken = account.GetOpenAIApiKey()
+		if authToken == "" {
+			return nil, fmt.Errorf("account %d missing api_key", account.ID)
+		}
+		baseURL := account.GetOpenAIBaseURL()
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid base_url: %w", err)
+		}
+		targetURL = buildOpenAIChatCompletionsURL(validatedURL)
 	}
-	baseURL := account.GetOpenAIBaseURL()
-	if baseURL == "" {
-		baseURL = "https://api.openai.com"
-	}
-	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid base_url: %w", err)
-	}
-	targetURL := buildOpenAIChatCompletionsURL(validatedURL)
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
@@ -142,7 +157,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	}
 	upstreamReq = upstreamReq.WithContext(WithHTTPUpstreamProfile(upstreamReq.Context(), HTTPUpstreamProfileOpenAI))
 	upstreamReq.Header.Set("Content-Type", "application/json")
-	upstreamReq.Header.Set("Authorization", "Bearer "+apiKey)
+	upstreamReq.Header.Set("Authorization", "Bearer "+authToken)
 	if clientStream {
 		upstreamReq.Header.Set("Accept", "text/event-stream")
 	} else {
@@ -161,6 +176,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	customUA := account.GetOpenAIUserAgent()
 	if customUA != "" {
 		upstreamReq.Header.Set("user-agent", customUA)
+	}
+	if account.Platform == PlatformGrok {
+		upstreamReq.Header.Set("User-Agent", "sub2api-grok/1.0")
 	}
 
 	// 6. Send request
@@ -184,6 +202,9 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if account.Platform == PlatformGrok {
+		s.updateGrokUsageSnapshot(ctx, account.ID, xai.ParseQuotaHeaders(resp.Header, resp.StatusCode))
+	}
 
 	// 7. Handle error response with failover
 	if resp.StatusCode >= 400 {

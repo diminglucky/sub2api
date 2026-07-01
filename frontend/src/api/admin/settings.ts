@@ -18,7 +18,7 @@ export interface DefaultSubscriptionSetting {
 }
 
 // ── 平台限额类型 ──────────────────────────────────────────────────
-export type PlatformType = "anthropic" | "openai" | "zhipu" | "gemini" | "antigravity"
+export type PlatformType = "anthropic" | "openai" | "zhipu" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
 
 /** 单平台三档限额；null = 不限制，undefined = 未填（等价 null） */
@@ -31,7 +31,7 @@ export interface PlatformQuotaLimits {
 /** 全平台默认限额 map（key = PlatformType） */
 export type DefaultPlatformQuotasMap = Partial<Record<PlatformType, PlatformQuotaLimits>>
 
-const PLATFORMS: PlatformType[] = ["anthropic", "openai", "zhipu", "gemini", "antigravity"]
+const PLATFORMS: PlatformType[] = ["anthropic", "openai", "zhipu", "gemini", "antigravity", "grok"]
 
 /** 归一化为全 4 平台 × 3 窗口（缺失填 null），供模板非空绑定 */
 export function normalizePlatformQuotasMap(input?: DefaultPlatformQuotasMap | null): DefaultPlatformQuotasMap {
@@ -549,6 +549,8 @@ export interface SystemSettings {
   // Claude Code version check
   min_claude_code_version: string;
   max_claude_code_version: string;
+  min_codex_version: string;
+  max_codex_version: string;
 
   // 分组隔离
   allow_ungrouped_key_scheduling: boolean;
@@ -562,9 +564,15 @@ export interface SystemSettings {
   claude_oauth_system_prompt_blocks: string;
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
+  enable_client_dateline_normalization: boolean;
   antigravity_user_agent_version: string;
   openai_codex_user_agent: string;
-  openai_allow_claude_code_codex_plugin: boolean;
+  codex_cli_only_blacklist: string;
+  codex_cli_only_whitelist: string;
+  codex_cli_only_allow_app_server_clients: boolean;
+  codex_cli_only_engine_fingerprint_signals: string;
+  cyber_session_block_enabled: boolean;
+  cyber_session_block_ttl_seconds: number;
   web_search_emulation_enabled?: boolean;
 
   // Payment configuration
@@ -794,6 +802,8 @@ export interface UpdateSettingsRequest {
   ops_metrics_interval_seconds?: number;
   min_claude_code_version?: string;
   max_claude_code_version?: string;
+  min_codex_version?: string;
+  max_codex_version?: string;
   allow_ungrouped_key_scheduling?: boolean;
   enable_fingerprint_unification?: boolean;
   enable_metadata_passthrough?: boolean;
@@ -803,9 +813,15 @@ export interface UpdateSettingsRequest {
   claude_oauth_system_prompt_blocks?: string;
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
+  enable_client_dateline_normalization?: boolean;
   antigravity_user_agent_version?: string;
   openai_codex_user_agent?: string;
-  openai_allow_claude_code_codex_plugin?: boolean;
+  codex_cli_only_blacklist?: string;
+  codex_cli_only_whitelist?: string;
+  codex_cli_only_allow_app_server_clients?: boolean;
+  codex_cli_only_engine_fingerprint_signals?: string;
+  cyber_session_block_enabled?: boolean;
+  cyber_session_block_ttl_seconds?: number;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

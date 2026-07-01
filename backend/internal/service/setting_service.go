@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/imroc/req/v3"
 	"golang.org/x/sync/singleflight"
 )
@@ -111,6 +112,7 @@ type cachedGatewayForwardingSettings struct {
 	claudeOAuthSystemPromptBlocks    string
 	anthropicCacheTTL1hInjection     bool
 	rewriteMessageCacheControl       bool
+	clientDatelineNormalization      bool
 	expiresAt                        int64 // unix nano
 }
 
@@ -145,9 +147,24 @@ type cachedOpenAIQuotaAutoPauseSettings struct {
 	expiresAt int64
 }
 
+type cachedCyberSessionBlockRuntime struct {
+	enabled   bool
+	ttl       time.Duration
+	expiresAt int64
+}
+
 const openAICodexUserAgentCacheTTL = 60 * time.Second
 const openAICodexUserAgentErrorTTL = 5 * time.Second
 const openAICodexUserAgentDBTimeout = 5 * time.Second
+
+const codexRestrictionPolicyCacheTTL = 60 * time.Second
+const codexRestrictionPolicyDBTimeout = 5 * time.Second
+
+// cachedCodexRestrictionPolicy codex_cli_only 全局加固策略缓存（进程内，60s TTL）。
+type cachedCodexRestrictionPolicy struct {
+	value     CodexRestrictionPolicy
+	expiresAt int64
+}
 
 // cachedOpenAIAllowCodexPlugin Codex 插件放行开关缓存（进程内缓存，60s TTL）。
 // IsOpenAIAllowClaudeCodeCodexPluginEnabled 在每个 codex_cli_only 账号的网关请求热路径上被调用，避免每次访问 DB。
@@ -163,6 +180,10 @@ const openAIAllowCodexPluginDBTimeout = 5 * time.Second
 const openAIQuotaAutoPauseSettingsCacheTTL = 60 * time.Second
 const openAIQuotaAutoPauseSettingsErrorTTL = 5 * time.Second
 const openAIQuotaAutoPauseSettingsDBTimeout = 5 * time.Second
+
+const cyberSessionBlockRuntimeCacheTTL = 60 * time.Second
+const cyberSessionBlockRuntimeErrorTTL = 5 * time.Second
+const cyberSessionBlockRuntimeDBTimeout = 5 * time.Second
 
 const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings"
 
@@ -190,6 +211,8 @@ type SettingService struct {
 	openAICodexUASF             singleflight.Group
 	openAIAllowCodexPluginCache atomic.Value // *cachedOpenAIAllowCodexPlugin
 	openAIAllowCodexPluginSF    singleflight.Group
+	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
+	codexRestrictionPolicySF    singleflight.Group
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
@@ -199,6 +222,8 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+	cyberSessionBlockRuntimeCache     atomic.Value // *cachedCyberSessionBlockRuntime
+	cyberSessionBlockRuntimeSF        singleflight.Group
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -1114,6 +1139,255 @@ func (s *SettingService) IsOpenAIAllowClaudeCodeCodexPluginEnabled(ctx context.C
 	return false
 }
 
+var legacyClaudeCodeCodexWhitelistEntry = openai.AllowedClientEntry{
+	Originator: "Claude Code",
+	UAContains: []string{"Claude Code/"},
+}
+
+func (s *SettingService) MigrateOpenAIAllowClaudeCodeCodexPluginSetting(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
+	defer cancel()
+
+	legacyValue, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIAllowClaudeCodeCodexPlugin)
+	if err != nil {
+		if errors.Is(err, ErrSettingNotFound) {
+			return nil
+		}
+		return fmt.Errorf("get deprecated %s setting: %w", SettingKeyOpenAIAllowClaudeCodeCodexPlugin, err)
+	}
+	if strings.TrimSpace(legacyValue) != "true" {
+		return nil
+	}
+
+	rawWhitelist, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyWhitelist)
+	if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+
+	var entries []openai.AllowedClientEntry
+	if strings.TrimSpace(rawWhitelist) != "" {
+		if err := json.Unmarshal([]byte(rawWhitelist), &entries); err != nil {
+			return fmt.Errorf("parse %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+		}
+	}
+	if codexClientEntriesContain(entries, legacyClaudeCodeCodexWhitelistEntry) {
+		return nil
+	}
+
+	entries = append(entries, legacyClaudeCodeCodexWhitelistEntry)
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return fmt.Errorf("marshal %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	if err := s.settingRepo.Set(dbCtx, SettingKeyCodexCLIOnlyWhitelist, string(encoded)); err != nil {
+		return fmt.Errorf("set %s setting: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	return nil
+}
+
+func (s *SettingService) MigrateCodexBodyFingerprintToSignals(ctx context.Context) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
+	defer cancel()
+
+	if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyEngineFingerprintSignals); err == nil && strings.TrimSpace(v) != "" {
+		return nil
+	} else if err != nil && !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+
+	bodyOn := false
+	if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyAllowBodyEngineFingerprint); err == nil {
+		bodyOn = strings.TrimSpace(v) == "true"
+	} else if !errors.Is(err, ErrSettingNotFound) {
+		return fmt.Errorf("get deprecated %s setting: %w", SettingKeyCodexCLIOnlyAllowBodyEngineFingerprint, err)
+	}
+
+	seed := make([]openai.EngineFingerprintSignal, len(openai.DefaultEngineFingerprintSignals))
+	copy(seed, openai.DefaultEngineFingerprintSignals)
+	if bodyOn {
+		for i := range seed {
+			if seed[i].Type == openai.FingerprintSignalBodyPath {
+				seed[i].Required = true
+			}
+		}
+	}
+	encoded, err := json.Marshal(seed)
+	if err != nil {
+		return fmt.Errorf("marshal %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	if err := s.settingRepo.Set(dbCtx, SettingKeyCodexCLIOnlyEngineFingerprintSignals, string(encoded)); err != nil {
+		return fmt.Errorf("set %s setting: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	return nil
+}
+
+func codexClientEntriesContain(entries []openai.AllowedClientEntry, want openai.AllowedClientEntry) bool {
+	wantOriginator := strings.TrimSpace(want.Originator)
+	if wantOriginator == "" {
+		return false
+	}
+	wantMarkers := normalizedCodexClientMarkers(want.UAContains)
+	if len(wantMarkers) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		if !strings.EqualFold(strings.TrimSpace(entry.Originator), wantOriginator) {
+			continue
+		}
+		gotMarkers := normalizedCodexClientMarkers(entry.UAContains)
+		if len(gotMarkers) != len(wantMarkers) {
+			continue
+		}
+		matched := true
+		for marker := range wantMarkers {
+			if _, ok := gotMarkers[marker]; !ok {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizedCodexClientMarkers(markers []string) map[string]struct{} {
+	normalized := make(map[string]struct{}, len(markers))
+	for _, marker := range markers {
+		marker = strings.TrimSpace(marker)
+		if marker == "" {
+			continue
+		}
+		normalized[strings.ToLower(marker)] = struct{}{}
+	}
+	return normalized
+}
+
+func (s *SettingService) GetCodexRestrictionPolicy(ctx context.Context) CodexRestrictionPolicy {
+	if s == nil || s.settingRepo == nil {
+		return CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals}
+	}
+	if cached, ok := s.codexRestrictionPolicyCache.Load().(*cachedCodexRestrictionPolicy); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.value
+		}
+	}
+	result, _, _ := s.codexRestrictionPolicySF.Do("codex_restriction_policy", func() (any, error) {
+		if cached, ok := s.codexRestrictionPolicyCache.Load().(*cachedCodexRestrictionPolicy); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached.value, nil
+			}
+		}
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), codexRestrictionPolicyDBTimeout)
+		defer cancel()
+
+		pol := CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals}
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyMinCodexVersion); err == nil {
+			pol.MinCodexVersion = strings.TrimSpace(v)
+		}
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyMaxCodexVersion); err == nil {
+			pol.MaxCodexVersion = strings.TrimSpace(v)
+		}
+		if v, err := s.settingRepo.GetValue(dbCtx, SettingKeyCodexCLIOnlyAllowAppServerClients); err == nil {
+			pol.AllowAppServerClients = strings.TrimSpace(v) == "true"
+		}
+		pol.EngineFingerprintSignals = s.loadEngineFingerprintSignals(dbCtx)
+		pol.Whitelist = s.loadCodexClientEntries(dbCtx, SettingKeyCodexCLIOnlyWhitelist)
+		pol.Blacklist = s.loadCodexClientEntries(dbCtx, SettingKeyCodexCLIOnlyBlacklist)
+
+		s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{
+			value:     pol,
+			expiresAt: time.Now().Add(codexRestrictionPolicyCacheTTL).UnixNano(),
+		})
+		return pol, nil
+	})
+	if pol, ok := result.(CodexRestrictionPolicy); ok {
+		return pol
+	}
+	return CodexRestrictionPolicy{EngineFingerprintSignals: openai.DefaultEngineFingerprintSignals}
+}
+
+func (s *SettingService) loadCodexClientEntries(ctx context.Context, key string) []openai.AllowedClientEntry {
+	v, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return s.loadCodexClientEntriesFromRaw(v)
+}
+
+func (s *SettingService) loadCodexClientEntriesFromRaw(v string) []openai.AllowedClientEntry {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if json.Unmarshal([]byte(v), &entries) != nil {
+		return nil
+	}
+	return entries
+}
+
+func (s *SettingService) loadEngineFingerprintSignals(ctx context.Context) []openai.EngineFingerprintSignal {
+	v, err := s.settingRepo.GetValue(ctx, SettingKeyCodexCLIOnlyEngineFingerprintSignals)
+	if err != nil || strings.TrimSpace(v) == "" {
+		return openai.DefaultEngineFingerprintSignals
+	}
+	sigs, ok := openai.ParseEngineFingerprintSignals(v)
+	if !ok {
+		return openai.DefaultEngineFingerprintSignals
+	}
+	return sigs
+}
+
+func ValidateCodexClientEntriesJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+		return fmt.Errorf("must be empty or a valid JSON array of {originator, ua_contains}")
+	}
+	return nil
+}
+
+func ValidateCodexWhitelistEntriesJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var entries []openai.AllowedClientEntry
+	if err := json.Unmarshal([]byte(trimmed), &entries); err != nil {
+		return fmt.Errorf("must be empty or a valid JSON array of {originator, ua_contains}")
+	}
+	for i, entry := range entries {
+		if !entry.IsWhitelistable() {
+			return fmt.Errorf("entry %d: whitelist requires a non-empty originator and at least one non-empty ua_contains (double-factor AND; otherwise the rule never matches)", i)
+		}
+	}
+	return nil
+}
+
+func ValidateEngineFingerprintSignalsJSON(raw string) error {
+	return openai.ValidateEngineFingerprintSignalsJSON(raw)
+}
+
 // SetOnUpdateCallback sets a callback function to be called when settings are updated
 // This is used for cache invalidation (e.g., HTML cache in frontend server)
 func (s *SettingService) SetOnUpdateCallback(callback func()) {
@@ -1902,6 +2176,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 	updates[SettingKeyMaxClaudeCodeVersion] = settings.MaxClaudeCodeVersion
+	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)
+	updates[SettingKeyMaxCodexVersion] = strings.TrimSpace(settings.MaxCodexVersion)
 
 	// 分组隔离
 	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
@@ -1921,9 +2197,28 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyClaudeOAuthSystemPromptBlocks] = settings.ClaudeOAuthSystemPromptBlocks
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
+	updates[SettingKeyEnableClientDatelineNormalization] = strconv.FormatBool(settings.EnableClientDatelineNormalization)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] = strconv.FormatBool(settings.OpenAIAllowClaudeCodeCodexPlugin)
+	if err := ValidateCodexClientEntriesJSON(settings.CodexCLIOnlyBlacklist); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyBlacklist, err)
+	}
+	if err := ValidateCodexWhitelistEntriesJSON(settings.CodexCLIOnlyWhitelist); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	if err := ValidateEngineFingerprintSignalsJSON(settings.CodexCLIOnlyEngineFingerprintSignals); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	updates[SettingKeyCodexCLIOnlyBlacklist] = strings.TrimSpace(settings.CodexCLIOnlyBlacklist)
+	updates[SettingKeyCodexCLIOnlyWhitelist] = strings.TrimSpace(settings.CodexCLIOnlyWhitelist)
+	updates[SettingKeyCodexCLIOnlyAllowAppServerClients] = strconv.FormatBool(settings.CodexCLIOnlyAllowAppServerClients)
+	updates[SettingKeyCodexCLIOnlyEngineFingerprintSignals] = strings.TrimSpace(settings.CodexCLIOnlyEngineFingerprintSignals)
+	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	if settings.CyberSessionBlockTTLSeconds <= 0 {
+		settings.CyberSessionBlockTTLSeconds = int(time.Hour / time.Second)
+	}
+	updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -2053,6 +2348,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		claudeOAuthSystemPromptBlocks:    settings.ClaudeOAuthSystemPromptBlocks,
 		anthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		rewriteMessageCacheControl:       settings.RewriteMessageCacheControl,
+		clientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 	})
 	s.antigravityUAVersionSF.Forget("antigravity_user_agent_version")
@@ -2096,6 +2392,32 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
 		value:     settings.OpenAIAllowClaudeCodeCodexPlugin,
 		expiresAt: time.Now().Add(openAIAllowCodexPluginCacheTTL).UnixNano(),
+	})
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	signals := openai.DefaultEngineFingerprintSignals
+	if parsed, ok := openai.ParseEngineFingerprintSignals(settings.CodexCLIOnlyEngineFingerprintSignals); ok {
+		signals = parsed
+	}
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{
+		value: CodexRestrictionPolicy{
+			Whitelist:                s.loadCodexClientEntriesFromRaw(settings.CodexCLIOnlyWhitelist),
+			Blacklist:                s.loadCodexClientEntriesFromRaw(settings.CodexCLIOnlyBlacklist),
+			MinCodexVersion:          strings.TrimSpace(settings.MinCodexVersion),
+			MaxCodexVersion:          strings.TrimSpace(settings.MaxCodexVersion),
+			AllowAppServerClients:    settings.CodexCLIOnlyAllowAppServerClients,
+			EngineFingerprintSignals: signals,
+		},
+		expiresAt: time.Now().Add(codexRestrictionPolicyCacheTTL).UnixNano(),
+	})
+	s.cyberSessionBlockRuntimeSF.Forget("cyber_session_block_runtime")
+	cyberTTLSeconds := settings.CyberSessionBlockTTLSeconds
+	if cyberTTLSeconds <= 0 {
+		cyberTTLSeconds = int(time.Hour / time.Second)
+	}
+	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{
+		enabled:   settings.CyberSessionBlockEnabled,
+		ttl:       time.Duration(cyberTTLSeconds) * time.Second,
+		expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
 	})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
@@ -2258,6 +2580,7 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 
 type gatewayForwardingSettingsResult struct {
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
+	clientDatelineNormalization                                                           bool
 	claudeOAuthSystemPrompt, claudeOAuthSystemPromptBlocks                                string
 }
 
@@ -2273,6 +2596,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 				cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 				rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+				clientDatelineNormalization:      cached.clientDatelineNormalization,
 			}
 		}
 	}
@@ -2288,6 +2612,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 					claudeOAuthSystemPromptBlocks:    cached.claudeOAuthSystemPromptBlocks,
 					cacheTTL1h:                       cached.anthropicCacheTTL1hInjection,
 					rewriteMessageCacheControl:       cached.rewriteMessageCacheControl,
+					clientDatelineNormalization:      cached.clientDatelineNormalization,
 				}, nil
 			}
 		}
@@ -2302,6 +2627,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			SettingKeyClaudeOAuthSystemPromptBlocks,
 			SettingKeyEnableAnthropicCacheTTL1hInjection,
 			SettingKeyRewriteMessageCacheControl,
+			SettingKeyEnableClientDatelineNormalization,
 		})
 		if err != nil {
 			slog.Warn("failed to get gateway forwarding settings", "error", err)
@@ -2312,9 +2638,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 				claudeOAuthSystemPromptInjection: true,
 				anthropicCacheTTL1hInjection:     false,
 				rewriteMessageCacheControl:       s.defaultRewriteMessageCacheControl(),
+				clientDatelineNormalization:      true,
 				expiresAt:                        time.Now().Add(gatewayForwardingErrorTTL).UnixNano(),
 			})
-			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl()}, nil
+			return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
 		}
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -2333,6 +2660,10 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if v, ok := values[SettingKeyRewriteMessageCacheControl]; ok && v != "" {
 			rewriteMessageCacheControl = v == "true"
 		}
+		clientDatelineNormalization := true
+		if v, ok := values[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+			clientDatelineNormalization = v == "true"
+		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -2342,6 +2673,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			anthropicCacheTTL1hInjection:     cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
@@ -2353,12 +2685,13 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			claudeOAuthSystemPromptBlocks:    systemPromptBlocks,
 			cacheTTL1h:                       cacheTTL1h,
 			rewriteMessageCacheControl:       rewriteMessageCacheControl,
+			clientDatelineNormalization:      clientDatelineNormalization,
 		}, nil
 	})
 	if r, ok := val.(gatewayForwardingSettingsResult); ok {
 		return r
 	}
-	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true}
+	return gatewayForwardingSettingsResult{fp: true, claudeOAuthSystemPromptInjection: true, clientDatelineNormalization: true}
 }
 
 // GetGatewayForwardingSettings returns cached gateway forwarding settings.
@@ -2377,6 +2710,12 @@ func (s *SettingService) IsAnthropicCacheTTL1hInjectionEnabled(ctx context.Conte
 // IsRewriteMessageCacheControlEnabled 检查是否启用 messages cache_control 改写。
 func (s *SettingService) IsRewriteMessageCacheControlEnabled(ctx context.Context) bool {
 	return s.getGatewayForwardingSettingsCached(ctx).rewriteMessageCacheControl
+}
+
+// IsClientDatelineNormalizationEnabled 检查是否启用 Anthropic OAuth/SetupToken 请求体
+// 的客户端 dateline 归一化。默认开启。
+func (s *SettingService) IsClientDatelineNormalizationEnabled(ctx context.Context) bool {
+	return s.getGatewayForwardingSettingsCached(ctx).clientDatelineNormalization
 }
 
 // GetClaudeOAuthSystemPromptInjectionSettings returns the Claude OAuth mimic
@@ -2863,9 +3202,19 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		// 风控中心功能（默认关闭，显式启用）
 		SettingKeyRiskControlEnabled: "false",
 
+		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
+		SettingKeyCyberSessionBlockEnabled:    "false",
+		SettingKeyCyberSessionBlockTTLSeconds: "3600",
+
 		// Claude Code version check (default: empty = disabled)
-		SettingKeyMinClaudeCodeVersion: "",
-		SettingKeyMaxClaudeCodeVersion: "",
+		SettingKeyMinClaudeCodeVersion:                 "",
+		SettingKeyMaxClaudeCodeVersion:                 "",
+		SettingKeyMinCodexVersion:                      "",
+		SettingKeyMaxCodexVersion:                      "",
+		SettingKeyCodexCLIOnlyBlacklist:                "",
+		SettingKeyCodexCLIOnlyWhitelist:                "",
+		SettingKeyCodexCLIOnlyAllowAppServerClients:    "false",
+		SettingKeyCodexCLIOnlyEngineFingerprintSignals: openai.DefaultEngineFingerprintSignalsJSON(),
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:            "false",
@@ -2874,6 +3223,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyClaudeOAuthSystemPromptBlocks:          "",
 		SettingKeyEnableAnthropicCacheTTL1hInjection:     "false",
 		SettingKeyRewriteMessageCacheControl:             strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyEnableClientDatelineNormalization:      "true",
 		SettingKeyAntigravityUserAgentVersion:            "",
 		SettingKeyOpenAICodexUserAgent:                   "",
 		SettingPaymentVisibleMethodAlipaySource:          "",
@@ -3378,6 +3728,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
 	result.MaxClaudeCodeVersion = settings[SettingKeyMaxClaudeCodeVersion]
+	result.MinCodexVersion = strings.TrimSpace(settings[SettingKeyMinCodexVersion])
+	result.MaxCodexVersion = strings.TrimSpace(settings[SettingKeyMaxCodexVersion])
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
@@ -3404,9 +3756,28 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
 	}
+	if v, ok := settings[SettingKeyEnableClientDatelineNormalization]; ok && v != "" {
+		result.EnableClientDatelineNormalization = v == "true"
+	} else {
+		result.EnableClientDatelineNormalization = true
+	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAIAllowClaudeCodeCodexPlugin = settings[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] == "true"
+	result.CodexCLIOnlyBlacklist = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyBlacklist])
+	result.CodexCLIOnlyWhitelist = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyWhitelist])
+	result.CodexCLIOnlyAllowAppServerClients = strings.EqualFold(strings.TrimSpace(settings[SettingKeyCodexCLIOnlyAllowAppServerClients]), "true")
+	result.CodexCLIOnlyEngineFingerprintSignals = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyEngineFingerprintSignals])
+	if result.CodexCLIOnlyEngineFingerprintSignals == "" {
+		result.CodexCLIOnlyEngineFingerprintSignals = openai.DefaultEngineFingerprintSignalsJSON()
+	}
+	result.CyberSessionBlockEnabled = strings.EqualFold(strings.TrimSpace(settings[SettingKeyCyberSessionBlockEnabled]), "true")
+	result.CyberSessionBlockTTLSeconds = int(time.Hour / time.Second)
+	if raw := strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds]); raw != "" {
+		if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+			result.CyberSessionBlockTTLSeconds = seconds
+		}
+	}
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {
@@ -3680,6 +4051,63 @@ func normalizePublicAPIBaseURL(raw string) string {
 		return defaultPublicAPIBaseURL
 	}
 	return trimmed
+}
+
+// GetCyberSessionBlockRuntime 返回 cyber 会话屏蔽开关和 TTL。
+// 默认关闭；读取设置失败时短时间缓存关闭状态，避免网关热路径频繁打 DB。
+func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool, time.Duration) {
+	if s == nil || s.settingRepo == nil {
+		return false, time.Hour
+	}
+	if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
+		if time.Now().UnixNano() < cached.expiresAt {
+			return cached.enabled, cached.ttl
+		}
+	}
+
+	result, _, _ := s.cyberSessionBlockRuntimeSF.Do("cyber_session_block_runtime", func() (any, error) {
+		if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
+			if time.Now().UnixNano() < cached.expiresAt {
+				return cached, nil
+			}
+		}
+
+		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cyberSessionBlockRuntimeDBTimeout)
+		defer cancel()
+
+		enabledVal, enabledErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockEnabled)
+		ttlVal, ttlErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockTTLSeconds)
+		if enabledErr != nil && !errors.Is(enabledErr, ErrSettingNotFound) {
+			slog.Warn("failed to get cyber_session_block_enabled setting", "error", enabledErr)
+			entry := &cachedCyberSessionBlockRuntime{
+				enabled:   false,
+				ttl:       time.Hour,
+				expiresAt: time.Now().Add(cyberSessionBlockRuntimeErrorTTL).UnixNano(),
+			}
+			s.cyberSessionBlockRuntimeCache.Store(entry)
+			return entry, nil
+		}
+
+		enabled := enabledErr == nil && strings.EqualFold(strings.TrimSpace(enabledVal), "true")
+		ttl := time.Hour
+		if ttlErr == nil {
+			if seconds, err := strconv.Atoi(strings.TrimSpace(ttlVal)); err == nil && seconds > 0 {
+				ttl = time.Duration(seconds) * time.Second
+			}
+		}
+
+		entry := &cachedCyberSessionBlockRuntime{
+			enabled:   enabled,
+			ttl:       ttl,
+			expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
+		}
+		s.cyberSessionBlockRuntimeCache.Store(entry)
+		return entry, nil
+	})
+	if entry, ok := result.(*cachedCyberSessionBlockRuntime); ok && entry != nil {
+		return entry.enabled, entry.ttl
+	}
+	return false, time.Hour
 }
 
 // IsTurnstileEnabled 检查是否启用 Turnstile 验证
@@ -4910,18 +5338,15 @@ func (s *SettingService) SetStreamTimeoutSettings(ctx context.Context, settings 
 	return s.settingRepo.Set(ctx, SettingKeyStreamTimeoutSettings, string(data))
 }
 
-// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回 4 platform x 3 window 的设置。
-// 永远返回包含全部 4 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
+// GetDefaultPlatformQuotas 读取系统全局 platform quota JSON key，返回全部允许平台 x 3 window 的设置。
+// 永远返回包含全部允许 platform key 的 map（值可能为零值/nil 字段，表示"上层未配置 = 不限制"）。
 //
 // 使用单个 JSON key（default_platform_quotas），一次 DB roundtrip，消除旧 12-KV 格式的 N+1 问题。
-// 容错语义：取值失败或 unmarshal 失败 → 返回补齐 4 key 的空 map（fail-open，注册不被阻断）。
+// 容错语义：取值失败或 unmarshal 失败 → 返回补齐全部允许平台 key 的空 map（fail-open，注册不被阻断）。
 func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[string]*DefaultPlatformQuotaSetting, error) {
-	out := map[string]*DefaultPlatformQuotaSetting{
-		"anthropic":   {},
-		"openai":      {},
-		"zhipu":       {},
-		"gemini":      {},
-		"antigravity": {},
+	out := make(map[string]*DefaultPlatformQuotaSetting, len(AllowedQuotaPlatforms))
+	for _, platform := range AllowedQuotaPlatforms {
+		out[platform] = &DefaultPlatformQuotaSetting{}
 	}
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyDefaultPlatformQuotas)
 	if err != nil || raw == "" {
@@ -4937,7 +5362,7 @@ func (s *SettingService) GetDefaultPlatformQuotas(ctx context.Context) (map[stri
 			out[platform] = v
 		}
 	}
-	return out, nil // 补齐 4 platform key，保持与旧实现一致的下游契约
+	return out, nil // 补齐全部允许 platform key，保持与旧实现一致的下游契约
 }
 
 // GetAuthSourcePlatformQuotas 读取指定 auth source 的 platform quota 覆盖（仅返回有配置的平台，override 语义）。

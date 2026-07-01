@@ -170,6 +170,8 @@ type SystemSettings struct {
 
 	MinClaudeCodeVersion string `json:"min_claude_code_version"`
 	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
+	MinCodexVersion      string `json:"min_codex_version"`
+	MaxCodexVersion      string `json:"max_codex_version"`
 
 	// 分组隔离
 	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
@@ -186,9 +188,15 @@ type SystemSettings struct {
 	ClaudeOAuthSystemPromptBlocks          string `json:"claude_oauth_system_prompt_blocks"`
 	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin       bool   `json:"openai_allow_claude_code_codex_plugin"`
+	CodexCLIOnlyBlacklist                  string `json:"codex_cli_only_blacklist"`
+	CodexCLIOnlyWhitelist                  string `json:"codex_cli_only_whitelist"`
+	CodexCLIOnlyAllowAppServerClients      bool   `json:"codex_cli_only_allow_app_server_clients"`
+	CodexCLIOnlyEngineFingerprintSignals   string `json:"codex_cli_only_engine_fingerprint_signals"`
+	CyberSessionBlockEnabled               bool   `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds            int    `json:"cyber_session_block_ttl_seconds"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`

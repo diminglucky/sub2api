@@ -270,6 +270,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpsMetricsIntervalSeconds:              settings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                   settings.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                   settings.MaxClaudeCodeVersion,
+		MinCodexVersion:                        settings.MinCodexVersion,
+		MaxCodexVersion:                        settings.MaxCodexVersion,
 		AllowUngroupedKeyScheduling:            settings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     settings.BackendModeEnabled,
 		EnableFingerprintUnification:           settings.EnableFingerprintUnification,
@@ -280,9 +282,15 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:          settings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:      settings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
+		CodexCLIOnlyBlacklist:                  settings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  settings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      settings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   settings.CodexCLIOnlyEngineFingerprintSignals,
+		CyberSessionBlockEnabled:               settings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:            settings.CyberSessionBlockTTLSeconds,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
 		PaymentVisibleMethodAlipaySource:       settings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        settings.PaymentVisibleMethodWxpaySource,
@@ -598,8 +606,10 @@ type UpdateSettingsRequest struct {
 	OpsQueryModeDefault          *string `json:"ops_query_mode_default"`
 	OpsMetricsIntervalSeconds    *int    `json:"ops_metrics_interval_seconds"`
 
-	MinClaudeCodeVersion string `json:"min_claude_code_version"`
-	MaxClaudeCodeVersion string `json:"max_claude_code_version"`
+	MinClaudeCodeVersion string  `json:"min_claude_code_version"`
+	MaxClaudeCodeVersion string  `json:"max_claude_code_version"`
+	MinCodexVersion      *string `json:"min_codex_version"`
+	MaxCodexVersion      *string `json:"max_codex_version"`
 
 	// 分组隔离
 	AllowUngroupedKeyScheduling bool `json:"allow_ungrouped_key_scheduling"`
@@ -616,9 +626,16 @@ type UpdateSettingsRequest struct {
 	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
 	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
 	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
 	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAIAllowClaudeCodeCodexPlugin       *bool   `json:"openai_allow_claude_code_codex_plugin"`
+	CodexCLIOnlyBlacklist                  *string `json:"codex_cli_only_blacklist"`
+	CodexCLIOnlyWhitelist                  *string `json:"codex_cli_only_whitelist"`
+	CodexCLIOnlyAllowAppServerClients      *bool   `json:"codex_cli_only_allow_app_server_clients"`
+	CodexCLIOnlyEngineFingerprintSignals   *string `json:"codex_cli_only_engine_fingerprint_signals"`
+	CyberSessionBlockEnabled               *bool   `json:"cyber_session_block_enabled"`
+	CyberSessionBlockTTLSeconds            *int    `json:"cyber_session_block_ttl_seconds"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1484,6 +1501,22 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.MinCodexVersion != nil {
+		normalized := strings.TrimSpace(*req.MinCodexVersion)
+		req.MinCodexVersion = &normalized
+		if normalized != "" && !semverPattern.MatchString(normalized) {
+			response.Error(c, http.StatusBadRequest, "min_codex_version must be empty or a valid semver (e.g. 0.141.0)")
+			return
+		}
+	}
+	if req.MaxCodexVersion != nil {
+		normalized := strings.TrimSpace(*req.MaxCodexVersion)
+		req.MaxCodexVersion = &normalized
+		if normalized != "" && !semverPattern.MatchString(normalized) {
+			response.Error(c, http.StatusBadRequest, "max_codex_version must be empty or a valid semver (e.g. 0.200.0)")
+			return
+		}
+	}
 	if req.OpenAICodexUserAgent != nil {
 		normalized := strings.TrimSpace(*req.OpenAICodexUserAgent)
 		req.OpenAICodexUserAgent = &normalized
@@ -1493,11 +1526,56 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.CodexCLIOnlyBlacklist != nil {
+		normalized := strings.TrimSpace(*req.CodexCLIOnlyBlacklist)
+		req.CodexCLIOnlyBlacklist = &normalized
+		if err := service.ValidateCodexClientEntriesJSON(normalized); err != nil {
+			response.Error(c, http.StatusBadRequest, "codex_cli_only_blacklist "+err.Error())
+			return
+		}
+	}
+	if req.CodexCLIOnlyWhitelist != nil {
+		normalized := strings.TrimSpace(*req.CodexCLIOnlyWhitelist)
+		req.CodexCLIOnlyWhitelist = &normalized
+		if err := service.ValidateCodexWhitelistEntriesJSON(normalized); err != nil {
+			response.Error(c, http.StatusBadRequest, "codex_cli_only_whitelist "+err.Error())
+			return
+		}
+	}
+	if req.CodexCLIOnlyEngineFingerprintSignals != nil {
+		normalized := strings.TrimSpace(*req.CodexCLIOnlyEngineFingerprintSignals)
+		req.CodexCLIOnlyEngineFingerprintSignals = &normalized
+		if err := service.ValidateEngineFingerprintSignalsJSON(normalized); err != nil {
+			response.Error(c, http.StatusBadRequest, "codex_cli_only_engine_fingerprint_signals "+err.Error())
+			return
+		}
+	}
+	if req.CyberSessionBlockTTLSeconds != nil {
+		ttl := *req.CyberSessionBlockTTLSeconds
+		if ttl <= 0 {
+			ttl = 3600
+		}
+		req.CyberSessionBlockTTLSeconds = &ttl
+	}
 
 	// 交叉验证：如果同时设置了最低和最高版本号，最高版本号必须 >= 最低版本号
 	if req.MinClaudeCodeVersion != "" && req.MaxClaudeCodeVersion != "" {
 		if service.CompareVersions(req.MaxClaudeCodeVersion, req.MinClaudeCodeVersion) < 0 {
 			response.Error(c, http.StatusBadRequest, "max_claude_code_version must be greater than or equal to min_claude_code_version")
+			return
+		}
+	}
+	minCodexForCompare := previousSettings.MinCodexVersion
+	if req.MinCodexVersion != nil {
+		minCodexForCompare = *req.MinCodexVersion
+	}
+	maxCodexForCompare := previousSettings.MaxCodexVersion
+	if req.MaxCodexVersion != nil {
+		maxCodexForCompare = *req.MaxCodexVersion
+	}
+	if minCodexForCompare != "" && maxCodexForCompare != "" {
+		if service.CompareVersions(maxCodexForCompare, minCodexForCompare) < 0 {
+			response.Error(c, http.StatusBadRequest, "max_codex_version must be greater than or equal to min_codex_version")
 			return
 		}
 	}
@@ -1633,8 +1711,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		IdentityPatchPrompt:                    req.IdentityPatchPrompt,
 		MinClaudeCodeVersion:                   req.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                   req.MaxClaudeCodeVersion,
-		AllowUngroupedKeyScheduling:            req.AllowUngroupedKeyScheduling,
-		BackendModeEnabled:                     req.BackendModeEnabled,
+		MinCodexVersion: func() string {
+			if req.MinCodexVersion != nil {
+				return *req.MinCodexVersion
+			}
+			return previousSettings.MinCodexVersion
+		}(),
+		MaxCodexVersion: func() string {
+			if req.MaxCodexVersion != nil {
+				return *req.MaxCodexVersion
+			}
+			return previousSettings.MaxCodexVersion
+		}(),
+		AllowUngroupedKeyScheduling: req.AllowUngroupedKeyScheduling,
+		BackendModeEnabled:          req.BackendModeEnabled,
 		AllowUserViewErrorRequests: func() bool {
 			if req.AllowUserViewErrorRequests != nil {
 				return *req.AllowUserViewErrorRequests
@@ -1713,6 +1803,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.RewriteMessageCacheControl
 		}(),
+		EnableClientDatelineNormalization: func() bool {
+			if req.EnableClientDatelineNormalization != nil {
+				return *req.EnableClientDatelineNormalization
+			}
+			return previousSettings.EnableClientDatelineNormalization
+		}(),
 		AntigravityUserAgentVersion: func() string {
 			if req.AntigravityUserAgentVersion != nil {
 				return *req.AntigravityUserAgentVersion
@@ -1730,6 +1826,42 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAIAllowClaudeCodeCodexPlugin
 			}
 			return previousSettings.OpenAIAllowClaudeCodeCodexPlugin
+		}(),
+		CodexCLIOnlyBlacklist: func() string {
+			if req.CodexCLIOnlyBlacklist != nil {
+				return *req.CodexCLIOnlyBlacklist
+			}
+			return previousSettings.CodexCLIOnlyBlacklist
+		}(),
+		CodexCLIOnlyWhitelist: func() string {
+			if req.CodexCLIOnlyWhitelist != nil {
+				return *req.CodexCLIOnlyWhitelist
+			}
+			return previousSettings.CodexCLIOnlyWhitelist
+		}(),
+		CodexCLIOnlyAllowAppServerClients: func() bool {
+			if req.CodexCLIOnlyAllowAppServerClients != nil {
+				return *req.CodexCLIOnlyAllowAppServerClients
+			}
+			return previousSettings.CodexCLIOnlyAllowAppServerClients
+		}(),
+		CodexCLIOnlyEngineFingerprintSignals: func() string {
+			if req.CodexCLIOnlyEngineFingerprintSignals != nil {
+				return *req.CodexCLIOnlyEngineFingerprintSignals
+			}
+			return previousSettings.CodexCLIOnlyEngineFingerprintSignals
+		}(),
+		CyberSessionBlockEnabled: func() bool {
+			if req.CyberSessionBlockEnabled != nil {
+				return *req.CyberSessionBlockEnabled
+			}
+			return previousSettings.CyberSessionBlockEnabled
+		}(),
+		CyberSessionBlockTTLSeconds: func() int {
+			if req.CyberSessionBlockTTLSeconds != nil {
+				return *req.CyberSessionBlockTTLSeconds
+			}
+			return previousSettings.CyberSessionBlockTTLSeconds
 		}(),
 		PaymentVisibleMethodAlipaySource: func() string {
 			if req.PaymentVisibleMethodAlipaySource != nil {
@@ -2100,6 +2232,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpsMetricsIntervalSeconds:              updatedSettings.OpsMetricsIntervalSeconds,
 		MinClaudeCodeVersion:                   updatedSettings.MinClaudeCodeVersion,
 		MaxClaudeCodeVersion:                   updatedSettings.MaxClaudeCodeVersion,
+		MinCodexVersion:                        updatedSettings.MinCodexVersion,
+		MaxCodexVersion:                        updatedSettings.MaxCodexVersion,
 		AllowUngroupedKeyScheduling:            updatedSettings.AllowUngroupedKeyScheduling,
 		BackendModeEnabled:                     updatedSettings.BackendModeEnabled,
 		EnableFingerprintUnification:           updatedSettings.EnableFingerprintUnification,
@@ -2110,9 +2244,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ClaudeOAuthSystemPromptBlocks:          updatedSettings.ClaudeOAuthSystemPromptBlocks,
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
+		EnableClientDatelineNormalization:      updatedSettings.EnableClientDatelineNormalization,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
-		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
+		CodexCLIOnlyBlacklist:                  updatedSettings.CodexCLIOnlyBlacklist,
+		CodexCLIOnlyWhitelist:                  updatedSettings.CodexCLIOnlyWhitelist,
+		CodexCLIOnlyAllowAppServerClients:      updatedSettings.CodexCLIOnlyAllowAppServerClients,
+		CodexCLIOnlyEngineFingerprintSignals:   updatedSettings.CodexCLIOnlyEngineFingerprintSignals,
+		CyberSessionBlockEnabled:               updatedSettings.CyberSessionBlockEnabled,
+		CyberSessionBlockTTLSeconds:            updatedSettings.CyberSessionBlockTTLSeconds,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
 		PaymentVisibleMethodWxpaySource:        updatedSettings.PaymentVisibleMethodWxpaySource,
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
@@ -2542,6 +2682,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.MaxClaudeCodeVersion != after.MaxClaudeCodeVersion {
 		changed = append(changed, "max_claude_code_version")
 	}
+	if before.MinCodexVersion != after.MinCodexVersion {
+		changed = append(changed, "min_codex_version")
+	}
+	if before.MaxCodexVersion != after.MaxCodexVersion {
+		changed = append(changed, "max_codex_version")
+	}
 	if before.AllowUngroupedKeyScheduling != after.AllowUngroupedKeyScheduling {
 		changed = append(changed, "allow_ungrouped_key_scheduling")
 	}
@@ -2590,6 +2736,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.RewriteMessageCacheControl != after.RewriteMessageCacheControl {
 		changed = append(changed, "rewrite_message_cache_control")
 	}
+	if before.EnableClientDatelineNormalization != after.EnableClientDatelineNormalization {
+		changed = append(changed, "enable_client_dateline_normalization")
+	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
 	}
@@ -2598,6 +2747,24 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.OpenAIAllowClaudeCodeCodexPlugin != after.OpenAIAllowClaudeCodeCodexPlugin {
 		changed = append(changed, "openai_allow_claude_code_codex_plugin")
+	}
+	if before.CodexCLIOnlyBlacklist != after.CodexCLIOnlyBlacklist {
+		changed = append(changed, "codex_cli_only_blacklist")
+	}
+	if before.CodexCLIOnlyWhitelist != after.CodexCLIOnlyWhitelist {
+		changed = append(changed, "codex_cli_only_whitelist")
+	}
+	if before.CodexCLIOnlyAllowAppServerClients != after.CodexCLIOnlyAllowAppServerClients {
+		changed = append(changed, "codex_cli_only_allow_app_server_clients")
+	}
+	if before.CodexCLIOnlyEngineFingerprintSignals != after.CodexCLIOnlyEngineFingerprintSignals {
+		changed = append(changed, "codex_cli_only_engine_fingerprint_signals")
+	}
+	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
+		changed = append(changed, "cyber_session_block_enabled")
+	}
+	if before.CyberSessionBlockTTLSeconds != after.CyberSessionBlockTTLSeconds {
+		changed = append(changed, "cyber_session_block_ttl_seconds")
 	}
 	if before.PaymentVisibleMethodAlipaySource != after.PaymentVisibleMethodAlipaySource {
 		changed = append(changed, "payment_visible_method_alipay_source")
@@ -3836,7 +4003,7 @@ func slotOf(s *service.DefaultPlatformQuotaSetting, win string) *float64 {
 	return nil
 }
 
-// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all 12 slots.
+// equalPlatformQuotaSettings reports whether two platform-quota maps are identical across all allowed slots.
 func equalPlatformQuotaSettings(before, after map[string]*service.DefaultPlatformQuotaSetting) bool {
 	for _, platform := range service.AllowedQuotaPlatforms {
 		b := before[platform]

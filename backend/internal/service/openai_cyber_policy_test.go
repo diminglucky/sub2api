@@ -22,7 +22,7 @@ func TestDetectOpenAICyberPolicy(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, msg := detectOpenAICyberPolicy([]byte(tt.payload))
+			got, _, msg := detectOpenAICyberPolicy([]byte(tt.payload))
 			if !got {
 				t.Fatal("expected cyber_policy to be detected")
 			}

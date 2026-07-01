@@ -122,6 +122,16 @@ func ProvideOpenAIQuotaService(
 	return NewOpenAIQuotaService(accountRepo, proxyRepo, tokenProvider, privacyClientFactory)
 }
 
+// ProvideGrokQuotaService creates GrokQuotaService for admin quota actions.
+func ProvideGrokQuotaService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	tokenProvider *GrokTokenProvider,
+	httpUpstream HTTPUpstream,
+) *GrokQuotaService {
+	return NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream)
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -146,6 +156,22 @@ func ProvideAntigravityTokenProvider(
 ) *AntigravityTokenProvider {
 	p := NewAntigravityTokenProvider(accountRepo, tokenCache, antigravityOAuthService)
 	executor := NewAntigravityTokenRefresher(antigravityOAuthService)
+	p.SetRefreshAPI(refreshAPI, executor)
+	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
+	p.SetTempUnschedCache(tempUnschedCache)
+	return p
+}
+
+// ProvideGrokTokenProvider creates GrokTokenProvider with OAuthRefreshAPI injection.
+func ProvideGrokTokenProvider(
+	accountRepo AccountRepository,
+	tokenCache GeminiTokenCache,
+	grokOAuthService *GrokOAuthService,
+	refreshAPI *OAuthRefreshAPI,
+	tempUnschedCache TempUnschedCache,
+) *GrokTokenProvider {
+	p := NewGrokTokenProvider(accountRepo, tokenCache)
+	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
@@ -545,6 +571,8 @@ var ProviderSet = wire.NewSet(
 	NewOAuthService,
 	ProvideOpenAIOAuthService,
 	ProvideOpenAIQuotaService,
+	ProvideGrokQuotaService,
+	NewGrokOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
@@ -554,6 +582,7 @@ var ProviderSet = wire.NewSet(
 	ProvideGeminiTokenProvider,
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
+	ProvideGrokTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,

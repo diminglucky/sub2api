@@ -537,3 +537,7 @@ func mapUpstreamStatusCode(code int) int {
 	}
 	return code
 }
+
+func mapUpstreamStatus(code int) int {
+	return mapUpstreamStatusCode(code)
+}
