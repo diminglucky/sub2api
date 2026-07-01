@@ -3475,15 +3475,6 @@ export default {
         unavailableDesc: 'Unavailable - pause 30 minutes'
         }
       },
-      openaiQuotaReset: {
-        count: 'Credits',
-        countTooltipLoad: 'Query upstream reset credits',
-        countTooltipRefreshTime: 'Last queried: {time}',
-        reset: 'Reset',
-        resetTooltipReady: 'Consume 1 upstream reset credit',
-        queryFailed: 'Query failed',
-        resetFailed: 'Reset failed'
-      },
       clearRateLimit: 'Clear Rate Limit',
       resetQuota: 'Reset Quota',
       quotaLimit: 'Quota Limit',
