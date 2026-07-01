@@ -1329,6 +1329,13 @@ func (s *SettingService) loadCodexClientEntries(ctx context.Context, key string)
 	if err != nil || strings.TrimSpace(v) == "" {
 		return nil
 	}
+	return s.loadCodexClientEntriesFromRaw(v)
+}
+
+func (s *SettingService) loadCodexClientEntriesFromRaw(v string) []openai.AllowedClientEntry {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
 	var entries []openai.AllowedClientEntry
 	if json.Unmarshal([]byte(v), &entries) != nil {
 		return nil
@@ -2169,6 +2176,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// Claude Code version check
 	updates[SettingKeyMinClaudeCodeVersion] = settings.MinClaudeCodeVersion
 	updates[SettingKeyMaxClaudeCodeVersion] = settings.MaxClaudeCodeVersion
+	updates[SettingKeyMinCodexVersion] = strings.TrimSpace(settings.MinCodexVersion)
+	updates[SettingKeyMaxCodexVersion] = strings.TrimSpace(settings.MaxCodexVersion)
 
 	// 分组隔离
 	updates[SettingKeyAllowUngroupedKeyScheduling] = strconv.FormatBool(settings.AllowUngroupedKeyScheduling)
@@ -2192,6 +2201,24 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] = strconv.FormatBool(settings.OpenAIAllowClaudeCodeCodexPlugin)
+	if err := ValidateCodexClientEntriesJSON(settings.CodexCLIOnlyBlacklist); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyBlacklist, err)
+	}
+	if err := ValidateCodexWhitelistEntriesJSON(settings.CodexCLIOnlyWhitelist); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyWhitelist, err)
+	}
+	if err := ValidateEngineFingerprintSignalsJSON(settings.CodexCLIOnlyEngineFingerprintSignals); err != nil {
+		return nil, fmt.Errorf("%s: %w", SettingKeyCodexCLIOnlyEngineFingerprintSignals, err)
+	}
+	updates[SettingKeyCodexCLIOnlyBlacklist] = strings.TrimSpace(settings.CodexCLIOnlyBlacklist)
+	updates[SettingKeyCodexCLIOnlyWhitelist] = strings.TrimSpace(settings.CodexCLIOnlyWhitelist)
+	updates[SettingKeyCodexCLIOnlyAllowAppServerClients] = strconv.FormatBool(settings.CodexCLIOnlyAllowAppServerClients)
+	updates[SettingKeyCodexCLIOnlyEngineFingerprintSignals] = strings.TrimSpace(settings.CodexCLIOnlyEngineFingerprintSignals)
+	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	if settings.CyberSessionBlockTTLSeconds <= 0 {
+		settings.CyberSessionBlockTTLSeconds = int(time.Hour / time.Second)
+	}
+	updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
@@ -2365,6 +2392,32 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.openAIAllowCodexPluginCache.Store(&cachedOpenAIAllowCodexPlugin{
 		value:     settings.OpenAIAllowClaudeCodeCodexPlugin,
 		expiresAt: time.Now().Add(openAIAllowCodexPluginCacheTTL).UnixNano(),
+	})
+	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
+	signals := openai.DefaultEngineFingerprintSignals
+	if parsed, ok := openai.ParseEngineFingerprintSignals(settings.CodexCLIOnlyEngineFingerprintSignals); ok {
+		signals = parsed
+	}
+	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{
+		value: CodexRestrictionPolicy{
+			Whitelist:                s.loadCodexClientEntriesFromRaw(settings.CodexCLIOnlyWhitelist),
+			Blacklist:                s.loadCodexClientEntriesFromRaw(settings.CodexCLIOnlyBlacklist),
+			MinCodexVersion:          strings.TrimSpace(settings.MinCodexVersion),
+			MaxCodexVersion:          strings.TrimSpace(settings.MaxCodexVersion),
+			AllowAppServerClients:    settings.CodexCLIOnlyAllowAppServerClients,
+			EngineFingerprintSignals: signals,
+		},
+		expiresAt: time.Now().Add(codexRestrictionPolicyCacheTTL).UnixNano(),
+	})
+	s.cyberSessionBlockRuntimeSF.Forget("cyber_session_block_runtime")
+	cyberTTLSeconds := settings.CyberSessionBlockTTLSeconds
+	if cyberTTLSeconds <= 0 {
+		cyberTTLSeconds = int(time.Hour / time.Second)
+	}
+	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{
+		enabled:   settings.CyberSessionBlockEnabled,
+		ttl:       time.Duration(cyberTTLSeconds) * time.Second,
+		expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
 	})
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
@@ -3154,8 +3207,14 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyCyberSessionBlockTTLSeconds: "3600",
 
 		// Claude Code version check (default: empty = disabled)
-		SettingKeyMinClaudeCodeVersion: "",
-		SettingKeyMaxClaudeCodeVersion: "",
+		SettingKeyMinClaudeCodeVersion:                 "",
+		SettingKeyMaxClaudeCodeVersion:                 "",
+		SettingKeyMinCodexVersion:                      "",
+		SettingKeyMaxCodexVersion:                      "",
+		SettingKeyCodexCLIOnlyBlacklist:                "",
+		SettingKeyCodexCLIOnlyWhitelist:                "",
+		SettingKeyCodexCLIOnlyAllowAppServerClients:    "false",
+		SettingKeyCodexCLIOnlyEngineFingerprintSignals: openai.DefaultEngineFingerprintSignalsJSON(),
 
 		// 分组隔离（默认不允许未分组 Key 调度）
 		SettingKeyAllowUngroupedKeyScheduling:            "false",
@@ -3669,6 +3728,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// Claude Code version check
 	result.MinClaudeCodeVersion = settings[SettingKeyMinClaudeCodeVersion]
 	result.MaxClaudeCodeVersion = settings[SettingKeyMaxClaudeCodeVersion]
+	result.MinCodexVersion = strings.TrimSpace(settings[SettingKeyMinCodexVersion])
+	result.MaxCodexVersion = strings.TrimSpace(settings[SettingKeyMaxCodexVersion])
 
 	// 分组隔离
 	result.AllowUngroupedKeyScheduling = settings[SettingKeyAllowUngroupedKeyScheduling] == "true"
@@ -3703,6 +3764,20 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 	result.OpenAIAllowClaudeCodeCodexPlugin = settings[SettingKeyOpenAIAllowClaudeCodeCodexPlugin] == "true"
+	result.CodexCLIOnlyBlacklist = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyBlacklist])
+	result.CodexCLIOnlyWhitelist = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyWhitelist])
+	result.CodexCLIOnlyAllowAppServerClients = strings.EqualFold(strings.TrimSpace(settings[SettingKeyCodexCLIOnlyAllowAppServerClients]), "true")
+	result.CodexCLIOnlyEngineFingerprintSignals = strings.TrimSpace(settings[SettingKeyCodexCLIOnlyEngineFingerprintSignals])
+	if result.CodexCLIOnlyEngineFingerprintSignals == "" {
+		result.CodexCLIOnlyEngineFingerprintSignals = openai.DefaultEngineFingerprintSignalsJSON()
+	}
+	result.CyberSessionBlockEnabled = strings.EqualFold(strings.TrimSpace(settings[SettingKeyCyberSessionBlockEnabled]), "true")
+	result.CyberSessionBlockTTLSeconds = int(time.Hour / time.Second)
+	if raw := strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds]); raw != "" {
+		if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+			result.CyberSessionBlockTTLSeconds = seconds
+		}
+	}
 
 	// Web search emulation: quick enabled check from the JSON config
 	if raw := settings[SettingKeyWebSearchEmulationConfig]; raw != "" {

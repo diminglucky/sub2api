@@ -21,7 +21,7 @@ func accWithWindowEnd(id int64, end *time.Time) accountWithLoad {
 	}
 }
 
-func TestFilterBySoonestReset_PicksSoonestFutureWindow(t *testing.T) {
+func TestFilterBySoonestResetWindow_PicksSoonestFutureWindow(t *testing.T) {
 	now := time.Now()
 	soon := now.Add(1 * time.Hour)
 	later := now.Add(24 * time.Hour)
@@ -35,7 +35,7 @@ func TestFilterBySoonestReset_PicksSoonestFutureWindow(t *testing.T) {
 	require.Equal(t, int64(2), got[0].account.ID, "重置时间最早的账号被选中")
 }
 
-func TestFilterBySoonestReset_IgnoresNilAndExpiredWindows(t *testing.T) {
+func TestFilterBySoonestResetWindow_IgnoresNilAndExpiredWindows(t *testing.T) {
 	now := time.Now()
 	expired := now.Add(-1 * time.Hour)
 	active := now.Add(2 * time.Hour)
@@ -49,7 +49,7 @@ func TestFilterBySoonestReset_IgnoresNilAndExpiredWindows(t *testing.T) {
 	require.Equal(t, int64(3), got[0].account.ID, "仅保留拥有未来重置时间的账号")
 }
 
-func TestFilterBySoonestReset_NoActiveWindowReturnsAll(t *testing.T) {
+func TestFilterBySoonestResetWindow_NoActiveWindowReturnsAll(t *testing.T) {
 	now := time.Now()
 	expired := now.Add(-30 * time.Minute)
 	accounts := []accountWithLoad{
@@ -60,7 +60,7 @@ func TestFilterBySoonestReset_NoActiveWindowReturnsAll(t *testing.T) {
 	require.Len(t, got, 2, "没有任何账号拥有活跃窗口时，返回原集合不做过滤")
 }
 
-func TestFilterBySoonestReset_TiedSoonestKeepsAll(t *testing.T) {
+func TestFilterBySoonestResetWindow_TiedSoonestKeepsAll(t *testing.T) {
 	now := time.Now()
 	end := now.Add(90 * time.Minute)
 	accounts := []accountWithLoad{
@@ -74,7 +74,7 @@ func TestFilterBySoonestReset_TiedSoonestKeepsAll(t *testing.T) {
 	require.True(t, ids[1] && ids[2])
 }
 
-func TestFilterBySoonestReset_SingleOrEmptyUnchanged(t *testing.T) {
+func TestFilterBySoonestResetWindow_SingleOrEmptyUnchanged(t *testing.T) {
 	require.Empty(t, filterBySoonestReset(nil))
 	single := []accountWithLoad{accWithWindowEnd(1, nil)}
 	require.Len(t, filterBySoonestReset(single), 1)

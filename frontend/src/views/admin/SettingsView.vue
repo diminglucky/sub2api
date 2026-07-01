@@ -4051,18 +4051,6 @@
                 </p>
               </div>
 
-              <!-- 是否允许在 Claude Code 中使用 Codex 插件（全局开关） -->
-              <div class="flex items-center justify-between">
-                <div class="pr-4">
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPlugin") }}
-                  </label>
-                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.openaiAllowClaudeCodeCodexPluginDesc") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.openai_allow_claude_code_codex_plugin" />
-              </div>
             </div>
           </div>
           <!-- Web Search Emulation -->
@@ -7511,6 +7499,8 @@ const form = reactive<SettingsForm>({
   // Claude Code version check
   min_claude_code_version: "",
   max_claude_code_version: "",
+  min_codex_version: "",
+  max_codex_version: "",
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
@@ -7526,7 +7516,12 @@ const form = reactive<SettingsForm>({
   enable_client_dateline_normalization: true,
   antigravity_user_agent_version: "",
   openai_codex_user_agent: "",
-  openai_allow_claude_code_codex_plugin: false,
+  codex_cli_only_blacklist: "",
+  codex_cli_only_whitelist: "",
+  codex_cli_only_allow_app_server_clients: false,
+  codex_cli_only_engine_fingerprint_signals: "",
+  cyber_session_block_enabled: false,
+  cyber_session_block_ttl_seconds: 3600,
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
   balance_low_notify_threshold: 0,
@@ -8237,6 +8232,40 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+function normalizeClaudeOAuthSystemPromptBlocks(raw: string | null | undefined): string {
+  const trimmed = raw?.trim() || "";
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) {
+      return trimmed;
+    }
+    return JSON.stringify(
+      parsed.map((block) => {
+        if (!block || typeof block !== "object" || Array.isArray(block)) {
+          return block;
+        }
+        const normalized = { ...block };
+        if (normalized.enabled === undefined) {
+          normalized.enabled = true;
+        }
+        if (normalized.cache_control === true) {
+          normalized.cache_control = {
+            type: "ephemeral",
+            ttl: "5m",
+          };
+        }
+        return normalized;
+      }),
+    );
+  } catch {
+    return trimmed;
+  }
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -8250,6 +8279,10 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    form.claude_oauth_system_prompt_blocks =
+      normalizeClaudeOAuthSystemPromptBlocks(
+        settings.claude_oauth_system_prompt_blocks,
+      );
     form.payment_recharge_card_products = Array.isArray(
       settings.payment_recharge_card_products,
     )
@@ -8764,6 +8797,8 @@ async function saveSettings() {
       identity_patch_prompt: form.identity_patch_prompt,
       min_claude_code_version: form.min_claude_code_version,
       max_claude_code_version: form.max_claude_code_version,
+      min_codex_version: form.min_codex_version,
+      max_codex_version: form.max_codex_version,
       allow_ungrouped_key_scheduling: form.allow_ungrouped_key_scheduling,
       enable_fingerprint_unification: form.enable_fingerprint_unification,
       enable_metadata_passthrough: form.enable_metadata_passthrough,
@@ -8783,7 +8818,15 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
-      openai_allow_claude_code_codex_plugin: form.openai_allow_claude_code_codex_plugin,
+      codex_cli_only_blacklist: form.codex_cli_only_blacklist?.trim() || "",
+      codex_cli_only_whitelist: form.codex_cli_only_whitelist?.trim() || "",
+      codex_cli_only_allow_app_server_clients:
+        form.codex_cli_only_allow_app_server_clients,
+      codex_cli_only_engine_fingerprint_signals:
+        form.codex_cli_only_engine_fingerprint_signals?.trim() || "",
+      cyber_session_block_enabled: form.cyber_session_block_enabled,
+      cyber_session_block_ttl_seconds:
+        Number(form.cyber_session_block_ttl_seconds) || 3600,
       // Payment configuration
       payment_enabled: form.payment_enabled,
       risk_control_enabled: form.risk_control_enabled,
@@ -9595,7 +9638,12 @@ async function loadProviders() {
   providersLoading.value = true;
   try {
     const res = await adminAPI.payment.getProviders();
-    providers.value = res.data || [];
+    providers.value = (res.data || []).map((provider) => ({
+      ...provider,
+      supported_types: Array.isArray(provider.supported_types)
+        ? provider.supported_types
+        : [],
+    }));
   } catch (err: unknown) {
     appStore.showError(extractI18nErrorMessage(err, t, "payment.errors", t("common.error")));
   } finally {
