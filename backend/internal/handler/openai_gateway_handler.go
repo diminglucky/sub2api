@@ -2018,32 +2018,6 @@ func writeContentModerationWSError(ctx context.Context, conn *coderws.Conn, deci
 	_ = conn.Write(writeCtx, coderws.MessageText, payload)
 }
 
-// writeCyberSessionBlockedWSError sends an error frame telling the client this
-// session is blocked by the cyber session block before closing.
-func writeCyberSessionBlockedWSError(ctx context.Context, conn *coderws.Conn) {
-	if conn == nil {
-		return
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	payload, err := json.Marshal(gin.H{
-		"event_id": "evt_cyber_session_blocked",
-		"type":     "error",
-		"error": gin.H{
-			"type":    "permission_error",
-			"code":    "session_blocked_by_cyber_policy",
-			"message": cyberSessionBlockedClientMsg,
-		},
-	})
-	if err != nil {
-		payload = []byte(`{"event_id":"evt_cyber_session_blocked","type":"error","error":{"type":"permission_error","code":"session_blocked_by_cyber_policy","message":"This session is blocked by cyber-security policy, please start a new session"}}`)
-	}
-	writeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	_ = conn.Write(writeCtx, coderws.MessageText, payload)
-}
-
 // cyberPolicyRecordedKey guards against double-firing recordCyberPolicyIfMarked
 // within one request or websocket turn.
 const cyberPolicyRecordedKey = "ops_cyber_recorded"
