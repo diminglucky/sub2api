@@ -386,6 +386,11 @@ func buildContents(messages []ClaudeMessage, toolIDToName map[string]string, isT
 			continue
 		}
 
+		if role == "system" {
+			systemParts = append(systemParts, parts...)
+			continue
+		}
+
 		// 只有 Gemini 模型支持 dummy thinking block workaround
 		// 只对最后一条 assistant 消息添加（Pre-fill 场景）
 		// 历史 assistant 消息不能添加没有 signature 的 dummy thinking block

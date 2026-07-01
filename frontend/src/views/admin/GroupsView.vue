@@ -3139,6 +3139,7 @@ const platformOptions = computed(() => [
   { value: "zhipu", label: "智谱 GLM" },
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const platformFilterOptions = computed(() => [
@@ -3148,6 +3149,7 @@ const platformFilterOptions = computed(() => [
   { value: "zhipu", label: "智谱 GLM" },
   { value: "gemini", label: "Gemini" },
   { value: "antigravity", label: "Antigravity" },
+  { value: "grok", label: "Grok" },
 ]);
 
 const editStatusOptions = computed(() => [
