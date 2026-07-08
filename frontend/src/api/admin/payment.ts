@@ -9,8 +9,7 @@ import type {
   PaymentOrder,
   PaymentChannel,
   SubscriptionPlan,
-  ProviderInstance,
-  RechargePackage,
+  ProviderInstance
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
@@ -25,22 +24,13 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
   load_balance_strategy: string
   product_name_prefix: string
   product_name_suffix: string
   help_image_url: string
   help_text: string
-  purchase_limit_per_user?: number
-  recharge_packages: RechargePackage[]
-  recharge_card_products: Array<{
-    name: string
-    amount: number
-    price: number
-    url: string
-    enabled: boolean
-    sort_order?: number
-  }>
 }
 
 /** Fields accepted by PUT /admin/payment/config (all optional via pointer semantics) */
@@ -54,22 +44,13 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
+  subscription_usd_to_cny_rate?: number
   recharge_fee_rate?: number
   load_balance_strategy?: string
   product_name_prefix?: string
   product_name_suffix?: string
   help_image_url?: string
   help_text?: string
-  purchase_limit_per_user?: number
-  recharge_packages?: RechargePackage[]
-  recharge_card_products?: Array<{
-    name: string
-    amount: number
-    price: number
-    url: string
-    enabled: boolean
-    sort_order?: number
-  }>
 }
 
 export interface RefundResult {

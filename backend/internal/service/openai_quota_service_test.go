@@ -17,13 +17,20 @@ import (
 func TestOpenAIQuotaServiceQueryUsage(t *testing.T) {
 	var gotAuth, gotAccountID, gotOriginator, gotProxyURL string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/backend-api/wham/usage", r.URL.Path)
 		require.Equal(t, http.MethodGet, r.Method)
-		gotAuth = r.Header.Get("authorization")
-		gotAccountID = r.Header.Get("chatgpt-account-id")
-		gotOriginator = r.Header.Get("originator")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"user_id":"u1","account_id":"acct_1","rate_limit_reset_credits":{"available_count":2}}`))
+		switch r.URL.Path {
+		case "/backend-api/wham/usage":
+			gotAuth = r.Header.Get("authorization")
+			gotAccountID = r.Header.Get("chatgpt-account-id")
+			gotOriginator = r.Header.Get("originator")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"user_id":"u1","account_id":"acct_1","rate_limit_reset_credits":{"available_count":2}}`))
+		case "/backend-api/wham/rate-limit-reset-credits":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"rate_limit_reset_credits":[{"expires_at":"2026-07-09T00:00:00Z"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer upstream.Close()
 
@@ -59,6 +66,7 @@ func TestOpenAIQuotaServiceQueryUsage(t *testing.T) {
 	require.Equal(t, "u1", got.UserID)
 	require.Equal(t, "acct_1", got.AccountID)
 	require.Equal(t, 2, got.RateLimitResetCredits.AvailableCount)
+	require.Equal(t, []OpenAIRateLimitResetCreditDetail{{ExpiresAt: "2026-07-09T00:00:00Z"}}, got.RateLimitResetCredits.Credits)
 	require.NotZero(t, got.FetchedAt)
 	require.Equal(t, "Bearer access-123", gotAuth)
 	require.Equal(t, "acct_1", gotAccountID)

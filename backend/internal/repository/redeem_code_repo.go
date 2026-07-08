@@ -431,6 +431,15 @@ func (r *redeemCodeRepository) SumBalanceHistoryByUser(ctx context.Context, user
 	return summary, nil
 }
 
+// SumPositiveBalanceByUser returns total recharged amount for upstream admin views.
+func (r *redeemCodeRepository) SumPositiveBalanceByUser(ctx context.Context, userID int64) (float64, error) {
+	summary, err := r.SumBalanceHistoryByUser(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return summary.TotalRecharged, nil
+}
+
 func redeemCodeEntityToService(m *dbent.RedeemCode) *service.RedeemCode {
 	if m == nil {
 		return nil

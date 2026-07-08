@@ -78,7 +78,6 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
-		skipBilling := shouldSkipAPIKeyBilling(c.Request.Method, c.Request.URL.Path)
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 		if isSubscriptionType && subscriptionService != nil {
 			subscription, err := subscriptionService.GetActiveSubscription(
@@ -87,35 +86,30 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 				apiKey.Group.ID,
 			)
 			if err != nil {
-				if !skipBilling {
-					abortWithGoogleError(c, 403, "No active subscription found for this group")
-					return
-				}
-			} else if !skipBilling {
-				needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
-				if err != nil {
-					status := 403
-					if errors.Is(err, service.ErrDailyLimitExceeded) ||
-						errors.Is(err, service.ErrWeeklyLimitExceeded) ||
-						errors.Is(err, service.ErrMonthlyLimitExceeded) {
-						status = 429
-					}
-					abortWithGoogleError(c, status, err.Error())
-					return
-				}
-
-				c.Set(string(ContextKeySubscription), subscription)
-
-				if needsMaintenance {
-					maintenanceCopy := *subscription
-					subscriptionService.DoWindowMaintenance(&maintenanceCopy)
-				}
+				abortWithGoogleError(c, 403, "No active subscription found for this group")
+				return
 			}
-			if subscription != nil && skipBilling {
-				c.Set(string(ContextKeySubscription), subscription)
+
+			needsMaintenance, err := subscriptionService.ValidateAndCheckLimits(subscription, apiKey.Group)
+			if err != nil {
+				status := 403
+				if errors.Is(err, service.ErrDailyLimitExceeded) ||
+					errors.Is(err, service.ErrWeeklyLimitExceeded) ||
+					errors.Is(err, service.ErrMonthlyLimitExceeded) {
+					status = 429
+				}
+				abortWithGoogleError(c, status, err.Error())
+				return
 			}
-		} else if !skipBilling {
-			if apiKey.User.Balance <= 0 {
+
+			c.Set(string(ContextKeySubscription), subscription)
+
+			if needsMaintenance {
+				maintenanceCopy := *subscription
+				subscriptionService.DoWindowMaintenance(&maintenanceCopy)
+			}
+		} else {
+			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 				abortWithGoogleError(c, 403, "Insufficient account balance")
 				return
 			}

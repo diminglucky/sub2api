@@ -473,7 +473,7 @@ func TestAccountSupportsOpenAIImageCapability_OAuthSupportsNative(t *testing.T) 
 	require.True(t, account.SupportsOpenAIImageCapability(OpenAIImagesCapabilityNative))
 }
 
-func TestAccountSupportsOpenAIImagesModel_CustomImageModelsRequireAPIKey(t *testing.T) {
+func TestAccountSupportsOpenAICapabilities_CombinesEndpointAndImageCapabilities(t *testing.T) {
 	oauthAccount := &Account{
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeOAuth,
@@ -483,9 +483,9 @@ func TestAccountSupportsOpenAIImagesModel_CustomImageModelsRequireAPIKey(t *test
 		Type:     AccountTypeAPIKey,
 	}
 
-	require.True(t, accountSupportsOpenAICapabilities(oauthAccount, "gpt-image-2", "", OpenAIImagesCapabilityNative))
-	require.False(t, accountSupportsOpenAICapabilities(oauthAccount, "flux-pro", "", OpenAIImagesCapabilityNative))
-	require.True(t, accountSupportsOpenAICapabilities(apiKeyAccount, "flux-pro", "", OpenAIImagesCapabilityNative))
+	require.True(t, accountSupportsOpenAICapabilities(oauthAccount, OpenAIEndpointCapabilityChatCompletions, OpenAIImagesCapabilityNative))
+	require.False(t, accountSupportsOpenAICapabilities(oauthAccount, OpenAIEndpointCapabilityEmbeddings, OpenAIImagesCapabilityNative))
+	require.True(t, accountSupportsOpenAICapabilities(apiKeyAccount, OpenAIEndpointCapabilityEmbeddings, OpenAIImagesCapabilityNative))
 }
 
 func TestAccountSupportsOpenAIEndpointCapability(t *testing.T) {

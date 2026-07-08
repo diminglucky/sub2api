@@ -117,6 +117,9 @@ func (f fakeGoogleSubscriptionRepo) Create(ctx context.Context, sub *service.Use
 func (f fakeGoogleSubscriptionRepo) GetByID(ctx context.Context, id int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
+func (f fakeGoogleSubscriptionRepo) GetByIDIncludeDeleted(ctx context.Context, id int64) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (f fakeGoogleSubscriptionRepo) GetByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (*service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
@@ -132,6 +135,9 @@ func (f fakeGoogleSubscriptionRepo) Update(ctx context.Context, sub *service.Use
 func (f fakeGoogleSubscriptionRepo) Delete(ctx context.Context, id int64) error {
 	return errors.New("not implemented")
 }
+func (f fakeGoogleSubscriptionRepo) Restore(ctx context.Context, subscriptionID int64, restoredStatus string) (*service.UserSubscription, error) {
+	return nil, errors.New("not implemented")
+}
 func (f fakeGoogleSubscriptionRepo) ListByUserID(ctx context.Context, userID int64) ([]service.UserSubscription, error) {
 	return nil, errors.New("not implemented")
 }
@@ -145,6 +151,9 @@ func (f fakeGoogleSubscriptionRepo) List(ctx context.Context, params pagination.
 	return nil, nil, errors.New("not implemented")
 }
 func (f fakeGoogleSubscriptionRepo) ExistsByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
+	return false, errors.New("not implemented")
+}
+func (f fakeGoogleSubscriptionRepo) ExistsActiveByUserIDAndGroupID(ctx context.Context, userID, groupID int64) (bool, error) {
 	return false, errors.New("not implemented")
 }
 func (f fakeGoogleSubscriptionRepo) ExtendExpiry(ctx context.Context, subscriptionID int64, newExpiresAt time.Time) error {
@@ -530,9 +539,12 @@ func TestApiKeyAuthWithSubscriptionGoogle_InsufficientBalance(t *testing.T) {
 	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
 }
 
-func TestApiKeyAuthWithSubscriptionGoogle_SkipsBillingForModelList(t *testing.T) {
+func TestApiKeyAuthWithSubscriptionGoogle_BalanceBelowMinimumReserve(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// 鉴权层保持历史语义：MinimumBalanceReserve 只用于 billing-cache 预检，
+	// 0 < balance < reserve 的用户不得在鉴权中间件被硬 403。
+	r := gin.New()
 	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
 		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
 			return &service.APIKey{
@@ -540,47 +552,59 @@ func TestApiKeyAuthWithSubscriptionGoogle_SkipsBillingForModelList(t *testing.T)
 				Key:    key,
 				Status: service.StatusActive,
 				User: &service.User{
-					ID:          123,
-					Status:      service.StatusActive,
-					Balance:     0,
-					Concurrency: 3,
-				},
-				Group: &service.Group{
-					ID:       10,
-					Name:     "gemini",
-					Status:   service.StatusActive,
-					Platform: service.PlatformGemini,
-					Hydrated: true,
+					ID:      123,
+					Status:  service.StatusActive,
+					Balance: 0.005,
 				},
 			}, nil
 		},
 	})
+	cfg := &config.Config{}
+	cfg.Billing.MinimumBalanceReserve = 0.01
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
+
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("Authorization", "Bearer ok")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestApiKeyAuthWithSubscriptionGoogle_RejectsExhaustedBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
 
 	r := gin.New()
-	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, &config.Config{RunMode: config.RunModeStandard}))
-	r.GET("/v1beta/models", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
-	r.POST("/v1beta/models/gemini-pro:generateContent", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
-
-	t.Run("models list passes without balance", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/v1beta/models", nil)
-		req.Header.Set("Authorization", "Bearer ok")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
-
-		require.Equal(t, http.StatusOK, rec.Code)
+	apiKeyService := newTestAPIKeyService(fakeAPIKeyRepo{
+		getByKey: func(ctx context.Context, key string) (*service.APIKey, error) {
+			return &service.APIKey{
+				ID:     1,
+				Key:    key,
+				Status: service.StatusActive,
+				User: &service.User{
+					ID:      123,
+					Status:  service.StatusActive,
+					Balance: 0,
+				},
+			}, nil
+		},
 	})
+	cfg := &config.Config{}
+	r.Use(APIKeyAuthWithSubscriptionGoogle(apiKeyService, nil, cfg))
+	r.GET("/v1beta/test", func(c *gin.Context) { c.JSON(200, gin.H{"ok": true}) })
 
-	t.Run("billable request still requires balance", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-pro:generateContent", nil)
-		req.Header.Set("Authorization", "Bearer ok")
-		rec := httptest.NewRecorder()
-		r.ServeHTTP(rec, req)
+	req := httptest.NewRequest(http.MethodGet, "/v1beta/test", nil)
+	req.Header.Set("Authorization", "Bearer ok")
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
 
-		require.Equal(t, http.StatusForbidden, rec.Code)
-		var resp googleErrorResponse
-		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-		require.Equal(t, "Insufficient account balance", resp.Error.Message)
-	})
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	var resp googleErrorResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Equal(t, http.StatusForbidden, resp.Error.Code)
+	require.Equal(t, "Insufficient account balance", resp.Error.Message)
+	require.Equal(t, "PERMISSION_DENIED", resp.Error.Status)
 }
 
 func TestApiKeyAuthWithSubscriptionGoogle_TouchesLastUsedOnSuccess(t *testing.T) {

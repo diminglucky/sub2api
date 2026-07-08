@@ -1,40 +1,71 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
+import type { ApiKey } from '@/types'
 import KeysView from '../KeysView.vue'
-import type { Group } from '@/types'
 
 const {
-  listApiKeys,
+  listKeys,
+  getPublicSettings,
   getDashboardApiKeysUsage,
   getAvailableGroups,
   getUserGroupRates,
-  getPublicSettings,
   showError,
   showSuccess,
+  copyToClipboard,
+  isCurrentStep,
+  nextStep,
 } = vi.hoisted(() => ({
-  listApiKeys: vi.fn(),
+  listKeys: vi.fn(),
+  getPublicSettings: vi.fn(),
   getDashboardApiKeysUsage: vi.fn(),
   getAvailableGroups: vi.fn(),
   getUserGroupRates: vi.fn(),
-  getPublicSettings: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
+  copyToClipboard: vi.fn(),
+  isCurrentStep: vi.fn(),
+  nextStep: vi.fn(),
 }))
+
+const messages: Record<string, string> = {
+  'common.actions': 'Actions',
+  'common.name': 'Name',
+  'common.refresh': 'Refresh',
+  'common.status': 'Status',
+  'keys.apiKey': 'API Key',
+  'keys.allGroups': 'All Groups',
+  'keys.allStatus': 'All Status',
+  'keys.columnSettings': 'Column Settings',
+  'keys.createKey': 'Create API Key',
+  'keys.created': 'Created',
+  'keys.expiresAt': 'Expires',
+  'keys.group': 'Group',
+  'keys.currentConcurrency': 'Current Concurrency',
+  'keys.lastUsedAt': 'Last Used',
+  'keys.rateLimitColumn': 'Rate Limit',
+  'keys.searchPlaceholder': 'Search name or key...',
+  'keys.status.active': 'Active',
+  'keys.status.expired': 'Expired',
+  'keys.status.inactive': 'Inactive',
+  'keys.status.quota_exhausted': 'Quota exhausted',
+  'keys.usage': 'Usage',
+}
 
 vi.mock('@/api', () => ({
   keysAPI: {
-    list: listApiKeys,
-    update: vi.fn(),
+    list: listKeys,
     create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
     toggleStatus: vi.fn(),
   },
-  usageAPI: {
-    getDashboardApiKeysUsage,
-  },
   authAPI: {
     getPublicSettings,
+  },
+  usageAPI: {
+    getDashboardApiKeysUsage,
   },
   userGroupsAPI: {
     getAvailable: getAvailableGroups,
@@ -43,19 +74,22 @@ vi.mock('@/api', () => ({
 }))
 
 vi.mock('@/stores/app', () => ({
-  useAppStore: () => ({ showError, showSuccess }),
+  useAppStore: () => ({
+    showError,
+    showSuccess,
+  }),
 }))
 
 vi.mock('@/stores/onboarding', () => ({
   useOnboardingStore: () => ({
-    isCurrentStep: vi.fn(() => false),
-    nextStep: vi.fn(),
+    isCurrentStep,
+    nextStep,
   }),
 }))
 
 vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({
-    copyToClipboard: vi.fn().mockResolvedValue(true),
+    copyToClipboard,
   }),
 }))
 
@@ -64,54 +98,92 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key,
+      t: (key: string) => messages[key] ?? key,
     }),
   }
 })
 
-const AppLayoutStub = { template: '<div><slot /></div>' }
+const createApiKey = (): ApiKey => ({
+  id: 1,
+  user_id: 1,
+  key: 'sk-test-key',
+  name: 'test-key',
+  group_id: null,
+  status: 'active',
+  ip_whitelist: [],
+  ip_blacklist: [],
+  last_used_at: null,
+  quota: 0,
+  quota_used: 0,
+  expires_at: null,
+  created_at: '2026-06-27T00:00:00Z',
+  updated_at: '2026-06-27T00:00:00Z',
+  current_concurrency: 3,
+  rate_limit_5h: 0,
+  rate_limit_1d: 0,
+  rate_limit_7d: 0,
+  usage_5h: 0,
+  usage_1d: 0,
+  usage_7d: 0,
+  window_5h_start: null,
+  window_1d_start: null,
+  window_7d_start: null,
+  reset_5h_at: null,
+  reset_1d_at: null,
+  reset_7d_at: null,
+})
+
+const AppLayoutStub = {
+  template: '<div><slot /></div>',
+}
+
 const TablePageLayoutStub = {
-  template: '<div><slot name="actions" /><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>',
+  template: `
+    <div>
+      <slot name="filters" />
+      <slot name="actions" />
+      <slot name="table" />
+      <slot name="pagination" />
+    </div>
+  `,
 }
+
 const DataTableStub = {
-  props: ['data'],
-  template: '<div><slot name="empty" /></div>',
+  props: ['columns', 'data'],
+  emits: ['sort'],
+  template: `
+    <div>
+      <div data-test="columns">{{ columns.map((col) => col.key).join(',') }}</div>
+      <div v-for="row in data" :key="row.id">
+        <slot name="cell-name" :value="row.name" :row="row" />
+        <div data-test="current-concurrency">
+          <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
+      </div>
+      <slot name="empty" />
+    </div>
+  `,
 }
+
 const SelectStub = {
-  props: ['options', 'modelValue'],
+  props: ['modelValue', 'options'],
   emits: ['update:modelValue'],
-  template: '<select><option v-for="opt in options" :key="String(opt.value)" :value="opt.value">{{ opt.label }}</option></select>',
+  template: '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"></select>',
 }
-const GroupBadgeStub = {
+
+const SearchInputStub = {
+  props: ['modelValue'],
+  emits: ['update:modelValue', 'search'],
+  template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+}
+
+const IconStub = {
   props: ['name'],
-  template: '<span data-test="group-badge">{{ name }}</span>',
+  template: '<span data-test="icon">{{ name }}</span>',
 }
 
-function group(overrides: Partial<Group>): Group {
-  return {
-    id: 1,
-    name: 'VIP',
-    description: null,
-    platform: 'openai',
-    rate_multiplier: 0.8,
-    is_exclusive: true,
-    status: 'active',
-    subscription_type: 'standard',
-    daily_limit_usd: null,
-    weekly_limit_usd: null,
-    monthly_limit_usd: null,
-    allow_image_generation: false,
-    image_rate_independent: false,
-    image_rate_multiplier: 1,
-    image_price_1k: null,
-    image_price_2k: null,
-    image_price_4k: null,
-    ...overrides,
-  }
-}
-
-function mountKeysView() {
-  return mount(KeysView, {
+const mountView = async () => {
+  const wrapper = mount(KeysView, {
     global: {
       stubs: {
         AppLayout: AppLayoutStub,
@@ -122,56 +194,127 @@ function mountKeysView() {
         ConfirmDialog: true,
         EmptyState: true,
         Select: SelectStub,
-        SearchInput: true,
-        Icon: true,
+        SearchInput: SearchInputStub,
+        Icon: IconStub,
         UseKeyModal: true,
         EndpointPopover: true,
-        GroupBadge: GroupBadgeStub,
+        GroupBadge: true,
         GroupOptionItem: true,
         Teleport: true,
       },
     },
   })
+  await flushPromises()
+  await nextTick()
+  return wrapper
 }
 
-describe('user KeysView exclusive groups panel', () => {
+const visibleColumnKeys = (wrapper: VueWrapper) =>
+  wrapper.get('[data-test="columns"]').text().split(',').filter(Boolean)
+
+const getButtonByText = (wrapper: VueWrapper, text: string) => {
+  const button = wrapper.findAll('button').find((item) => item.text().includes(text))
+  if (!button) {
+    throw new Error(`Button not found: ${text}`)
+  }
+  return button
+}
+
+describe('user KeysView column settings', () => {
   beforeEach(() => {
-    listApiKeys.mockReset()
+    localStorage.clear()
+
+    listKeys.mockReset()
+    getPublicSettings.mockReset()
     getDashboardApiKeysUsage.mockReset()
     getAvailableGroups.mockReset()
     getUserGroupRates.mockReset()
-    getPublicSettings.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
+    copyToClipboard.mockReset()
+    isCurrentStep.mockReset()
+    nextStep.mockReset()
 
-    listApiKeys.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
-    getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
-    getUserGroupRates.mockResolvedValue({ 9: 0.6 })
+    listKeys.mockResolvedValue({
+      items: [createApiKey()],
+      total: 1,
+      page: 1,
+      page_size: 20,
+      pages: 1,
+    })
     getPublicSettings.mockResolvedValue({})
+    getDashboardApiKeysUsage.mockResolvedValue({ stats: {} })
+    getAvailableGroups.mockResolvedValue([])
+    getUserGroupRates.mockResolvedValue({})
+    isCurrentStep.mockReturnValue(false)
   })
 
-  it('shows exclusive groups granted to the current user', async () => {
-    getAvailableGroups.mockResolvedValue([
-      group({ id: 9, name: 'VIP 专属', is_exclusive: true }),
-      group({ id: 2, name: '公开分组', is_exclusive: false }),
+  it('uses the default API key columns with low-frequency columns hidden', async () => {
+    const wrapper = await mountView()
+
+    expect(visibleColumnKeys(wrapper)).toEqual([
+      'name',
+      'key',
+      'group',
+      'current_concurrency',
+      'usage',
+      'expires_at',
+      'status',
+      'created_at',
+      'actions',
     ])
-
-    const wrapper = mountKeysView()
-    await flushPromises()
-
-    expect(wrapper.find('[data-test="exclusive-groups-panel"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="exclusive-groups-panel"]').text()).toContain('VIP 专属')
-    expect(wrapper.find('[data-test="exclusive-groups-panel"]').text()).not.toContain('公开分组')
+    expect(visibleColumnKeys(wrapper)).not.toContain('rate_limit')
+    expect(visibleColumnKeys(wrapper)).not.toContain('last_used_at')
   })
 
-  it('hides the panel when the user has no exclusive groups', async () => {
-    getAvailableGroups.mockResolvedValue([
-      group({ id: 2, name: '公开分组', is_exclusive: false }),
+  it('shows a hidden column when toggled and persists the preference', async () => {
+    const wrapper = await mountView()
+
+    await wrapper.get('button[title="Column Settings"]').trigger('click')
+    await getButtonByText(wrapper, 'Rate Limit').trigger('click')
+    await nextTick()
+
+    expect(visibleColumnKeys(wrapper)).toContain('rate_limit')
+    expect(localStorage.getItem('api-key-hidden-columns')).toBe(JSON.stringify(['last_used_at']))
+    expect(localStorage.getItem('api-key-column-settings-version')).toBe('1')
+  })
+
+  it('restores column preferences from localStorage on mount', async () => {
+    localStorage.setItem('api-key-hidden-columns', JSON.stringify(['group', 'created_at']))
+    localStorage.setItem('api-key-column-settings-version', '1')
+
+    const wrapper = await mountView()
+
+    expect(visibleColumnKeys(wrapper)).toEqual([
+      'name',
+      'key',
+      'current_concurrency',
+      'usage',
+      'rate_limit',
+      'expires_at',
+      'status',
+      'last_used_at',
+      'actions',
     ])
+  })
 
-    const wrapper = mountKeysView()
-    await flushPromises()
+  it('does not include always-visible columns in the toggleable menu', async () => {
+    const wrapper = await mountView()
 
-    expect(wrapper.find('[data-test="exclusive-groups-panel"]').exists()).toBe(false)
+    await wrapper.get('button[title="Column Settings"]').trigger('click')
+    await nextTick()
+
+    const columnMenuText = wrapper.text()
+    expect(columnMenuText).toContain('API Key')
+    expect(columnMenuText).toContain('Current Concurrency')
+    expect(columnMenuText).toContain('Rate Limit')
+    expect(columnMenuText).not.toContain('Name')
+    expect(columnMenuText).not.toContain('Actions')
+  })
+
+  it('renders the current concurrency value', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-test="current-concurrency"]').text()).toBe('3')
   })
 })

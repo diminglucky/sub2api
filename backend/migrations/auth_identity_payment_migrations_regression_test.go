@@ -156,21 +156,8 @@ func TestMigration135AllowsGitHubAndGoogleAuthProviders(t *testing.T) {
 	require.Contains(t, sql, "'google'")
 }
 
-func TestSchedulerOutboxDedupKeyMigrationsAreOnlineSafe(t *testing.T) {
-	content, err := FS.ReadFile("152_scheduler_outbox_dedup_key.sql")
-	require.NoError(t, err)
-	sql := string(content)
-	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS dedup_key TEXT")
-
-	indexContent, err := FS.ReadFile("153_scheduler_outbox_pending_dedup_key_index_notx.sql")
-	require.NoError(t, err)
-	indexSQL := string(indexContent)
-	require.Contains(t, indexSQL, "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_scheduler_outbox_pending_dedup_key")
-	require.Contains(t, indexSQL, "WHERE dedup_key IS NOT NULL")
-}
-
-func TestMigration154AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
-	content, err := FS.ReadFile("154_account_autopause_expiry_index_notx.sql")
+func TestMigration151AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
+	content, err := FS.ReadFile("151_account_autopause_expiry_index_notx.sql")
 	require.NoError(t, err)
 
 	sql := string(content)
@@ -182,12 +169,15 @@ func TestMigration154AddsAccountAutoPauseExpiryPartialIndex(t *testing.T) {
 	require.Contains(t, sql, "expires_at IS NOT NULL")
 }
 
-func TestMigration155AddsSubscriptionPlanPurchaseLimitColumn(t *testing.T) {
-	content, err := FS.ReadFile("155_subscription_plan_purchase_limit.sql")
+func TestMigration158BackfillsGrokMediaGenerationGroups(t *testing.T) {
+	content, err := FS.ReadFile("158_enable_grok_media_generation_groups.sql")
 	require.NoError(t, err)
 
 	sql := string(content)
-	require.Contains(t, sql, "ADD COLUMN IF NOT EXISTS purchase_limit_per_user INTEGER NOT NULL DEFAULT 0")
+	require.Contains(t, sql, "UPDATE groups")
+	require.Contains(t, sql, "SET allow_image_generation = true")
+	require.Contains(t, sql, "WHERE platform = 'grok'")
+	require.Contains(t, sql, "AND allow_image_generation = false")
 }
 
 func TestMigration154AddsSparkShadowColumnsAndConstraintsWithoutHotIndexes(t *testing.T) {

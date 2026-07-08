@@ -25,6 +25,10 @@ type accountRepoStubForAdminList struct {
 	listWithFiltersErr      error
 }
 
+func (s *accountRepoStubForAdminList) ListAllWithFilters(context.Context, string, string, string, string, int64, string) ([]Account, error) {
+	return nil, nil
+}
+
 func (s *accountRepoStubForAdminList) ListWithFilters(_ context.Context, params pagination.PaginationParams, platform, accountType, status, search string, groupID int64, privacyMode string) ([]Account, *pagination.PaginationResult, error) {
 	s.listWithFiltersCalls++
 	s.listWithFiltersParams = params
@@ -156,6 +160,10 @@ func (s *redeemRepoStubForAdminList) ListWithFilters(_ context.Context, params p
 
 func (s *redeemRepoStubForAdminList) ListByUserPaginated(_ context.Context, userID int64, params pagination.PaginationParams, codeType string) ([]RedeemCode, *pagination.PaginationResult, error) {
 	panic("unexpected ListByUserPaginated call")
+}
+
+func (s *redeemRepoStubForAdminList) SumPositiveBalanceByUser(_ context.Context, userID int64) (float64, error) {
+	panic("unexpected SumPositiveBalanceByUser call")
 }
 
 func (s *redeemRepoStubForAdminList) SumBalanceHistoryByUser(_ context.Context, userID int64) (BalanceHistorySummary, error) {
