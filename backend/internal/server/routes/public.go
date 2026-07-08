@@ -10,6 +10,6 @@ import (
 func RegisterPublicRoutes(v1 *gin.RouterGroup, h *handler.Handlers) {
 	public := v1.Group("/public")
 	{
-		public.GET("/models/available", h.AvailableChannel.ListPublicModels)
+		registerCustomPublicRoutes(public, h)
 	}
 }

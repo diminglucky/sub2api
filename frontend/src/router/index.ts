@@ -13,11 +13,19 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import {
+  adminCustomFeatureRoutesAfterAnnouncements,
+  adminCustomFeatureRoutesAfterSettings,
+  publicCustomFeatureRoutes,
+  userCustomFeatureRoutesAfterAvailableChannels,
+  userCustomFeatureRoutesAfterKeys,
+  userCustomFeatureRoutesAfterRedeem
+} from './customFeatureRoutes'
 
 /**
  * Route definitions with lazy loading
  */
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -166,16 +174,7 @@ const routes: RouteRecordRaw[] = [
       title: 'Key Usage',
     }
   },
-  {
-    path: '/public-models',
-    name: 'PublicModels',
-    component: () => import('@/views/public/PublicModelsView.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'Models',
-      titleKey: 'models.title'
-    }
-  },
+  ...publicCustomFeatureRoutes,
   {
     path: '/legal/:documentId',
     name: 'LegalDocument',
@@ -215,18 +214,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'keys.description'
     }
   },
-  {
-    path: '/playground',
-    name: 'Playground',
-    component: () => import('@/views/user/PlaygroundView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Playground',
-      titleKey: 'playground.title',
-      descriptionKey: 'playground.description'
-    }
-  },
+  ...userCustomFeatureRoutesAfterKeys,
   {
     path: '/usage',
     name: 'Usage',
@@ -251,18 +239,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'redeem.description'
     }
   },
-  {
-    path: '/lottery',
-    name: 'Lottery',
-    component: () => import('@/views/user/LotteryView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Lottery',
-      titleKey: 'lottery.title',
-      descriptionKey: 'lottery.description'
-    }
-  },
+  ...userCustomFeatureRoutesAfterRedeem,
   {
     path: '/affiliate',
     name: 'Affiliate',
@@ -287,42 +264,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'availableChannels.description'
     }
   },
-  {
-    path: '/manual',
-    name: 'UserManual',
-    component: () => import('@/views/user/ManualView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'User Manual',
-      titleKey: 'manual.title',
-      descriptionKey: 'manual.description'
-    }
-  },
-  {
-    path: '/manual/:platform',
-    name: 'UserManualPlatform',
-    component: () => import('@/views/user/ManualView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'User Manual',
-      titleKey: 'manual.title',
-      descriptionKey: 'manual.description'
-    }
-  },
-  {
-    path: '/models',
-    name: 'UserModels',
-    component: () => import('@/views/user/ModelsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Models',
-      titleKey: 'models.title',
-      descriptionKey: 'models.description'
-    }
-  },
+  ...userCustomFeatureRoutesAfterAvailableChannels,
   {
     path: '/profile',
     name: 'Profile',
@@ -596,18 +538,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.announcements.description'
     }
   },
-  {
-    path: '/admin/lottery',
-    name: 'AdminLottery',
-    component: () => import('@/views/admin/LotteryView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Lottery Management',
-      titleKey: 'admin.lottery.title',
-      descriptionKey: 'admin.lottery.description'
-    }
-  },
+  ...adminCustomFeatureRoutesAfterAnnouncements,
   {
     path: '/admin/proxies',
     name: 'AdminProxies',
@@ -656,18 +587,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.settings.description'
     }
   },
-  {
-    path: '/admin/upstream-monitor',
-    name: 'AdminUpstreamMonitor',
-    component: () => import('@/views/admin/UpstreamMonitorView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Upstream Monitor',
-      titleKey: 'admin.upstreamMonitor.title',
-      descriptionKey: 'admin.upstreamMonitor.description'
-    }
-  },
+  ...adminCustomFeatureRoutesAfterSettings,
   {
     path: '/admin/backups',
     redirect: { path: '/admin/settings', query: { tab: 'backup' } }

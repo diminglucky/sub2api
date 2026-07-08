@@ -546,6 +546,15 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+// CustomFeatureProviderSet groups SuperAI-specific services so upstream syncs
+// can keep custom features isolated from the upstream provider list.
+var CustomFeatureProviderSet = wire.NewSet(
+	ProvideUpstreamMonitorService,
+	ProvideUpstreamMonitorRunner,
+	NewLotteryService,
+	ProvideLotteryDrawRunner,
+)
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -589,7 +598,6 @@ var ProviderSet = wire.NewSet(
 	ProvideRateLimitService,
 	NewAccountUsageService,
 	NewAccountTestService,
-	ProvideUpstreamMonitorService,
 	ProvideSettingService,
 	NewDataManagementService,
 	ProvideBackupService,
@@ -617,7 +625,6 @@ var ProviderSet = wire.NewSet(
 	ProvideAccountExpiryService,
 	ProvideProxyExpiryService,
 	ProvideSubscriptionExpiryService,
-	ProvideUpstreamMonitorRunner,
 	ProvideTimingWheelService,
 	ProvideDashboardAggregationService,
 	ProvideUsageCleanupService,
@@ -634,8 +641,7 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
-	NewLotteryService,
-	ProvideLotteryDrawRunner,
+	CustomFeatureProviderSet,
 	NewGroupCapacityService,
 	NewChannelService,
 	NewModelPricingResolver,

@@ -184,27 +184,16 @@ import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
+import type { SidebarNavItem } from './customFeatureNav'
+import {
+  buildAdminCustomNavAfterAnnouncements,
+  buildAdminCustomNavAfterSettings,
+  buildUserCustomNavAfterKeys,
+  buildUserCustomNavAfterUsage,
+  buildUserCustomNavBeforeProfile
+} from './customFeatureNav'
 
-interface NavItem {
-  path: string
-  label: string
-  icon: unknown
-  iconSvg?: string
-  hideInSimpleMode?: boolean
-  children?: NavItem[]
-  /**
-   * When true, the parent item only toggles the expand/collapse state and
-   * does NOT navigate to its `path`. The `path` is purely a stable key.
-   */
-  expandOnly?: boolean
-  /**
-   * 可选的功能开关 getter。返回 false 时菜单项被隐藏；返回 undefined/true 时显示。
-   * 宽容策略（undefined → 显示）避免 public settings 未加载完成时菜单闪烁消失。
-   * Getter 里访问的 reactive 来源（store / composable）会被 computed 自动追踪，
-   * 开关切换时菜单自动更新。
-   */
-  featureFlag?: () => boolean | undefined
-}
+type NavItem = SidebarNavItem
 
 // applyFeatureFlags 递归过滤掉 featureFlag() === false 的节点（含子节点）。
 // 使用 `!== false` 宽容语义：undefined（设置未加载）或 true 都视为显示。
@@ -690,16 +679,15 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/playground', label: t('nav.playground'), icon: PlaygroundIcon, hideInSimpleMode: true },
+    ...buildUserCustomNavAfterKeys(t, { PlaygroundIcon }),
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/models', label: t('nav.models'), icon: ChannelIcon, hideInSimpleMode: true },
-    { path: '/lottery', label: t('nav.lottery'), icon: GiftIcon, hideInSimpleMode: true },
+    ...buildUserCustomNavAfterUsage(t, { ChannelIcon, GiftIcon }),
     ...(!withDashboard ? [{ path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor }] : []),
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/recharge', label: t('nav.recharge'), icon: RechargeSubscriptionIcon, hideInSimpleMode: true },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/affiliate', label: t('nav.affiliate'), icon: UsersIcon, hideInSimpleMode: true, featureFlag: flagAffiliate },
-    { path: '/manual', label: t('nav.manual'), icon: ManualIcon, hideInSimpleMode: true },
+    ...buildUserCustomNavBeforeProfile(t, { ManualIcon }),
     { path: '/profile', label: t('nav.profile'), icon: UserIcon },
     ...customMenuItemsForUser.value.map((item): NavItem => ({
       path: `/custom/${item.id}`,
@@ -761,7 +749,7 @@ const adminNavItems = computed((): NavItem[] => {
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
-    { path: '/admin/lottery', label: t('nav.lotteryManagement'), icon: GiftIcon },
+    ...buildAdminCustomNavAfterAnnouncements(t, { GiftIcon }),
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
     { path: '/admin/risk-control', label: t('nav.riskControl'), icon: ShieldIcon, hideInSimpleMode: true, featureFlag: flagRiskControl },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
@@ -802,7 +790,7 @@ const adminNavItems = computed((): NavItem[] => {
     const filtered = visible.filter(item => !item.hideInSimpleMode)
     filtered.push({ path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon })
     filtered.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-    filtered.push({ path: '/admin/upstream-monitor', label: t('nav.upstreamMonitor'), icon: ServerIcon })
+    filtered.push(...buildAdminCustomNavAfterSettings(t, { ServerIcon }))
     for (const cm of customMenuItemsForAdmin.value) {
       filtered.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
     }
@@ -810,7 +798,7 @@ const adminNavItems = computed((): NavItem[] => {
   }
 
   visible.push({ path: '/admin/settings', label: t('nav.settings'), icon: CogIcon })
-  visible.push({ path: '/admin/upstream-monitor', label: t('nav.upstreamMonitor'), icon: ServerIcon })
+  visible.push(...buildAdminCustomNavAfterSettings(t, { ServerIcon }))
   for (const cm of customMenuItemsForAdmin.value) {
     visible.push({ path: `/custom/${cm.id}`, label: cm.label, icon: null, iconSvg: cm.icon_svg })
   }

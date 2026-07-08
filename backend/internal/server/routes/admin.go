@@ -38,8 +38,8 @@ func RegisterAdminRoutes(
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
-		// 抽奖管理
-		registerLotteryRoutes(admin, h)
+		// 自定义功能模块
+		registerCustomAdminRoutes(admin, h)
 
 		// OpenAI OAuth
 		registerOpenAIOAuthRoutes(admin, h)
@@ -114,18 +114,6 @@ func registerAdminComplianceRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	{
 		compliance.GET("", h.Admin.Compliance.GetStatus)
 		compliance.POST("/accept", h.Admin.Compliance.Accept)
-	}
-}
-
-func registerLotteryRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	lotteries := admin.Group("/lotteries")
-	{
-		lotteries.GET("", h.Admin.Lottery.List)
-		lotteries.GET("/:id", h.Admin.Lottery.GetByID)
-		lotteries.POST("", h.Admin.Lottery.Create)
-		lotteries.PUT("/:id", h.Admin.Lottery.Update)
-		lotteries.DELETE("/:id", h.Admin.Lottery.Delete)
-		lotteries.POST("/:id/draw", h.Admin.Lottery.Draw)
 	}
 }
 
@@ -482,11 +470,7 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Beta 策略配置
 		adminSettings.GET("/beta-policy", h.Admin.Setting.GetBetaPolicySettings)
 		adminSettings.PUT("/beta-policy", h.Admin.Setting.UpdateBetaPolicySettings)
-		// 上游监测配置
-		adminSettings.GET("/upstream-monitor", h.Admin.Setting.GetUpstreamMonitorConfig)
-		adminSettings.PUT("/upstream-monitor", h.Admin.Setting.UpdateUpstreamMonitorConfig)
-		adminSettings.POST("/upstream-monitor/preview", h.Admin.Setting.PreviewUpstreamMonitorConfig)
-		adminSettings.POST("/upstream-monitor/refresh", h.Admin.Setting.RefreshUpstreamMonitorConfig)
+		registerCustomAdminSettingsRoutes(adminSettings, h)
 		// Web Search 模拟配置
 		adminSettings.GET("/web-search-emulation", h.Admin.Setting.GetWebSearchEmulationConfig)
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)

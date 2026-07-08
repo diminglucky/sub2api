@@ -143,6 +143,13 @@ func ProvideHandlers(
 	}
 }
 
+// CustomFeatureProviderSet groups SuperAI-specific handlers so upstream syncs
+// can keep custom features isolated from the upstream provider list.
+var CustomFeatureProviderSet = wire.NewSet(
+	NewLotteryHandler,
+	admin.NewLotteryHandler,
+)
+
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
 	// Top-level handlers
@@ -153,7 +160,6 @@ var ProviderSet = wire.NewSet(
 	NewRedeemHandler,
 	NewSubscriptionHandler,
 	NewAnnouncementHandler,
-	NewLotteryHandler,
 	NewChannelMonitorUserHandler,
 	NewGatewayHandler,
 	NewOpenAIGatewayHandler,
@@ -169,7 +175,6 @@ var ProviderSet = wire.NewSet(
 	admin.NewGroupHandler,
 	admin.NewAccountHandler,
 	admin.NewAnnouncementHandler,
-	admin.NewLotteryHandler,
 	admin.NewDataManagementHandler,
 	admin.NewBackupHandler,
 	admin.NewOAuthHandler,
@@ -197,6 +202,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewPaymentHandler,
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
+	CustomFeatureProviderSet,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

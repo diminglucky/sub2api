@@ -128,8 +128,10 @@ AGENTS.md
 backend/cmd/server/server
 deploy/docker-compose.override.yml
 .gocache/
+.pnpm-store/
 vite.config.js
 docs/*
+!docs/CUSTOM_FEATURES.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md

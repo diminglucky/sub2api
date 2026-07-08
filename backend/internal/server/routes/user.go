@@ -107,12 +107,7 @@ func RegisterUserRoutes(
 			announcements.POST("/:id/read", h.Announcement.MarkRead)
 		}
 
-		// 抽奖
-		lotteries := authenticated.Group("/lotteries")
-		{
-			lotteries.GET("", h.Lottery.List)
-			lotteries.POST("/:id/join", h.Lottery.Join)
-		}
+		registerCustomUserRoutes(authenticated, h)
 
 		// 卡密兑换
 		redeem := authenticated.Group("/redeem")
