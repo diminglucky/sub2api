@@ -14,6 +14,23 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
+const defaultPublicAPIBaseURL = "https://api.dihappy.cfd/v1"
+
+func normalizePublicAPIBaseURL(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return defaultPublicAPIBaseURL
+	}
+	value = strings.TrimRight(value, "/")
+	parsed, err := url.Parse(value)
+	if err == nil && parsed != nil && strings.EqualFold(parsed.Hostname(), "superai.dihappy.cfd") {
+		if strings.TrimRight(parsed.EscapedPath(), "/") == "/v1" {
+			return defaultPublicAPIBaseURL
+		}
+	}
+	return value
+}
+
 func normalizeLoginAgreementMode(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "checkbox":
@@ -296,10 +313,10 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		LoginAgreementDocuments:          loginAgreementDocuments,
 		TurnstileEnabled:                 settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                 settings[SettingKeyTurnstileSiteKey],
-		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, "Sub2API"),
+		SiteName:                         s.getStringOrDefault(settings, SettingKeySiteName, defaultSiteName),
 		SiteLogo:                         settings[SettingKeySiteLogo],
-		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, "Subscription to API Conversion Platform"),
-		APIBaseURL:                       settings[SettingKeyAPIBaseURL],
+		SiteSubtitle:                     s.getStringOrDefault(settings, SettingKeySiteSubtitle, defaultSiteSubtitle),
+		APIBaseURL:                       normalizePublicAPIBaseURL(settings[SettingKeyAPIBaseURL]),
 		ContactInfo:                      settings[SettingKeyContactInfo],
 		DocURL:                           settings[SettingKeyDocURL],
 		HomeContent:                      settings[SettingKeyHomeContent],

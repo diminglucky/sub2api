@@ -22,7 +22,8 @@ const (
 	quotaDimWeekly = "weekly"
 	quotaDimTotal  = "total"
 
-	defaultSiteName = "SuperAI"
+	defaultSiteName     = "SuperAI"
+	defaultSiteSubtitle = "SuperAI AI Platform"
 )
 
 // quotaDimLabels maps dimension names to display labels.
