@@ -71,6 +71,29 @@ export default {
       'The administrator enabled the entry but has not configured a recharge/subscription URL. Please contact admin.'
   },
 
+  // Models Page
+  models: {
+    searchPlaceholder: 'Search models, platforms, channels, or groups...',
+    resultCount: '{count} model(s)',
+    empty: 'No available models',
+    billingType: 'Billing Type',
+    input: 'Input Price',
+    output: 'Output Price',
+    requestPrice: 'Request Price',
+    imagePrice: 'Image Price',
+    groupPrices: 'Group Prices',
+    groupPricesHint: 'Actual prices are shown with each group multiplier applied',
+    noGroupPrices: 'No group prices available',
+    subscriptionGroup: 'Subscription Group',
+    standardGroup: 'Standard Group',
+    filters: {
+      billing: 'Billing',
+      platform: 'Platform',
+      allBilling: 'All Billing',
+      allPlatforms: 'All Platforms'
+    }
+  },
+
   // Custom Page (iframe embed)
   customPage: {
     title: 'Custom Page',

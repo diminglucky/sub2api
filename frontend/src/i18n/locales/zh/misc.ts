@@ -69,6 +69,29 @@ export default {
     notConfiguredDesc: '管理员已开启入口，但尚未配置充值/订阅链接，请联系管理员。'
   },
 
+  // Models Page
+  models: {
+    searchPlaceholder: '搜索模型、平台、渠道或分组...',
+    resultCount: '共 {count} 个模型',
+    empty: '暂无可用模型',
+    billingType: '计费方式',
+    input: '输入价格',
+    output: '输出价格',
+    requestPrice: '请求价格',
+    imagePrice: '图片价格',
+    groupPrices: '分组价格',
+    groupPricesHint: '不同分组会按倍率显示实际价格',
+    noGroupPrices: '暂无分组价格',
+    subscriptionGroup: '订阅分组',
+    standardGroup: '普通分组',
+    filters: {
+      billing: '计费方式',
+      platform: '平台',
+      allBilling: '全部计费',
+      allPlatforms: '全部平台'
+    }
+  },
+
   // Custom Page (iframe embed)
   customPage: {
     title: '自定义页面',
