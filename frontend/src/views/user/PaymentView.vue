@@ -41,7 +41,40 @@
               <p class="text-gray-500 dark:text-gray-400">{{ t('payment.notAvailable') }}</p>
             </div>
             <template v-else>
-            <div class="card p-6">
+            <div v-if="hasRechargePackages" class="card p-6">
+              <div class="mb-4 flex items-center justify-between gap-3">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('payment.rechargePackages') }}</h3>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.rechargePackagesHint') }}</span>
+              </div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  v-for="pkg in availableRechargePackages"
+                  :key="pkg.id"
+                  type="button"
+                  :class="[
+                    'flex min-h-32 flex-col justify-between rounded-xl border p-4 text-left transition-all',
+                    selectedRechargePackageId === pkg.id
+                      ? 'border-primary-500 bg-primary-500/5 shadow-sm ring-1 ring-primary-500/30 dark:bg-primary-500/10'
+                      : 'border-gray-200 bg-white hover:border-primary-300 hover:bg-primary-50/30 dark:border-dark-700 dark:bg-dark-800 dark:hover:border-primary-500/60 dark:hover:bg-primary-950/10',
+                  ]"
+                  @click="selectRechargePackage(pkg)"
+                >
+                  <span>
+                    <span class="block truncate text-base font-bold text-gray-900 dark:text-white">{{ pkg.name }}</span>
+                    <span class="mt-1 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('payment.rechargePackageCredit', { amount: pkg.amount.toFixed(2) }) }}
+                    </span>
+                  </span>
+                  <span class="mt-5 flex items-end justify-between gap-3">
+                    <span class="text-2xl font-black text-gray-950 dark:text-white">{{ formatSelectedPaymentAmount(pkg.pay_amount) }}</span>
+                    <span class="text-sm font-bold text-primary-600 dark:text-primary-300">
+                      {{ selectedRechargePackageId === pkg.id ? t('payment.selectedRechargePackage') : t('payment.selectRechargePackage') }}
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+            <div v-else class="card p-6">
               <AmountInput
                 v-model="amount"
                 :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
@@ -88,6 +121,44 @@
               <span v-else>{{ t('payment.createOrder') }} {{ formatSelectedPaymentAmount(totalAmount) }}</span>
             </button>
             </template>
+          </template>
+          <!-- Recharge Card Tab -->
+          <template v-else-if="activeTab === 'rechargeCard'">
+            <section class="card space-y-5 p-6">
+              <header class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <Icon name="gift" size="lg" class="text-primary-500" />
+                  <div>
+                    <h2 class="text-xl font-bold text-gray-900 dark:text-white">{{ t('payment.buyRechargeCard') }}</h2>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCardRedeemHint') }}</p>
+                  </div>
+                </div>
+                <button type="button" class="btn btn-secondary" @click="router.push('/redeem')">
+                  {{ t('payment.goRedeem') }}
+                </button>
+              </header>
+
+              <div v-if="rechargeCardProducts.length === 0" class="rounded-lg border border-dashed border-gray-300 px-4 py-8 text-center text-sm font-semibold text-gray-500 dark:border-dark-600 dark:text-gray-400">
+                {{ t('payment.noRechargeCardProducts') }}
+              </div>
+              <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <button
+                  v-for="product in rechargeCardProducts"
+                  :key="`${product.name}-${product.url}`"
+                  type="button"
+                  class="flex min-h-24 items-center justify-between gap-3 rounded-lg border border-gray-300 px-4 py-3 text-left transition-colors hover:border-primary-400 hover:bg-primary-50/50 dark:border-dark-600 dark:hover:border-primary-500 dark:hover:bg-primary-950/20"
+                  @click="openRechargeCardDialog(product)"
+                >
+                  <span class="min-w-0">
+                    <span class="block truncate text-lg font-bold text-gray-900 dark:text-white">{{ product.name }}</span>
+                    <span class="mt-1 block text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {{ rechargeCardProductMeta(product) }}
+                    </span>
+                  </span>
+                  <Icon name="externalLink" size="sm" class="shrink-0 text-primary-500" />
+                </button>
+              </div>
+            </section>
           </template>
           <!-- Subscribe Tab -->
           <template v-else-if="activeTab === 'subscription'">
@@ -240,6 +311,95 @@
         </div>
       </Transition>
     </Teleport>
+    <!-- Recharge Card Purchase Modal -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div
+          v-if="selectedRechargeCardProduct"
+          class="fixed inset-0 z-[55] flex items-center justify-center bg-black/70 p-4 backdrop-blur-md"
+          @click.self="closeRechargeCardDialog"
+        >
+          <div class="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-dark-700 dark:bg-dark-900">
+            <button
+              type="button"
+              class="absolute right-4 top-4 z-10 rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              :aria-label="t('common.close')"
+              @click="closeRechargeCardDialog"
+            >
+              <Icon name="x" size="md" />
+            </button>
+            <div class="grid gap-0 md:grid-cols-[1fr_280px]">
+              <section class="space-y-6 p-6 pr-14 md:p-8 md:pr-8">
+                <div class="flex items-center gap-4">
+                  <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-primary-500/10 text-primary-500">
+                    <Icon name="gift" size="xl" />
+                  </span>
+                  <div class="min-w-0">
+                    <h3 class="truncate text-2xl font-bold text-gray-900 dark:text-white">
+                      {{ selectedRechargeCardProduct.name }}
+                    </h3>
+                    <p class="mt-1 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      {{ t('payment.rechargeCardDialogSubtitle') }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-800/60">
+                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ t('payment.rechargeCardAmountLabel') }}</div>
+                    <div class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">
+                      {{ selectedRechargeCardProduct.amount || '-' }}
+                    </div>
+                  </div>
+                  <div class="rounded-xl border border-primary-200 bg-primary-50 p-4 dark:border-primary-900/40 dark:bg-primary-950/30">
+                    <div class="text-sm text-primary-600 dark:text-primary-300">{{ t('payment.rechargeCardPriceLabel') }}</div>
+                    <div class="mt-1 text-3xl font-bold text-primary-600 dark:text-primary-300">
+                      {{ selectedRechargeCardProduct.price || '-' }}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
+                  <div class="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                    <Icon name="document" size="sm" class="text-primary-500" />
+                    {{ t('payment.rechargeCardHowToUse') }}
+                  </div>
+                  <p class="text-sm leading-6 text-gray-500 dark:text-gray-400">
+                    {{ t('payment.rechargeCardRedeemHint') }}
+                  </p>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-primary" @click="router.push('/redeem'); closeRechargeCardDialog()">
+                    {{ t('payment.goRedeem') }}
+                  </button>
+                  <a
+                    :href="selectedRechargeCardProduct.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="btn btn-secondary"
+                  >
+                    {{ t('payment.openRechargeCardPurchase') }}
+                  </a>
+                </div>
+              </section>
+
+              <aside class="flex flex-col items-center justify-center gap-4 border-t border-gray-200 bg-gray-50 p-6 dark:border-dark-700 dark:bg-dark-950/50 md:border-l md:border-t-0">
+                <div class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-white">
+                  <canvas ref="rechargeCardQrCanvas" class="block h-52 w-52"></canvas>
+                </div>
+                <div class="space-y-1 text-center">
+                  <div class="text-base font-bold text-gray-900 dark:text-white">{{ t('payment.scanRechargeCardQr') }}</div>
+                  <p class="text-sm leading-5 text-gray-500 dark:text-gray-400">
+                    {{ t('payment.scanRechargeCardQrHint') }}
+                  </p>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
     <!-- Image Preview Overlay -->
     <Teleport to="body">
       <Transition name="modal">
@@ -252,7 +412,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -263,7 +423,7 @@ import { paymentAPI } from '@/api/payment'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
-import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
+import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType, RechargeCardProduct, RechargePackage } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
@@ -287,6 +447,7 @@ import { DEFAULT_PAYMENT_CURRENCY, formatPaymentAmount, normalizePaymentCurrency
 import type { PaymentMethodOption } from '@/components/payment/PaymentMethodSelector.vue'
 import { buildPaymentErrorToastMessage, describePaymentScenarioError } from './paymentUx'
 import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } from './paymentWechatResume'
+import * as QRCode from 'qrcode'
 
 const i18n = useI18n()
 const { t } = i18n
@@ -317,10 +478,13 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'subscription'>('recharge')
+const activeTab = ref<'recharge' | 'rechargeCard' | 'subscription'>('recharge')
 const amount = ref<number | null>(null)
+const selectedRechargePackageId = ref('')
 const selectedMethod = ref('')
 const selectedPlan = ref<SubscriptionPlan | null>(null)
+const selectedRechargeCardProduct = ref<RechargeCardProduct | null>(null)
+const rechargeCardQrCanvas = ref<HTMLCanvasElement | null>(null)
 const previewImage = ref('')
 
 const paymentPhase = ref<'select' | 'paying'>('select')
@@ -329,6 +493,7 @@ interface CreateOrderOptions {
   openid?: string
   wechatResumeToken?: string
   paymentType?: string
+  rechargePackageId?: string
   isResume?: boolean
   mobileQrFallbackAttempted?: boolean
 }
@@ -435,7 +600,7 @@ async function redirectToPaymentResult(state: PaymentRecoverySnapshot): Promise<
 
 function buildWechatOAuthAuthorizeUrl(
   authorizeUrl: string,
-  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number },
+  context: { paymentType: string; orderType: OrderType; planId?: number; orderAmount: number; rechargePackageId?: string },
 ): string {
   const normalizedUrl = authorizeUrl.trim()
   if (!normalizedUrl || typeof window === 'undefined') {
@@ -461,6 +626,11 @@ function buildWechatOAuthAuthorizeUrl(
       redirectUrl.searchParams.set('amount', String(context.orderAmount))
     } else {
       redirectUrl.searchParams.delete('amount')
+    }
+    if (context.rechargePackageId) {
+      redirectUrl.searchParams.set('recharge_package_id', context.rechargePackageId)
+    } else {
+      redirectUrl.searchParams.delete('recharge_package_id')
     }
 
     targetUrl.searchParams.set('redirect', `${redirectUrl.pathname}${redirectUrl.search}`)
@@ -498,15 +668,31 @@ const checkout = ref<CheckoutInfoResponse>({
 })
 
 const tabs = computed(() => {
-  const result: { key: 'recharge' | 'subscription'; label: string }[] = []
+  const result: { key: 'recharge' | 'rechargeCard' | 'subscription'; label: string }[] = []
   if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
+  if (rechargeCardProducts.value.length > 0) result.push({ key: 'rechargeCard', label: t('payment.tabRechargeCard') })
   result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   return result
 })
 
 const visibleMethods = computed(() => getVisibleMethods(checkout.value.methods))
 const enabledMethods = computed(() => Object.keys(visibleMethods.value))
-const validAmount = computed(() => amount.value ?? 0)
+const availableRechargePackages = computed(() => {
+  const packages = checkout.value.recharge_packages || []
+  return [...packages]
+    .filter((item) => item.enabled !== false && item.amount > 0 && item.pay_amount > 0)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+})
+const selectedRechargePackage = computed(() =>
+  availableRechargePackages.value.find((item) => item.id === selectedRechargePackageId.value) || null,
+)
+const hasRechargePackages = computed(() => availableRechargePackages.value.length > 0)
+const rechargeCardProducts = computed(() =>
+  [...(checkout.value.recharge_card_products || [])]
+    .filter((product) => product.enabled !== false && product.url)
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
+)
+const validAmount = computed(() => selectedRechargePackage.value?.pay_amount ?? amount.value ?? 0)
 const balanceRechargeMultiplier = computed(() => {
   const multiplier = checkout.value.balance_recharge_multiplier
   return Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
@@ -516,7 +702,12 @@ const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const creditedAmount = computed(() => {
+  if (selectedRechargePackage.value) {
+    return Math.round(selectedRechargePackage.value.amount * 100) / 100
+  }
+  return Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100
+})
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -623,6 +814,7 @@ const totalAmount = computed(() =>
 )
 
 const amountError = computed(() => {
+  if (hasRechargePackages.value) return ''
   if (validAmount.value <= 0) return ''
   // No method can handle this amount
   if (!enabledMethods.value.some((m) => amountFitsMethod(validAmount.value, m))) {
@@ -639,6 +831,9 @@ const amountError = computed(() => {
 
 const canSubmit = computed(() =>
   validAmount.value > 0
+    && (!hasRechargePackages.value || !!selectedRechargePackage.value)
+    && !!selectedMethod.value
+    && !!selectedLimit.value
     && amountFitsMethod(validAmount.value, selectedMethod.value)
     && selectedLimit.value?.available !== false
 )
@@ -692,6 +887,16 @@ watch(() => [validAmount.value, selectedMethod.value] as const, ([amt, method]) 
   const available = enabledMethods.value.find((m) => amountFitsMethod(amt, m))
   if (available) selectedMethod.value = available
 })
+
+watch(availableRechargePackages, (packages) => {
+  if (!packages.length) {
+    selectedRechargePackageId.value = ''
+    return
+  }
+  if (!packages.some((pkg) => pkg.id === selectedRechargePackageId.value)) {
+    selectRechargePackage(packages[0])
+  }
+}, { immediate: true })
 
 // Payment button class: follows selected payment method color
 const paymentButtonClass = computed(() => {
@@ -749,9 +954,56 @@ function closeRenewalModal() {
   renewGroupId.value = null
 }
 
+function selectRechargePackage(pkg: RechargePackage) {
+  selectedRechargePackageId.value = pkg.id
+  amount.value = pkg.pay_amount
+}
+
+function rechargeCardProductMeta(product: { amount?: number; price?: number }) {
+  const parts: string[] = []
+  if (product.amount && product.amount > 0) {
+    parts.push(t('payment.cardAmount', { amount: product.amount }))
+  }
+  if (product.price && product.price > 0) {
+    parts.push(t('payment.cardPrice', { price: product.price }))
+  }
+  return parts.join(' · ') || t('payment.cardExternalPurchase')
+}
+
+function openRechargeCardDialog(product: RechargeCardProduct) {
+  selectedRechargeCardProduct.value = product
+}
+
+function closeRechargeCardDialog() {
+  selectedRechargeCardProduct.value = null
+}
+
+async function renderRechargeCardQr() {
+  if (!selectedRechargeCardProduct.value?.url) return
+  await nextTick()
+  if (!rechargeCardQrCanvas.value) return
+  await QRCode.toCanvas(rechargeCardQrCanvas.value, selectedRechargeCardProduct.value.url, {
+    width: 208,
+    margin: 2,
+    color: {
+      dark: '#111827',
+      light: '#ffffff',
+    },
+  })
+}
+
+watch(
+  () => selectedRechargeCardProduct.value?.url,
+  () => {
+    renderRechargeCardQr().catch(() => {})
+  },
+)
+
 async function handleSubmitRecharge() {
   if (!canSubmit.value || submitting.value) return
-  await createOrder(validAmount.value, 'balance')
+  await createOrder(validAmount.value, 'balance', undefined, {
+    rechargePackageId: selectedRechargePackage.value?.id,
+  })
 }
 
 async function confirmSubscribe() {
@@ -767,6 +1019,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
   try {
     const payload = buildCreateOrderPayload({
       amount: orderAmount,
+      rechargePackageId: options.rechargePackageId,
       paymentType: requestType,
       orderType,
       planId,
@@ -833,6 +1086,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
         orderType,
         planId,
         orderAmount,
+        rechargePackageId: options.rechargePackageId,
       })
       return
     }
@@ -873,6 +1127,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
               orderAmount,
               orderType,
               planId,
+              rechargePackageId: options.rechargePackageId,
               paymentType: visibleMethod,
               attempted: options.mobileQrFallbackAttempted === true,
             },
@@ -891,6 +1146,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
           orderAmount,
           orderType,
           planId,
+          rechargePackageId: options.rechargePackageId,
           paymentType: visibleMethod,
           attempted: options.mobileQrFallbackAttempted === true,
         })
@@ -920,6 +1176,7 @@ async function createOrder(orderAmount: number, orderType: OrderType, planId?: n
       orderAmount,
       orderType,
       planId,
+      rechargePackageId: options.rechargePackageId,
       paymentType: requestType,
       attempted: options.mobileQrFallbackAttempted === true,
     })) {
@@ -947,6 +1204,7 @@ interface MobileQrFallbackContext {
   orderAmount: number
   orderType: OrderType
   planId?: number
+  rechargePackageId?: string
   paymentType: string
   attempted: boolean
 }
@@ -993,6 +1251,7 @@ async function attemptMobileQrFallback(err: unknown, context: MobileQrFallbackCo
     const visibleMethod = normalizeVisibleMethod(context.paymentType) || context.paymentType
     const payload = buildCreateOrderPayload({
       amount: context.orderAmount,
+      rechargePackageId: context.rechargePackageId,
       paymentType: visibleMethod,
       orderType: context.orderType,
       planId: context.planId,
@@ -1062,6 +1321,9 @@ async function resumeWechatPaymentFromQuery() {
   }
 
   selectedMethod.value = resume.paymentType
+  if (resume.rechargePackageId) {
+    selectedRechargePackageId.value = resume.rechargePackageId
+  }
   if (resume.orderType === 'balance' && resume.orderAmount > 0) {
     amount.value = resume.orderAmount
   }
@@ -1075,6 +1337,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(0, resume.orderType, resume.planId, {
       wechatResumeToken: resume.wechatResumeToken,
       paymentType: resume.paymentType,
+      rechargePackageId: resume.rechargePackageId,
       isResume: true,
     })
     return
@@ -1084,6 +1347,7 @@ async function resumeWechatPaymentFromQuery() {
     await createOrder(resume.orderAmount, resume.orderType, resume.planId, {
       openid: resume.openid,
       paymentType: resume.paymentType,
+      rechargePackageId: resume.rechargePackageId,
       isResume: true,
     })
   }
@@ -1129,7 +1393,7 @@ onMounted(async () => {
     }
     await resumeWechatPaymentFromQuery()
     if (checkout.value.balance_disabled) {
-      activeTab.value = 'subscription'
+      activeTab.value = rechargeCardProducts.value.length > 0 ? 'rechargeCard' : 'subscription'
     }
     // Handle renewal navigation: ?tab=subscription&group=123
     if (route.query.tab === 'subscription') {
