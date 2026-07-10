@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -89,7 +88,7 @@ func TestGetOpenAIUsage_SparkShadow_WritesExtraAndReturnsNonEmptyWindows(t *test
 	// httptest server: records the chatgpt-account-id header and returns a
 	// synthetic OpenAIQuotaUsage with codex_bengalfox 5h+7d windows.
 	var capturedAccountID string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAccountID = r.Header.Get("chatgpt-account-id")
 		w.Header().Set("content-type", "application/json")
 		resp := OpenAIQuotaUsage{

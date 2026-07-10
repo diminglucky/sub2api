@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -15,7 +14,7 @@ import (
 func TestFetchChatGPTSubscriptionExpiresAt(t *testing.T) {
 	const wantExpiresAt = "2026-06-10T02:52:15Z"
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/backend-api/subscriptions", r.URL.Path)
 		require.Equal(t, "acc_123", r.URL.Query().Get("account_id"))
 		require.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
@@ -44,7 +43,7 @@ func TestFetchChatGPTSubscriptionExpiresAt(t *testing.T) {
 func TestFetchChatGPTAccountInfo_SkipsExpiredWorkspaceCandidate(t *testing.T) {
 	expiredAt := time.Now().Add(-24 * time.Hour).UTC().Format(time.RFC3339)
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/backend-api/accounts/check/v4-2023-04-27", r.URL.Path)
 		require.Equal(t, "Bearer access-token", r.Header.Get("Authorization"))
 
@@ -84,7 +83,7 @@ func TestFetchChatGPTAccountInfo_SkipsExpiredWorkspaceCandidate(t *testing.T) {
 }
 
 func TestFetchChatGPTAccountInfo_SkipsDeactivatedWorkspaceCandidate(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/backend-api/accounts/check/v4-2023-04-27", r.URL.Path)
 
 		w.Header().Set("Content-Type", "application/json")

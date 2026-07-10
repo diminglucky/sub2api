@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,11 +20,25 @@ func newCodexModelsTestAccount() *Account {
 	}
 }
 
+func newCodexModelsTestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip Codex models HTTP test because this environment cannot listen on localhost: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Listener = listener
+	server.Start()
+	t.Cleanup(server.Close)
+	return server
+}
+
 func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 	manifestBody := `{"models":[{"slug":"gpt-5.5","display_name":"GPT-5.5"}]}`
 
 	var gotAuth, gotAccountID, gotOriginator, gotClientVersion string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newCodexModelsTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotAccountID = r.Header.Get("chatgpt-account-id")
 		gotOriginator = r.Header.Get("Originator")
@@ -32,7 +47,6 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(manifestBody))
 	}))
-	defer server.Close()
 
 	original := chatgptCodexModelsURL
 	chatgptCodexModelsURL = server.URL
@@ -66,11 +80,10 @@ func TestFetchCodexModelsManifestPassthrough(t *testing.T) {
 
 func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 	var gotClientVersion string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newCodexModelsTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotClientVersion = r.URL.Query().Get("client_version")
 		_, _ = w.Write([]byte(`{"models":[]}`))
 	}))
-	defer server.Close()
 
 	original := chatgptCodexModelsURL
 	chatgptCodexModelsURL = server.URL
@@ -87,12 +100,11 @@ func TestFetchCodexModelsManifestDefaultClientVersion(t *testing.T) {
 
 func TestFetchCodexModelsManifestNotModified(t *testing.T) {
 	var gotIfNoneMatch string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newCodexModelsTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotIfNoneMatch = r.Header.Get("If-None-Match")
 		w.Header().Set("ETag", `W/"abc123"`)
 		w.WriteHeader(http.StatusNotModified)
 	}))
-	defer server.Close()
 
 	original := chatgptCodexModelsURL
 	chatgptCodexModelsURL = server.URL
@@ -112,10 +124,9 @@ func TestFetchCodexModelsManifestNotModified(t *testing.T) {
 }
 
 func TestFetchCodexModelsManifestUpstreamError(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newCodexModelsTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"detail":"boom"}`, http.StatusInternalServerError)
 	}))
-	defer server.Close()
 
 	original := chatgptCodexModelsURL
 	chatgptCodexModelsURL = server.URL

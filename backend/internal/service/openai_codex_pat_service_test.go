@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,11 +10,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newCodexPATTestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Skipf("skip Codex PAT HTTP test because this environment cannot listen on localhost: %v", err)
+	}
+
+	server := httptest.NewUnstartedServer(handler)
+	server.Listener = listener
+	server.Start()
+	t.Cleanup(server.Close)
+	return server
+}
+
 func TestOpenAIOAuthService_ValidateCodexPersonalAccessToken(t *testing.T) {
 	var gotAuthorization string
 	var gotOriginator string
 	var gotUserAgent string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newCodexPATTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuthorization = r.Header.Get("authorization")
 		gotOriginator = r.Header.Get("originator")
 		gotUserAgent = r.Header.Get("user-agent")
@@ -26,7 +41,6 @@ func TestOpenAIOAuthService_ValidateCodexPersonalAccessToken(t *testing.T) {
 			"chatgpt_account_is_fedramp":true
 		}`))
 	}))
-	defer server.Close()
 
 	originalURL := openAICodexPATWhoamiURL
 	openAICodexPATWhoamiURL = server.URL

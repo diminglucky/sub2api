@@ -281,7 +281,7 @@ func TestQueryUsageIncludesResetCreditExpirations_EndToEnd(t *testing.T) {
 
 	var capturedBeta string
 	var detailCalls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		switch r.URL.Path {
 		case "/backend-api/wham/usage":
@@ -335,7 +335,7 @@ func TestQueryUsageResetCreditDetails401NonFatal(t *testing.T) {
 	tokenProvider := NewOpenAITokenProvider(repo, tokenCache, nil)
 
 	var detailCalls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		switch r.URL.Path {
 		case "/backend-api/wham/usage":
@@ -406,7 +406,7 @@ func TestQueryUsageShadowResolve_EndToEnd(t *testing.T) {
 
 	// httptest server 记录收到的 chatgpt-account-id header，返回空 usage JSON
 	var capturedAccountID string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedAccountID = r.Header.Get("chatgpt-account-id")
 		w.Header().Set("content-type", "application/json")
 		_ = json.NewEncoder(w).Encode(OpenAIQuotaUsage{})

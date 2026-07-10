@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -65,7 +64,7 @@ func TestOpenAIOAuthService_RefreshAccountToken_NoRefreshTokenUsesExistingAccess
 func TestOpenAIOAuthService_RefreshAccountToken_PATIgnoresStaleRefreshToken(t *testing.T) {
 	client := &openaiOAuthClientRefreshStub{}
 	var whoamiCalls int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&whoamiCalls, 1)
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{
@@ -145,7 +144,7 @@ func TestOpenAITokenRefresher_NeedsRefresh_SkipsAccountWithoutRefreshToken(t *te
 }
 
 func TestOpenAITokenRefresher_Refresh_PATRemovesStaleOAuthFields(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("content-type", "application/json")
 		_, _ = w.Write([]byte(`{
 			"email":"user@example.com",

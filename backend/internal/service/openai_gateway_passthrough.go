@@ -757,7 +757,15 @@ func openAICompatChatFailedEventShouldFailover(payload []byte, message string) b
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
-		return true
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
+		if code == "" {
+			code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+		}
+		errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
+		if errType == "" {
+			errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
+		}
+		return code != "context_length_exceeded" && !strings.Contains(errType, "invalid_request")
 	}
 	return openAIStreamFailedEventShouldFailover(payload, message)
 }

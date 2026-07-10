@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -16,7 +15,7 @@ import (
 
 func TestOpenAIQuotaServiceQueryUsage(t *testing.T) {
 	var gotAuth, gotAccountID, gotOriginator, gotProxyURL string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, http.MethodGet, r.Method)
 		switch r.URL.Path {
 		case "/backend-api/wham/usage":
@@ -76,7 +75,7 @@ func TestOpenAIQuotaServiceQueryUsage(t *testing.T) {
 
 func TestOpenAIQuotaServiceResetCredit(t *testing.T) {
 	var gotBody map[string]string
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	upstream := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/backend-api/wham/rate-limit-reset-credits/consume", r.URL.Path)
 		require.Equal(t, http.MethodPost, r.Method)
 		require.Equal(t, "application/json", r.Header.Get("content-type"))

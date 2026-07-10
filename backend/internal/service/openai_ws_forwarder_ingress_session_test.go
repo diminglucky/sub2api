@@ -80,7 +80,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_KeepLeaseAcrossT
 			}
 		},
 	}
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -219,7 +219,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_FollowupCreateCa
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -362,7 +362,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_InjectsCodexImag
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -497,7 +497,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_DedicatedModeDoe
 	}
 
 	serverErrCh := make(chan error, 2)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -626,7 +626,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughModeR
 		},
 	}
 
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -759,7 +759,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeade
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -890,7 +890,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRe
 		},
 	}
 
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1015,7 +1015,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ModeOffReturnsPo
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1128,7 +1128,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1275,7 +1275,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1416,7 +1416,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreEnabledSkip
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1548,7 +1548,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1680,7 +1680,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1812,7 +1812,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledToo
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -1947,7 +1947,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2082,7 +2082,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2216,7 +2216,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledFun
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2359,7 +2359,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreflightPingFai
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2501,7 +2501,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledStr
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2653,7 +2653,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2808,7 +2808,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -2954,7 +2954,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledPre
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3111,7 +3111,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_WriteFailBeforeD
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3258,7 +3258,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3409,7 +3409,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_StoreDisabledStr
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3565,7 +3565,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PreviousResponse
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3690,7 +3690,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_RejectsMessageID
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -3946,7 +3946,7 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 			}
 		},
 	}
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})

@@ -406,7 +406,7 @@ func TestWSResponseCreate_IngressFiltersServiceTierBeforeUpstream(t *testing.T) 
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
@@ -536,7 +536,7 @@ func TestWSResponseCreate_IngressBlockSendsErrorEventAndSkipsUpstream(t *testing
 	}
 
 	serverErrCh := make(chan error, 1)
-	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	wsServer := newLocalHTTPTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{
 			CompressionMode: coderws.CompressionContextTakeover,
 		})
