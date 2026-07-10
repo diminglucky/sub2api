@@ -30,6 +30,13 @@
         <input v-model="form.username" type="text" class="input" />
       </div>
       <div>
+        <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
+        <select v-model="form.role" class="input">
+          <option value="user">{{ t('admin.users.roles.user') }}</option>
+          <option value="admin">{{ t('admin.users.roles.admin') }}</option>
+        </select>
+      </div>
+      <div>
         <label class="input-label">{{ t('admin.users.notes') }}</label>
         <textarea v-model="form.notes" rows="3" class="input"></textarea>
       </div>
@@ -107,7 +114,17 @@ const groups = ref<AdminGroup[]>([])
 const exclusiveGroups = computed(() =>
   groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard' && group.is_exclusive)
 )
-const form = reactive({ email: '', password: '', username: '', notes: '', concurrency: 1, rpm_limit: 0, allowed_groups: [] as number[], customAttributes: {} as UserAttributeValuesMap })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as 'user' | 'admin',
+  concurrency: 1,
+  rpm_limit: 0,
+  allowed_groups: [] as number[],
+  customAttributes: {} as UserAttributeValuesMap
+})
 
 watch(() => props.user, (u) => {
   if (u) {
@@ -116,6 +133,7 @@ watch(() => props.user, (u) => {
       password: '',
       username: u.username || '',
       notes: u.notes || '',
+      role: u.role || 'user',
       concurrency: u.concurrency,
       rpm_limit: u.rpm_limit ?? 0,
       allowed_groups: [...(u.allowed_groups || [])],
@@ -165,6 +183,7 @@ const handleUpdateUser = async () => {
       email: form.email,
       username: form.username,
       notes: form.notes,
+      role: form.role,
       concurrency: form.concurrency,
       rpm_limit: form.rpm_limit,
       allowed_groups: form.allowed_groups

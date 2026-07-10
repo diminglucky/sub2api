@@ -25,6 +25,13 @@
         <label class="input-label">{{ t('admin.users.username') }}</label>
         <input v-model="form.username" type="text" class="input" :placeholder="t('admin.users.enterUsername')" />
       </div>
+      <div>
+        <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
+        <select v-model="form.role" class="input">
+          <option value="user">{{ t('admin.users.roles.user') }}</option>
+          <option value="admin">{{ t('admin.users.roles.admin') }}</option>
+        </select>
+      </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label class="input-label">{{ t('admin.users.columns.balance') }}</label>
@@ -86,16 +93,28 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'; import { adminAPI } from '@/api/admin'
+import { useI18n } from 'vue-i18n'
+import { adminAPI } from '@/api/admin'
 import { useForm } from '@/composables/useForm'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { AdminGroup } from '@/types'
 
 const props = defineProps<{ show: boolean }>()
-const emit = defineEmits(['close', 'success']); const { t } = useI18n()
+const emit = defineEmits(['close', 'success'])
+const { t } = useI18n()
 
-const form = reactive({ email: '', password: '', username: '', notes: '', balance: '', concurrency: 1, rpm_limit: 0, allowed_groups: [] as number[] })
+const form = reactive({
+  email: '',
+  password: '',
+  username: '',
+  notes: '',
+  role: 'user' as 'user' | 'admin',
+  balance: '',
+  concurrency: 1,
+  rpm_limit: 0,
+  allowed_groups: [] as number[]
+})
 const groups = ref<AdminGroup[]>([])
 const exclusiveGroups = computed(() =>
   groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard' && group.is_exclusive)
@@ -119,14 +138,25 @@ const { loading, submit } = useForm({
       payload.balance = Number(balance)
     }
     await adminAPI.users.create(payload)
-    emit('success'); emit('close')
+    emit('success')
+    emit('close')
   },
   successMsg: t('admin.users.userCreated')
 })
 
 watch(() => props.show, (v) => {
   if (v) {
-    Object.assign(form, { email: '', password: '', username: '', notes: '', balance: '', concurrency: 1, rpm_limit: 0, allowed_groups: [] })
+    Object.assign(form, {
+      email: '',
+      password: '',
+      username: '',
+      notes: '',
+      role: 'user',
+      balance: '',
+      concurrency: 1,
+      rpm_limit: 0,
+      allowed_groups: []
+    })
     void loadGroups()
   }
 })
