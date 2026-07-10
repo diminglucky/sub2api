@@ -626,6 +626,10 @@ export default {
       failedToLoadBalanceHistory: '加载余额记录失败',
       createdAt: '创建时间',
       totalRecharged: '总充值',
+      sourceOnlineRecharge: '在线充值',
+      sourceRedeemCode: '兑换码',
+      sourceAdminAdjustment: '管理员调整',
+      sourceAffiliateTransfer: '返利转入',
       // Settings Dropdowns
       filterSettings: '筛选设置',
       columnSettings: '列设置',
