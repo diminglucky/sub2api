@@ -73,6 +73,8 @@ export default {
 
   // Models Page
   models: {
+    title: 'Models',
+    description: 'View available models, platforms, and group prices',
     searchPlaceholder: 'Search models, platforms, channels, or groups...',
     resultCount: '{count} model(s)',
     empty: 'No available models',
@@ -92,6 +94,12 @@ export default {
       allBilling: 'All Billing',
       allPlatforms: 'All Platforms'
     }
+  },
+
+  // Lottery Page
+  lottery: {
+    title: 'Lottery',
+    description: 'Join lottery events and view available rewards'
   },
 
   // Custom Page (iframe embed)
@@ -309,6 +317,7 @@ export default {
   // Payment System
   payment: {
     title: 'Recharge / Subscription',
+    description: 'Recharge balance, buy subscriptions, or purchase recharge cards',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',
     creditedBalance: 'Credited Balance',

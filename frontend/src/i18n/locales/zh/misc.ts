@@ -71,6 +71,8 @@ export default {
 
   // Models Page
   models: {
+    title: '模型',
+    description: '查看当前可用模型、平台和分组价格',
     searchPlaceholder: '搜索模型、平台、渠道或分组...',
     resultCount: '共 {count} 个模型',
     empty: '暂无可用模型',
@@ -90,6 +92,12 @@ export default {
       allBilling: '全部计费',
       allPlatforms: '全部平台'
     }
+  },
+
+  // Lottery Page
+  lottery: {
+    title: '抽奖',
+    description: '参与活动抽奖，查看可用奖励'
   },
 
   // Custom Page (iframe embed)
@@ -333,6 +341,7 @@ export default {
   // Payment System
   payment: {
     title: '充值/订阅',
+    description: '充值余额、购买订阅或充值卡',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',
     creditedBalance: '到账余额',
