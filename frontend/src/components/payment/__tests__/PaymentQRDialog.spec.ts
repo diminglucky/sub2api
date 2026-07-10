@@ -38,6 +38,7 @@ vi.mock('@/api/payment', () => ({
 }))
 
 vi.mock('qrcode', () => ({
+  toCanvas,
   default: {
     toCanvas,
   },
