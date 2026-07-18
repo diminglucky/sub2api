@@ -174,7 +174,12 @@ func TestGatewayModels_CustomModelsListDisabledKeepsOriginalModels(t *testing.T)
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"gpt-5.4", "gpt-5.5", "gpt-5.6-sol"}, modelIDsForTest(got.Data))
+	ids := modelIDsForTest(got.Data)
+	require.Len(t, ids, 6)
+	for _, model := range []string{"gpt-5.4", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra"} {
+		require.Contains(t, ids, model)
+	}
+	require.Contains(t, ids, "gpt-5.6-"+"luna")
 }
 
 func TestGatewayModels_CustomModelsListFiltersAndOrdersMappedModels(t *testing.T) {
@@ -443,7 +448,7 @@ func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t
 			Platform: service.PlatformOpenAI,
 			ModelsListConfig: service.GroupModelsListConfig{
 				Enabled: true,
-				Models:  []string{"gpt-5.5"},
+				Models:  []string{"gpt-5.7"},
 			},
 		},
 	})
