@@ -592,6 +592,8 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 		} else if a.Platform == domain.PlatformOpenAI && !a.IsShadow() {
 			ensureOpenAIDefaultPassthroughs(result, []string{
 				"gpt-5.6-sol",
+				"gpt-5.6-terra",
+				"gpt-5.6-luna",
 			})
 		}
 		return result

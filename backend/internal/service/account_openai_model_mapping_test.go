@@ -2,7 +2,7 @@ package service
 
 import "testing"
 
-func TestOpenAIModelMappingIncludesGPT56SolPassthrough(t *testing.T) {
+func TestOpenAIModelMappingIncludesGPT56Passthroughs(t *testing.T) {
 	account := &Account{
 		Platform: PlatformOpenAI,
 		Credentials: map[string]any{
@@ -13,11 +13,13 @@ func TestOpenAIModelMappingIncludesGPT56SolPassthrough(t *testing.T) {
 	}
 
 	mapping := account.GetModelMapping()
-	if got := mapping["gpt-5.6-sol"]; got != "gpt-5.6-sol" {
-		t.Fatalf("GetModelMapping()[gpt-5.6-sol] = %q, want gpt-5.6-sol", got)
-	}
-	if !account.IsModelSupported("gpt-5.6-sol") {
-		t.Fatalf("IsModelSupported(gpt-5.6-sol) = false, want true")
+	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+		if got := mapping[model]; got != model {
+			t.Fatalf("GetModelMapping()[%s] = %q, want %s", model, got, model)
+		}
+		if !account.IsModelSupported(model) {
+			t.Fatalf("IsModelSupported(%s) = false, want true", model)
+		}
 	}
 }
 

@@ -324,14 +324,19 @@ const providerOptions = computed(() => [
 
 const usesWalletAuth = computed(() => form.provider === 'newapi' || form.provider === 'sub2api')
 const authModeOptions = computed(() => form.provider === 'newapi'
-  ? [{ value: 'login', label: t('admin.upstreamBalances.loginAuth') }]
+  ? [
+      { value: 'login', label: t('admin.upstreamBalances.loginAuth') },
+      { value: 'cookie', label: t('admin.upstreamBalances.cookieAuth') }
+    ]
   : [
       { value: 'login', label: t('admin.upstreamBalances.loginAuth') },
       { value: 'bearer', label: t('admin.upstreamBalances.bearerAuth') }
     ])
-const authTokenLabel = computed(() => form.auth_mode === 'login'
-  ? t('admin.upstreamBalances.loginPassword')
-  : t('admin.upstreamBalances.accessToken'))
+const authTokenLabel = computed(() => {
+  if (form.auth_mode === 'login') return t('admin.upstreamBalances.loginPassword')
+  if (form.auth_mode === 'cookie') return t('admin.upstreamBalances.cookieCredential')
+  return t('admin.upstreamBalances.accessToken')
+})
 
 const statusOptions = computed(() => [
   { value: '', label: t('admin.upstreamBalances.allStatuses') },
@@ -468,7 +473,7 @@ function clearWalletAuth(): void {
 }
 
 watch(() => form.provider, (provider) => {
-  if (provider === 'newapi') {
+  if (provider === 'newapi' && form.auth_mode !== 'login' && form.auth_mode !== 'cookie') {
     form.auth_mode = 'login'
   } else if (provider === 'sub2api' && form.auth_mode !== 'login' && form.auth_mode !== 'bearer') {
     form.auth_mode = 'login'
