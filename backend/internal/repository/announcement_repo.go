@@ -186,7 +186,9 @@ func insertAnnouncementEmailBatch(ctx context.Context, tx *sql.Tx, batch *servic
 	var completedAt any
 	if len(batch.Recipients) == 0 {
 		status = service.AnnouncementEmailBatchStatusCompleted
-		completedAt = time.Now()
+		completed := time.Now()
+		completedAt = completed
+		batch.CompletedAt = &completed
 	}
 	if batch.MaxAttempts <= 0 {
 		batch.MaxAttempts = 5
@@ -204,10 +206,6 @@ func insertAnnouncementEmailBatch(ctx context.Context, tx *sql.Tx, batch *servic
 		return err
 	}
 	batch.TotalCount = len(batch.Recipients)
-	if completedAt != nil {
-		completed := completedAt.(time.Time)
-		batch.CompletedAt = &completed
-	}
 	return nil
 }
 

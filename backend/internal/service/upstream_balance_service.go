@@ -17,7 +17,6 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/google/uuid"
 	"github.com/imroc/req/v3"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -34,7 +33,7 @@ const (
 	upstreamBalanceRequestTimeout  = 15 * time.Second
 	upstreamBalanceRefreshTimeout  = 3 * time.Minute
 	upstreamBalanceStaleAfter      = 30 * time.Minute
-	upstreamBalanceLockKey         = "sub2api:upstream_balance:refresh_lock"
+	upstreamBalanceLockKey         = "upstream_balance:refresh"
 	upstreamBalanceLockTTL         = 9 * time.Minute
 )
 
@@ -60,13 +59,6 @@ const (
 )
 
 const upstreamBalanceAuthTokenCredentialKey = "upstream_balance_auth_token"
-
-var upstreamBalanceReleaseScript = redis.NewScript(`
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-  return redis.call("DEL", KEYS[1])
-end
-return 0
-`)
 
 type UpstreamBalanceConfig struct {
 	Enabled        bool    `json:"enabled"`
@@ -139,7 +131,7 @@ type UpstreamBalanceService struct {
 	accountRepo   AccountRepository
 	proxyRepo     ProxyRepository
 	notifyService *BalanceNotifyService
-	redisClient   *redis.Client
+	lockCache     LeaderLockCache
 
 	instanceID string
 	ctx        context.Context
@@ -155,14 +147,14 @@ func NewUpstreamBalanceService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
 	notifyService *BalanceNotifyService,
-	redisClient *redis.Client,
+	lockCache LeaderLockCache,
 ) *UpstreamBalanceService {
 	serviceCtx, cancel := context.WithCancel(context.Background())
 	return &UpstreamBalanceService{
 		accountRepo:   accountRepo,
 		proxyRepo:     proxyRepo,
 		notifyService: notifyService,
-		redisClient:   redisClient,
+		lockCache:     lockCache,
 		instanceID:    uuid.NewString(),
 		ctx:           serviceCtx,
 		cancel:        cancel,
@@ -212,22 +204,7 @@ func (s *UpstreamBalanceService) run() {
 }
 
 func (s *UpstreamBalanceService) acquireDistributedLock(ctx context.Context) (func(), bool) {
-	if s.redisClient == nil {
-		return func() {}, true
-	}
-	ok, err := s.redisClient.SetNX(ctx, upstreamBalanceLockKey, s.instanceID, upstreamBalanceLockTTL).Result()
-	if err != nil {
-		slog.Warn("upstream balance lock unavailable; continuing with local lock", "error", err)
-		return func() {}, true
-	}
-	if !ok {
-		return nil, false
-	}
-	return func() {
-		releaseCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_, _ = upstreamBalanceReleaseScript.Run(releaseCtx, s.redisClient, []string{upstreamBalanceLockKey}, s.instanceID).Result()
-	}, true
+	return tryAcquireSingletonLeaderLock(ctx, s.lockCache, nil, upstreamBalanceLockKey, s.instanceID, upstreamBalanceLockTTL)
 }
 
 func (s *UpstreamBalanceService) Overview(ctx context.Context) (*UpstreamBalanceOverview, error) {
@@ -637,10 +614,10 @@ func balanceAuthConfigured(account *Account, cfg UpstreamBalanceConfig) bool {
 func validateBalanceWalletAuth(account *Account, cfg *UpstreamBalanceConfig, provider string) error {
 	mode := normalizeBalanceAuthMode(cfg.AuthMode)
 	if provider == UpstreamBalanceProviderNewAPI && mode != "login" && mode != "cookie" {
-		return fmt.Errorf("New API wallet balance requires login or cookie authentication")
+		return fmt.Errorf("new API wallet balance requires login or cookie authentication")
 	}
 	if provider == UpstreamBalanceProviderSub2API && mode != "login" && mode != "bearer" {
-		return fmt.Errorf("Sub2API wallet balance requires login or bearer authentication")
+		return fmt.Errorf("sub2api wallet balance requires login or bearer authentication")
 	}
 	if mode == "login" && strings.TrimSpace(cfg.AuthUsername) == "" {
 		return fmt.Errorf("login email is required")
@@ -758,11 +735,11 @@ func upstreamBalanceAuthHeaders(ctx context.Context, client *req.Client, account
 func fetchNewAPIWalletCNYBalance(ctx context.Context, client *req.Client, statusURL, profileURL string, headers map[string]string) (float64, error) {
 	statusBody, err := requestUpstreamMonitorJSON(ctx, client, statusURL, nil)
 	if err != nil {
-		return 0, fmt.Errorf("New API status: %w", err)
+		return 0, fmt.Errorf("new API status: %w", err)
 	}
 	profileBody, err := requestUpstreamMonitorJSON(ctx, client, profileURL, headers)
 	if err != nil {
-		return 0, fmt.Errorf("New API wallet profile: %w", err)
+		return 0, fmt.Errorf("new API wallet profile: %w", err)
 	}
 	return parseNewAPIWalletCNYBalance(statusBody, profileBody)
 }
@@ -780,16 +757,16 @@ func parseNewAPIWalletCNYBalance(statusBody, profileBody []byte) (float64, error
 		return 0, fmt.Errorf("invalid New API status response JSON: %w", err)
 	}
 	if !statusPayload.Success {
-		return 0, fmt.Errorf("New API status response is unsuccessful")
+		return 0, fmt.Errorf("new API status response is unsuccessful")
 	}
 	if !strings.EqualFold(strings.TrimSpace(statusPayload.Data.QuotaDisplayType), "CNY") {
-		return 0, fmt.Errorf("New API site does not report balances in CNY")
+		return 0, fmt.Errorf("new API site does not report balances in CNY")
 	}
 	if statusPayload.Data.QuotaPerUnit <= 0 || math.IsNaN(statusPayload.Data.QuotaPerUnit) || math.IsInf(statusPayload.Data.QuotaPerUnit, 0) {
-		return 0, fmt.Errorf("New API status response has invalid quota_per_unit")
+		return 0, fmt.Errorf("new API status response has invalid quota_per_unit")
 	}
 	if statusPayload.Data.USDExchangeRate <= 0 || math.IsNaN(statusPayload.Data.USDExchangeRate) || math.IsInf(statusPayload.Data.USDExchangeRate, 0) {
-		return 0, fmt.Errorf("New API status response has invalid usd_exchange_rate")
+		return 0, fmt.Errorf("new API status response has invalid usd_exchange_rate")
 	}
 	var profilePayload struct {
 		Success bool `json:"success"`
@@ -801,11 +778,11 @@ func parseNewAPIWalletCNYBalance(statusBody, profileBody []byte) (float64, error
 		return 0, fmt.Errorf("invalid New API wallet profile JSON: %w", err)
 	}
 	if !profilePayload.Success {
-		return 0, fmt.Errorf("New API wallet profile response is unsuccessful")
+		return 0, fmt.Errorf("new API wallet profile response is unsuccessful")
 	}
 	amount := profilePayload.Data.Quota / statusPayload.Data.QuotaPerUnit * statusPayload.Data.USDExchangeRate
 	if math.IsNaN(amount) || math.IsInf(amount, 0) {
-		return 0, fmt.Errorf("New API wallet balance is not finite")
+		return 0, fmt.Errorf("new API wallet balance is not finite")
 	}
 	return amount, nil
 }
@@ -813,7 +790,7 @@ func parseNewAPIWalletCNYBalance(statusBody, profileBody []byte) (float64, error
 func fetchSub2APIWalletCNYBalance(ctx context.Context, client *req.Client, profileURL string, headers map[string]string) (float64, error) {
 	body, err := requestUpstreamMonitorJSON(ctx, client, profileURL, headers)
 	if err != nil {
-		return 0, fmt.Errorf("Sub2API wallet profile: %w", err)
+		return 0, fmt.Errorf("sub2api wallet profile: %w", err)
 	}
 	var payload struct {
 		Code int `json:"code"`
@@ -825,10 +802,10 @@ func fetchSub2APIWalletCNYBalance(ctx context.Context, client *req.Client, profi
 		return 0, fmt.Errorf("invalid Sub2API wallet profile JSON: %w", err)
 	}
 	if payload.Code != 0 {
-		return 0, fmt.Errorf("Sub2API wallet profile response is unsuccessful")
+		return 0, fmt.Errorf("sub2api wallet profile response is unsuccessful")
 	}
 	if math.IsNaN(payload.Data.Balance) || math.IsInf(payload.Data.Balance, 0) {
-		return 0, fmt.Errorf("Sub2API wallet balance is not finite")
+		return 0, fmt.Errorf("sub2api wallet balance is not finite")
 	}
 	return payload.Data.Balance, nil
 }
@@ -839,11 +816,11 @@ func parseUpstreamBalanceAmount(provider string, payload any, jsonPath string, d
 	case UpstreamBalanceProviderDeepSeek:
 		root, ok := payload.(map[string]any)
 		if !ok {
-			return 0, fmt.Errorf("unexpected DeepSeek balance response")
+			return 0, fmt.Errorf("unexpected deepSeek balance response")
 		}
 		infos, ok := root["balance_infos"].([]any)
 		if !ok {
-			return 0, fmt.Errorf("DeepSeek response is missing balance_infos")
+			return 0, fmt.Errorf("deepSeek response is missing balance_infos")
 		}
 		for _, item := range infos {
 			info, ok := item.(map[string]any)
@@ -854,7 +831,7 @@ func parseUpstreamBalanceAmount(provider string, payload any, jsonPath string, d
 			break
 		}
 		if raw == nil {
-			return 0, fmt.Errorf("DeepSeek response has no CNY balance")
+			return 0, fmt.Errorf("deepSeek response has no CNY balance")
 		}
 	case UpstreamBalanceProviderStepFun:
 		raw = lookupJSONPath(payload, "balance")

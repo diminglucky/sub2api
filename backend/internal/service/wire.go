@@ -716,8 +716,8 @@ func ProvideBalanceNotifyService(emailService *EmailService, settingRepo Setting
 }
 
 // ProvideUpstreamBalanceService creates and starts the periodic CNY balance collector.
-func ProvideUpstreamBalanceService(accountRepo AccountRepository, proxyRepo ProxyRepository, notifyService *BalanceNotifyService, redisClient *redis.Client) *UpstreamBalanceService {
-	svc := NewUpstreamBalanceService(accountRepo, proxyRepo, notifyService, redisClient)
+func ProvideUpstreamBalanceService(accountRepo AccountRepository, proxyRepo ProxyRepository, notifyService *BalanceNotifyService, lockCache LeaderLockCache) *UpstreamBalanceService {
+	svc := NewUpstreamBalanceService(accountRepo, proxyRepo, notifyService, lockCache)
 	svc.Start()
 	return svc
 }
