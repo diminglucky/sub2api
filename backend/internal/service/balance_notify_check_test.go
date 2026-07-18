@@ -167,6 +167,23 @@ func TestIsAccountQuotaNotifyEnabled(t *testing.T) {
 	require.True(t, s.isAccountQuotaNotifyEnabled(context.Background()))
 }
 
+func TestNotifyUpstreamBalanceLow_DoesNotRequireQuotaNotifyEnabled(t *testing.T) {
+	s, repo := newBalanceNotifyServiceForTest()
+	repo.data[SettingKeyAccountQuotaNotifyEnabled] = "false"
+	repo.data[SettingKeyAccountQuotaNotifyEmails] = `[{"email":"ops@example.com","verified":true}]`
+	repo.data[SettingKeySMTPHost] = "smtp.example.com"
+	repo.data[SettingKeySMTPFrom] = "noreply@example.com"
+	s.emailService.sendWithConfig = func(config *SMTPConfig, to, subject, body string) error {
+		require.Equal(t, "ops@example.com", to)
+		require.Contains(t, subject, "上游余额不足")
+		require.Contains(t, body, "DeepSeek")
+		return nil
+	}
+
+	err := s.NotifyUpstreamBalanceLow(context.Background(), 10, "account-a", "DeepSeek", 8.5, 10)
+	require.NoError(t, err)
+}
+
 func TestGetSiteName_FallsBackToDefault(t *testing.T) {
 	s, _ := newBalanceNotifyServiceForTest()
 	name := s.getSiteName(context.Background())

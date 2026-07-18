@@ -509,6 +509,8 @@ export default {
       quota: 'Quota',
       unlimited: 'Unlimited',
       models: 'Models',
+      purchaseLimit: 'Purchase limit',
+      purchaseLimitTimes: '{count} times/account',
     },
     days: 'days',
     months: 'months',

@@ -214,6 +214,12 @@
                     <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.quota') }}</span>
                     <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">{{ t('payment.planCard.unlimited') }}</div>
                   </div>
+                  <div v-if="selectedPlan.purchase_limit_per_user > 0">
+                    <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('payment.planCard.purchaseLimit') }}</span>
+                    <div class="text-lg font-semibold text-gray-800 dark:text-gray-200">
+                      {{ t('payment.planCard.purchaseLimitTimes', { count: selectedPlan.purchase_limit_per_user }) }}
+                    </div>
+                  </div>
                 </div>
               </div>
               <div v-if="enabledMethods.length >= 1" class="card p-6">

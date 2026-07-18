@@ -6,8 +6,10 @@ import (
 	"context"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/payment"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -109,6 +111,76 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 	require.NotContains(t, order.ProviderSnapshot, "secretKey")
 	require.NotContains(t, order.ProviderSnapshot, "supported_types")
 	require.NotContains(t, order.ProviderSnapshot, "instance_name")
+}
+
+func TestCheckSubscriptionPurchaseLimit_CountsActivePurchaseOrders(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	user, err := client.User.Create().
+		SetEmail("purchase-limit@example.com").
+		SetPasswordHash("hash").
+		SetUsername("purchase-limit-user").
+		Save(ctx)
+	require.NoError(t, err)
+
+	plan, err := client.SubscriptionPlan.Create().
+		SetGroupID(10).
+		SetName("Starter").
+		SetDescription("Starter plan").
+		SetPrice(5).
+		SetValidityDays(30).
+		SetValidityUnit("days").
+		SetFeatures("").
+		SetProductName("").
+		SetForSale(true).
+		SetPurchaseLimitPerUser(1).
+		SetSortOrder(0).
+		Save(ctx)
+	require.NoError(t, err)
+
+	createSubscriptionOrder := func(status string, suffix string) {
+		_, err := client.PaymentOrder.Create().
+			SetUserID(user.ID).
+			SetUserEmail(user.Email).
+			SetUserName(user.Username).
+			SetAmount(plan.Price).
+			SetPayAmount(plan.Price).
+			SetFeeRate(0).
+			SetRechargeCode("LIMIT-" + suffix).
+			SetOutTradeNo("sub2_limit_" + suffix).
+			SetPaymentType(payment.TypeAlipay).
+			SetPaymentTradeNo("").
+			SetOrderType(payment.OrderTypeSubscription).
+			SetPlanID(plan.ID).
+			SetSubscriptionGroupID(plan.GroupID).
+			SetSubscriptionDays(30).
+			SetStatus(status).
+			SetExpiresAt(time.Now().Add(time.Hour)).
+			SetClientIP("127.0.0.1").
+			SetSrcHost("api.example.com").
+			Save(ctx)
+		require.NoError(t, err)
+	}
+
+	createSubscriptionOrder(OrderStatusExpired, "expired")
+	createSubscriptionOrder(OrderStatusFailed, "failed")
+
+	svc := &PaymentService{entClient: client}
+	tx, err := client.Tx(ctx)
+	require.NoError(t, err)
+	err = svc.checkSubscriptionPurchaseLimit(ctx, tx, user.ID, plan)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+
+	createSubscriptionOrder(OrderStatusCompleted, "completed")
+
+	tx, err = client.Tx(ctx)
+	require.NoError(t, err)
+	err = svc.checkSubscriptionPurchaseLimit(ctx, tx, user.ID, plan)
+	require.Error(t, err)
+	require.Equal(t, "PLAN_PURCHASE_LIMIT_REACHED", infraerrors.Reason(err))
+	require.NoError(t, tx.Rollback())
 }
 
 func TestBuildPaymentOrderProviderSnapshot_UsesWxpayJSAPIAppIDForOpenIDOrders(t *testing.T) {

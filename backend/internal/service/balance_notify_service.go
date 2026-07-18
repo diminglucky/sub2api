@@ -213,10 +213,7 @@ func (s *BalanceNotifyService) NotifyUpstreamBalanceLow(ctx context.Context, acc
 	if s == nil || s.emailService == nil || s.settingRepo == nil || threshold <= 0 {
 		return errors.New("upstream balance notification service is unavailable")
 	}
-	if !s.isAccountQuotaNotifyEnabled(ctx) {
-		return errors.New("account quota notifications are disabled")
-	}
-	recipients := s.getAccountQuotaNotifyEmails(ctx)
+	recipients := s.getAdminNotifyEmails(ctx)
 	if len(recipients) == 0 {
 		return errors.New("no administrator notification recipients are configured")
 	}
@@ -331,6 +328,12 @@ func (s *BalanceNotifyService) isAccountQuotaNotifyEnabled(ctx context.Context) 
 // getAccountQuotaNotifyEmails reads admin notification emails from settings,
 // filtering out disabled and unverified entries.
 func (s *BalanceNotifyService) getAccountQuotaNotifyEmails(ctx context.Context) []string {
+	return s.getAdminNotifyEmails(ctx)
+}
+
+// getAdminNotifyEmails reads the shared administrator notification recipient list.
+// Feature-specific toggles decide when to send; this list only controls who receives alerts.
+func (s *BalanceNotifyService) getAdminNotifyEmails(ctx context.Context) []string {
 	raw, err := s.settingRepo.GetValue(ctx, SettingKeyAccountQuotaNotifyEmails)
 	if err != nil || strings.TrimSpace(raw) == "" || raw == "[]" {
 		return nil

@@ -18,6 +18,8 @@ const i18n = createI18n({
           quota: "Quota",
           rate: "Rate",
           unlimited: "Unlimited",
+          purchaseLimit: "Purchase limit",
+          purchaseLimitTimes: "{count} times/account",
         },
         subscribeNow: "Subscribe now",
       },
@@ -39,6 +41,7 @@ const mountPlanCard = (groupPlatform: string) =>
         rate_multiplier: 1,
         validity_days: 30,
         validity_unit: "day",
+        purchase_limit_per_user: 0,
         supported_model_scopes: ["claude", "gemini_text", "gemini_image"],
         is_active: true,
       },
@@ -61,5 +64,29 @@ describe("SubscriptionPlanCard", () => {
     expect(text).toContain("Claude");
     expect(text).toContain("Gemini");
     expect(text).toContain("Imagen");
+  });
+
+  it("shows purchase limit when configured", () => {
+    const wrapper = mount(SubscriptionPlanCard, {
+      props: {
+        plan: {
+          id: 2,
+          group_id: 20,
+          group_platform: "openai",
+          name: "Starter",
+          price: 5,
+          features: [],
+          rate_multiplier: 1,
+          validity_days: 30,
+          validity_unit: "day",
+          purchase_limit_per_user: 2,
+          supported_model_scopes: [],
+        },
+      },
+      global: { plugins: [i18n, createPinia()] },
+    });
+
+    expect(wrapper.text()).toContain("payment.planCard.purchaseLimit");
+    expect(wrapper.text()).toContain("payment.planCard.purchaseLimitTimes");
   });
 });

@@ -63,6 +63,10 @@
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.quota') }}</span>
           <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.planCard.unlimited') }}</span>
         </div>
+        <div v-if="purchaseLimitText" class="col-span-2 flex items-center justify-between">
+          <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.purchaseLimit') }}</span>
+          <span class="font-medium text-gray-700 dark:text-gray-300">{{ purchaseLimitText }}</span>
+        </div>
         <div v-if="modelScopeLabels.length > 0" class="col-span-2 flex items-center justify-between">
           <span class="text-gray-400 dark:text-dark-500">{{ t('payment.planCard.models') }}</span>
           <div class="flex flex-wrap justify-end gap-1">
@@ -144,6 +148,11 @@ const discountText = computed(() => {
 const rateDisplay = computed(() => {
   const rate = props.plan.rate_multiplier ?? 1
   return `×${Number(rate.toPrecision(10))}`
+})
+
+const purchaseLimitText = computed(() => {
+  const limit = props.plan.purchase_limit_per_user ?? 0
+  return limit > 0 ? t('payment.planCard.purchaseLimitTimes', { count: limit }) : ''
 })
 
 const appStore = useAppStore()

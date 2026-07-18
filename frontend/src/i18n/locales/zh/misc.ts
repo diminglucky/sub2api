@@ -533,6 +533,8 @@ export default {
       quota: '配额',
       unlimited: '无限制',
       models: '模型',
+      purchaseLimit: '购买限制',
+      purchaseLimitTimes: '每账号 {count} 次',
     },
     days: '天',
     months: '个月',
