@@ -2,18 +2,18 @@ package service
 
 import "testing"
 
-func TestOpenAIModelMappingIncludesGPT56Passthroughs(t *testing.T) {
+func TestOpenAIModelMappingIncludesNewGPTPassthroughs(t *testing.T) {
 	account := &Account{
 		Platform: PlatformOpenAI,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
-				"gpt-5.5": "gpt-5.5",
+				"gpt-4o": "gpt-4o",
 			},
 		},
 	}
 
 	mapping := account.GetModelMapping()
-	for _, model := range []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
+	for _, model := range []string{"gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
 		if got := mapping[model]; got != model {
 			t.Fatalf("GetModelMapping()[%s] = %q, want %s", model, got, model)
 		}
