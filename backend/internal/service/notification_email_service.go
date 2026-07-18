@@ -25,6 +25,7 @@ const (
 	NotificationEmailEventNotificationEmailVerifyCode = "notification_email.verify_code"
 	NotificationEmailEventSubscriptionPurchaseSuccess = "subscription.purchase_success"
 	NotificationEmailEventSubscriptionExpiryReminder  = "subscription.expiry_reminder"
+	NotificationEmailEventAnnouncementPublished       = "announcement.published"
 	NotificationEmailEventBalanceLow                  = "balance.low"
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
@@ -870,7 +871,7 @@ func isSafeNotificationEmailURL(raw string) bool {
 
 func notificationEmailSampleVariables(locale string) map[string]string {
 	if normalizeNotificationLocale(locale) == notificationEmailLocaleChinese {
-		return map[string]string{
+		variables := map[string]string{
 			"site_name":           defaultSiteName,
 			"recipient_name":      "张三",
 			"recipient_email":     "user@example.com",
@@ -915,8 +916,11 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"report_end_time":     "2026-05-20 12:00",
 			"report_html":         "<h2>日报</h2><p>请求量：1024</p>",
 		}
+		variables["announcement_title"] = "新优惠已上线"
+		variables["announcement_content"] = "限时优惠现已开放，登录后即可查看和使用。"
+		return variables
 	}
-	return map[string]string{
+	variables := map[string]string{
 		"site_name":           defaultSiteName,
 		"recipient_name":      "Alex",
 		"recipient_email":     "user@example.com",
@@ -961,6 +965,9 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"report_end_time":     "2026-05-20 12:00",
 		"report_html":         "<h2>Daily summary</h2><p>Requests: 1024</p>",
 	}
+	variables["announcement_title"] = "A new offer is available"
+	variables["announcement_content"] = "A limited-time offer is now available. Sign in to view and use it."
+	return variables
 }
 
 var notificationEmailEventOrder = []string{
@@ -969,6 +976,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventNotificationEmailVerifyCode,
 	NotificationEmailEventSubscriptionPurchaseSuccess,
 	NotificationEmailEventSubscriptionExpiryReminder,
+	NotificationEmailEventAnnouncementPublished,
 	NotificationEmailEventBalanceLow,
 	NotificationEmailEventBalanceRechargeSuccess,
 	NotificationEmailEventAccountQuotaAlert,
@@ -1020,6 +1028,14 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Category:     "subscription",
 		Optional:     true,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "subscription_group", "expiry_time", "days_remaining", "unsubscribe_url"),
+	},
+	NotificationEmailEventAnnouncementPublished: {
+		Event:        NotificationEmailEventAnnouncementPublished,
+		Label:        "Announcement email",
+		Description:  "Optional email sent when an administrator publishes an announcement and enables email notification.",
+		Category:     "announcement",
+		Optional:     true,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "announcement_title", "announcement_content", "unsubscribe_url"),
 	},
 	NotificationEmailEventBalanceLow: {
 		Event:        NotificationEmailEventBalanceLow,
@@ -1200,6 +1216,24 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>您的 <strong>{{subscription_group}}</strong> 订阅将在 <strong>{{days_remaining}}</strong> 天后到期。</p>
 <p>到期时间：<strong>{{expiry_time}}</strong></p>
 <p class="muted"><a href="{{unsubscribe_url}}">退订此类订阅提醒</a></p>`),
+		},
+	},
+	NotificationEmailEventAnnouncementPublished: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] {{announcement_title}}",
+			HTML: notificationEmailCard("#2563eb", "New announcement", `
+<p>Hello {{recipient_name}},</p>
+<h2 style="font-size: 20px; margin: 20px 0 12px;">{{announcement_title}}</h2>
+<div style="white-space: pre-line;">{{announcement_content}}</div>
+<p class="muted"><a href="{{unsubscribe_url}}">Unsubscribe from announcement emails</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] {{announcement_title}}",
+			HTML: notificationEmailCard("#2563eb", "最新公告", `
+<p>{{recipient_name}}，您好：</p>
+<h2 style="font-size: 20px; margin: 20px 0 12px;">{{announcement_title}}</h2>
+<div style="white-space: pre-line;">{{announcement_content}}</div>
+<p class="muted"><a href="{{unsubscribe_url}}">退订此类公告邮件</a></p>`),
 		},
 	},
 	NotificationEmailEventBalanceLow: {

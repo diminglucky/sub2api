@@ -34,6 +34,7 @@ import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import lotteryAPI from './lottery'
 import adminComplianceAPI from './compliance'
+import upstreamBalancesAPI from './upstreamBalances'
 
 /**
  * Unified admin API object for convenient access
@@ -69,7 +70,8 @@ export const adminAPI = {
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
   lottery: lotteryAPI,
-  compliance: adminComplianceAPI
+  compliance: adminComplianceAPI,
+  upstreamBalances: upstreamBalancesAPI
 }
 
 export {
@@ -103,7 +105,8 @@ export {
   affiliatesAPI,
   riskControlAPI,
   lotteryAPI,
-  adminComplianceAPI
+  adminComplianceAPI,
+  upstreamBalancesAPI
 }
 
 export default adminAPI

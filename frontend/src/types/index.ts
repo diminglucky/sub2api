@@ -325,6 +325,27 @@ export interface Announcement {
   updated_at: string
 }
 
+export type AnnouncementEmailBatchStatus = 'pending' | 'processing' | 'retrying' | 'completed' | 'failed'
+
+export interface AnnouncementEmailBatch {
+  id: number
+  announcement_id: number
+  campaign_id: string
+  title: string
+  status: AnnouncementEmailBatchStatus
+  attempt_count: number
+  max_attempts: number
+  total_count: number
+  processed_count: number
+  failed_count: number
+  last_error?: string
+  next_attempt_at: string
+  locked_at?: string
+  completed_at?: string
+  created_at: string
+  updated_at: string
+}
+
 export interface UserAnnouncement {
   id: number
   title: string
@@ -345,6 +366,7 @@ export interface CreateAnnouncementRequest {
   targeting: AnnouncementTargeting
   starts_at?: number
   ends_at?: number
+  send_email?: boolean
 }
 
 export interface UpdateAnnouncementRequest {
@@ -355,6 +377,7 @@ export interface UpdateAnnouncementRequest {
   targeting?: AnnouncementTargeting
   starts_at?: number
   ends_at?: number
+  send_email?: boolean
 }
 
 export interface AnnouncementUserReadStatus {

@@ -4,10 +4,12 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -73,11 +75,25 @@ func newAnnouncementSortTestRouter(announcementRepo *announcementRepoCapture, us
 		&announcementReadRepoCapture{},
 		userRepo,
 		&announcementUserSubRepoCapture{},
+		nil,
 	)
 	handler := NewAnnouncementHandler(svc)
 	router := gin.New()
 	router.GET("/admin/announcements", handler.List)
 	router.GET("/admin/announcements/:id/read-status", handler.ListReadStatus)
+	return router
+}
+
+func newAnnouncementCreateTestRouter(announcementRepo *announcementRepoCapture) *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewAnnouncementService(announcementRepo, nil, nil, nil, nil)
+	handler := NewAnnouncementHandler(svc)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 42})
+		c.Next()
+	})
+	router.POST("/admin/announcements", handler.Create)
 	return router
 }
 
@@ -135,4 +151,17 @@ func TestAdminAnnouncementReadStatusSortDefaults(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "email", userRepo.listParams.SortBy)
 	require.Equal(t, "asc", userRepo.listParams.SortOrder)
+}
+
+func TestAdminAnnouncementCreateForwardsSendEmail(t *testing.T) {
+	router := newAnnouncementCreateTestRouter(&announcementRepoCapture{})
+	body := `{"title":"Draft","content":"Content","status":"draft","targeting":{"any_of":[]},"send_email":true}`
+	req := httptest.NewRequest(http.MethodPost, "/admin/announcements", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "ANNOUNCEMENT_EMAIL_REQUIRES_ACTIVE")
 }

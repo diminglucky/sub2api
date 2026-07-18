@@ -52,6 +52,10 @@ var (
 		"ANNOUNCEMENT_TIME_RANGE_INVALID",
 		"starts_at must be before ends_at",
 	)
+	ErrAnnouncementEmailRequiresActive = infraerrors.BadRequest(
+		"ANNOUNCEMENT_EMAIL_REQUIRES_ACTIVE",
+		"email notification requires an active announcement",
+	)
 )
 
 type AnnouncementTargeting = domain.AnnouncementTargeting
@@ -69,8 +73,10 @@ type AnnouncementListFilters struct {
 
 type AnnouncementRepository interface {
 	Create(ctx context.Context, a *Announcement) error
+	CreateWithEmailBatch(ctx context.Context, a *Announcement, batch *AnnouncementEmailBatch) error
 	GetByID(ctx context.Context, id int64) (*Announcement, error)
 	Update(ctx context.Context, a *Announcement) error
+	UpdateWithEmailBatch(ctx context.Context, a *Announcement, batch *AnnouncementEmailBatch) error
 	Delete(ctx context.Context, id int64) error
 
 	List(ctx context.Context, params pagination.PaginationParams, filters AnnouncementListFilters) ([]Announcement, *pagination.PaginationResult, error)

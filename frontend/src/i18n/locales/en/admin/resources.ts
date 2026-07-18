@@ -341,6 +341,8 @@ export default {
         status: 'Status',
         notifyMode: 'Notify Mode',
         notifyModeHint: 'Popup mode will show a popup notification to users',
+        sendEmail: 'Send an email notification too',
+        sendEmailHint: 'Email is sent to active, eligible users who have not unsubscribed. Only active announcements can send email.',
         startsAt: 'Starts At',
         endsAt: 'Ends At',
         startsAtHint: 'Leave empty to start immediately',
@@ -369,6 +371,20 @@ export default {
       timeImmediate: 'Immediate',
       timeNever: 'Never',
       readStatus: 'Read Status',
+      emailStatus: 'Email Delivery Status',
+      noEmailBatches: 'No email delivery has been created for this announcement',
+      emailTotal: 'Recipients',
+      emailProcessed: 'Processed',
+      emailFailed: 'Failed',
+      emailAttempts: 'Attempts',
+      emailNextRetry: 'Next retry',
+      emailStatusLabels: {
+        pending: 'Pending',
+        processing: 'Sending',
+        retrying: 'Retrying',
+        completed: 'Completed',
+        failed: 'Failed'
+      },
       eligible: 'Eligible',
       readAt: 'Read at',
       unread: 'Unread',
@@ -378,6 +394,8 @@ export default {
       failedToUpdate: 'Failed to update announcement',
       failedToDelete: 'Failed to delete announcement',
       failedToLoadReadStatus: 'Failed to load read status',
+      failedToLoadEmailStatus: 'Failed to load email delivery status',
+      emailQueued: 'Announcement published and email delivery queued',
       deleteConfirm: 'Are you sure you want to delete this announcement? This action cannot be undone.'
     },
 

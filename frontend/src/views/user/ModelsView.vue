@@ -466,9 +466,10 @@ function secondaryPriceLabel(row: ModelRow) {
 function primaryPriceText(row: ModelRow) {
   const pricing = row.model.pricing
   if (!pricing) return '-'
-  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) return priceText(pricing.per_request_price, t('availableChannels.pricing.unitPerRequest'))
-  if (pricing.billing_mode === BILLING_MODE_IMAGE) return priceText(imageRequestPrice(pricing), t('availableChannels.pricing.unitPerRequest'))
-  return priceText(pricing.input_price, t('availableChannels.pricing.unitPerMillion'))
+  const multiplier = lowestVisibleMultiplier(row)
+  if (pricing.billing_mode === BILLING_MODE_PER_REQUEST) return scaledPriceText(pricing.per_request_price, multiplier, t('availableChannels.pricing.unitPerRequest'))
+  if (pricing.billing_mode === BILLING_MODE_IMAGE) return scaledPriceText(imageRequestPrice(pricing), multiplier, t('availableChannels.pricing.unitPerRequest'))
+  return scaledPriceText(pricing.input_price, multiplier, t('availableChannels.pricing.unitPerMillion'))
 }
 
 function secondaryPriceText(row: ModelRow) {
@@ -477,17 +478,19 @@ function secondaryPriceText(row: ModelRow) {
   if (pricing.billing_mode === BILLING_MODE_PER_REQUEST || pricing.billing_mode === BILLING_MODE_IMAGE) {
     return billingLabel(pricing.billing_mode)
   }
-  return priceText(pricing.output_price, t('availableChannels.pricing.unitPerMillion'))
+  return scaledPriceText(pricing.output_price, lowestVisibleMultiplier(row), t('availableChannels.pricing.unitPerMillion'))
+}
+
+function lowestVisibleMultiplier(row: ModelRow) {
+  const multipliers = row.groups
+    .map((group) => effectiveGroupMultiplier(group))
+    .filter((value) => Number.isFinite(value) && value >= 0)
+  if (multipliers.length === 0) return 1
+  return Math.min(...multipliers)
 }
 
 function imageRequestPrice(pricing: { per_request_price?: number | null; image_output_price?: number | null }) {
   return pricing.per_request_price ?? pricing.image_output_price
-}
-
-function priceText(value: number | null | undefined, unit: string) {
-  if (value == null) return '-'
-  const scale = unit === t('availableChannels.pricing.unitPerMillion') ? 1_000_000 : 1
-  return `¥${(value * scale).toFixed(2)} ${unit}`
 }
 
 function scaledPriceText(value: number | null | undefined, multiplier: number, unit: string) {

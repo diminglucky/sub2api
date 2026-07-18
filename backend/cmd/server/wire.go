@@ -105,6 +105,7 @@ func provideCleanup(
 	channelMonitorRunner *service.ChannelMonitorRunner,
 	lotteryDrawRunner *service.LotteryDrawRunner,
 	quotaFlusher *service.UserPlatformQuotaUsageFlusher,
+	upstreamBalance *service.UpstreamBalanceService,
 ) func() {
 	return func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -117,6 +118,12 @@ func provideCleanup(
 
 		// 应用层清理步骤可并行执行，基础设施资源（Redis/Ent）最后按顺序关闭。
 		parallelSteps := []cleanupStep{
+			{"UpstreamBalanceService", func() error {
+				if upstreamBalance != nil {
+					upstreamBalance.Stop()
+				}
+				return nil
+			}},
 			{"OpsScheduledReportService", func() error {
 				if opsScheduledReport != nil {
 					opsScheduledReport.Stop()

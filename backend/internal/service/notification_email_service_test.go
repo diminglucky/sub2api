@@ -221,6 +221,71 @@ func TestEmailQueueTasksPreserveLocaleHints(t *testing.T) {
 	require.Equal(t, "en-US", resetTask.Locale)
 }
 
+func TestEmailQueueAnnouncementBatchContinuesAfterRecipientFailure(t *testing.T) {
+	repo := newNotificationEmailMemorySettingRepo()
+	repo.values[SettingKeySMTPHost] = "smtp.example.com"
+	repo.values[SettingKeySMTPFrom] = "sender@example.com"
+	var recipients []string
+	emailSvc := NewEmailService(repo, nil)
+	emailSvc.sendWithConfig = func(gotConfig *SMTPConfig, to, subject, body string) error {
+		require.Equal(t, "smtp.example.com", gotConfig.Host)
+		require.Equal(t, "[SuperAI] New offer", subject)
+		require.Contains(t, body, "Offer details")
+		require.Contains(t, body, "email-unsubscribe?token=")
+		require.NotContains(t, body, "<script>")
+		recipients = append(recipients, to)
+		if to == "failed@example.com" {
+			return errors.New("smtp rejected recipient")
+		}
+		return nil
+	}
+	NewNotificationEmailService(repo, emailSvc)
+	repo.values[notificationEmailPreferenceKey(NotificationEmailEventAnnouncementPublished, "unsubscribed@example.com")] = "unsubscribed"
+	queue := &EmailQueueService{emailService: emailSvc}
+	processed, failed, err := queue.sendAnnouncementRecipients(
+		42,
+		"batch-1",
+		[]string{
+			"first@example.com",
+			"unsubscribed@example.com",
+			"failed@example.com",
+			"last@example.com",
+		},
+		"New offer",
+		"Offer details <script>alert(1)</script>",
+	)
+
+	require.Equal(t, []string{"first@example.com", "failed@example.com", "last@example.com"}, recipients)
+	require.Equal(t, 3, processed)
+	require.Equal(t, 1, failed)
+	require.Error(t, err)
+}
+
+func TestNotificationEmailAnnouncementTemplateIsOptionalAndEscapesContent(t *testing.T) {
+	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+	info, event, err := svc.eventInfo(NotificationEmailEventAnnouncementPublished)
+	require.NoError(t, err)
+	require.Equal(t, NotificationEmailEventAnnouncementPublished, event)
+	require.True(t, info.Optional)
+	require.Contains(t, info.Placeholders, "announcement_title")
+	require.Contains(t, info.Placeholders, "announcement_content")
+	require.Contains(t, info.Placeholders, "unsubscribe_url")
+
+	preview, err := svc.PreviewTemplate(context.Background(), NotificationEmailPreviewInput{
+		Event:  NotificationEmailEventAnnouncementPublished,
+		Locale: "zh-CN",
+		Variables: map[string]string{
+			"announcement_title":   "新优惠",
+			"announcement_content": `<script>alert("x")</script>`,
+		},
+	})
+	require.NoError(t, err)
+	require.Contains(t, preview.Subject, "新优惠")
+	require.Contains(t, preview.HTML, "&lt;script&gt;")
+	require.NotContains(t, preview.HTML, "<script>")
+	require.Contains(t, preview.HTML, "unsubscribe")
+}
+
 func TestOpsScheduledReportDeliverySourceIDIncludesReportIdentity(t *testing.T) {
 	report := &opsScheduledReport{Name: "日报", ReportType: "daily_summary", Schedule: "0 9 * * *"}
 	sourceID := opsScheduledReportDeliverySourceID(report)

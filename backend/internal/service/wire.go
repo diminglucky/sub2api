@@ -35,9 +35,13 @@ func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, b
 	return NewUpdateService(cache, githubClient, buildInfo.Version, buildInfo.BuildType)
 }
 
-// ProvideEmailQueueService creates EmailQueueService with default worker count
-func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
-	return NewEmailQueueService(emailService, 3)
+// ProvideEmailQueueService creates EmailQueueService with persistent announcement delivery.
+func ProvideEmailQueueService(
+	emailService *EmailService,
+	_ *NotificationEmailService,
+	batchRepo AnnouncementEmailBatchRepository,
+) *EmailQueueService {
+	return NewPersistentEmailQueueService(emailService, batchRepo, 3)
 }
 
 // ProvideOAuthRefreshAPI creates OAuthRefreshAPI with the default lock TTL.
@@ -669,6 +673,7 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
+	ProvideUpstreamBalanceService,
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
@@ -707,6 +712,13 @@ func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRep
 func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *BalanceNotifyService {
 	svc := NewBalanceNotifyService(emailService, settingRepo, accountRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
+}
+
+// ProvideUpstreamBalanceService creates and starts the periodic CNY balance collector.
+func ProvideUpstreamBalanceService(accountRepo AccountRepository, proxyRepo ProxyRepository, notifyService *BalanceNotifyService, redisClient *redis.Client) *UpstreamBalanceService {
+	svc := NewUpstreamBalanceService(accountRepo, proxyRepo, notifyService, redisClient)
+	svc.Start()
 	return svc
 }
 

@@ -5,6 +5,7 @@
 import { apiClient } from '../client'
 import type {
   Announcement,
+  AnnouncementEmailBatch,
   AnnouncementUserReadStatus,
   BasePaginationResponse,
   CreateAnnouncementRequest,
@@ -74,13 +75,21 @@ export async function getReadStatus(
   return data
 }
 
+export async function getEmailBatches(id: number, options?: { signal?: AbortSignal }): Promise<AnnouncementEmailBatch[]> {
+  const { data } = await apiClient.get<AnnouncementEmailBatch[]>(`/admin/announcements/${id}/email-batches`, {
+    signal: options?.signal
+  })
+  return data
+}
+
 const announcementsAPI = {
   list,
   getById,
   create,
   update,
   delete: deleteAnnouncement,
-  getReadStatus
+  getReadStatus,
+  getEmailBatches
 }
 
 export default announcementsAPI

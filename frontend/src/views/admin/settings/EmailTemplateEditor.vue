@@ -254,6 +254,8 @@ const fallbackPlaceholders = [
   "{{subscription_days}}",
   "{{expiry_time}}",
   "{{days_remaining}}",
+  "{{announcement_title}}",
+  "{{announcement_content}}",
   "{{current_balance}}",
   "{{threshold}}",
   "{{recharge_url}}",
@@ -342,6 +344,11 @@ const eventDisplayMeta: Record<string, EventDisplayMeta> = {
     timing: "后台任务在订阅仍有效且距离到期剩余 7 天、3 天、1 天时各发送一次，可通过邮件设置中的开关关闭。",
     categoryLabel: "订阅",
   },
+  "announcement.published": {
+    label: "公告邮件",
+    timing: "管理员发布公告并勾选邮件提醒时，发送给符合投放条件且未退订的启用用户。",
+    categoryLabel: "公告",
+  },
   "balance.low": {
     label: "余额不足提醒",
     timing: "用户余额低于全局或个人配置的提醒阈值时发送。",
@@ -404,6 +411,11 @@ const eventDisplayMetaEn: Record<string, EventDisplayMeta> = {
     label: "Subscription Expiry Reminder",
     timing: "Sent by the background job when an active subscription has 7, 3, or 1 day remaining. It can be disabled in Email settings.",
     categoryLabel: "Subscription",
+  },
+  "announcement.published": {
+    label: "Announcement Email",
+    timing: "Sent to eligible active users who have not unsubscribed when an administrator publishes an announcement with email notification enabled.",
+    categoryLabel: "Announcement",
   },
   "balance.low": {
     label: "Low Balance Alert",
@@ -480,6 +492,7 @@ function formatCategory(category: string): string {
   const labels: Record<string, { zh: string; en: string }> = {
     auth: { zh: "认证安全", en: "Auth" },
     subscription: { zh: "订阅", en: "Subscription" },
+    announcement: { zh: "公告", en: "Announcement" },
     billing: { zh: "计费", en: "Billing" },
     admin: { zh: "管理告警", en: "Admin" },
     risk_control: { zh: "风控", en: "Risk Control" },

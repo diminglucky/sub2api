@@ -588,6 +588,18 @@ func (c *Channel) SupportedModels() []SupportedModel {
 		}
 	}
 
+	openAI55Key := dedupKey{platform: PlatformOpenAI, name: "gpt-5.5"}
+	openAI56SolKey := dedupKey{platform: PlatformOpenAI, name: "gpt-5.6-sol"}
+	if _, has56Sol := seen[openAI56SolKey]; !has56Sol {
+		if _, has55 := seen[openAI55Key]; has55 {
+			var pricing *ChannelModelPricing
+			if pidx := idx[PlatformOpenAI]; pidx != nil {
+				pricing = pidx.byLower["gpt-5.5"]
+			}
+			add(PlatformOpenAI, "gpt-5.6-sol", pricing)
+		}
+	}
+
 	sort.SliceStable(result, func(i, j int) bool {
 		if result[i].Platform != result[j].Platform {
 			return result[i].Platform < result[j].Platform

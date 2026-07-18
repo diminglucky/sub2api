@@ -5,6 +5,7 @@ import resources from './resources'
 import ops from './ops'
 import settings from './settings'
 import custom from './custom'
+import upstreamBalances from './upstreamBalances'
 
 export default {
   ...overview,
@@ -14,4 +15,5 @@ export default {
   ...ops,
   ...settings,
   ...custom,
+  ...upstreamBalances,
 }

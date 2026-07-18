@@ -402,6 +402,8 @@ export default {
         status: '状态',
         notifyMode: '通知方式',
         notifyModeHint: '弹窗模式会自动弹出通知给用户',
+        sendEmail: '同时发送邮件提醒',
+        sendEmailHint: '邮件将发送给启用、符合展示条件且未退订的用户，仅“展示中”的公告可发送。',
         startsAt: '开始时间',
         endsAt: '结束时间',
         startsAtHint: '留空表示立即生效',
@@ -430,6 +432,20 @@ export default {
       timeImmediate: '立即',
       timeNever: '永久',
       readStatus: '已读情况',
+      emailStatus: '邮件发送状态',
+      noEmailBatches: '该公告尚未创建邮件发送任务',
+      emailTotal: '收件人数',
+      emailProcessed: '已处理',
+      emailFailed: '失败',
+      emailAttempts: '尝试次数',
+      emailNextRetry: '下次重试',
+      emailStatusLabels: {
+        pending: '等待发送',
+        processing: '发送中',
+        retrying: '等待重试',
+        completed: '发送完成',
+        failed: '发送失败'
+      },
       eligible: '符合条件',
       readAt: '已读时间',
       unread: '未读',
@@ -439,6 +455,8 @@ export default {
       failedToUpdate: '更新公告失败',
       failedToDelete: '删除公告失败',
       failedToLoadReadStatus: '加载已读情况失败',
+      failedToLoadEmailStatus: '加载邮件发送状态失败',
+      emailQueued: '公告已发布，邮件已加入发送队列',
       deleteConfirm: '确定要删除该公告吗？此操作无法撤销。'
     },
 

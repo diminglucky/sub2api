@@ -9,6 +9,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/google/uuid"
 )
 
 type AnnouncementService struct {
@@ -16,6 +17,7 @@ type AnnouncementService struct {
 	readRepo         AnnouncementReadRepository
 	userRepo         UserRepository
 	userSubRepo      UserSubscriptionRepository
+	emailQueue       *EmailQueueService
 }
 
 func NewAnnouncementService(
@@ -23,12 +25,14 @@ func NewAnnouncementService(
 	readRepo AnnouncementReadRepository,
 	userRepo UserRepository,
 	userSubRepo UserSubscriptionRepository,
+	emailQueue *EmailQueueService,
 ) *AnnouncementService {
 	return &AnnouncementService{
 		announcementRepo: announcementRepo,
 		readRepo:         readRepo,
 		userRepo:         userRepo,
 		userSubRepo:      userSubRepo,
+		emailQueue:       emailQueue,
 	}
 }
 
@@ -41,6 +45,7 @@ type CreateAnnouncementInput struct {
 	StartsAt   *time.Time
 	EndsAt     *time.Time
 	ActorID    *int64 // 管理员用户ID
+	SendEmail  bool
 }
 
 type UpdateAnnouncementInput struct {
@@ -52,6 +57,7 @@ type UpdateAnnouncementInput struct {
 	StartsAt   **time.Time
 	EndsAt     **time.Time
 	ActorID    *int64 // 管理员用户ID
+	SendEmail  bool
 }
 
 type UserAnnouncement struct {
@@ -108,6 +114,9 @@ func (s *AnnouncementService) Create(ctx context.Context, input *CreateAnnouncem
 			return nil, ErrAnnouncementInvalidSchedule
 		}
 	}
+	if input.SendEmail && status != AnnouncementStatusActive {
+		return nil, ErrAnnouncementEmailRequiresActive
+	}
 
 	a := &Announcement{
 		Title:      title,
@@ -123,8 +132,19 @@ func (s *AnnouncementService) Create(ctx context.Context, input *CreateAnnouncem
 		a.UpdatedBy = input.ActorID
 	}
 
-	if err := s.announcementRepo.Create(ctx, a); err != nil {
+	var emailBatch *AnnouncementEmailBatch
+	if input.SendEmail {
+		emailBatch, err = s.prepareAnnouncementEmail(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.announcementRepo.CreateWithEmailBatch(ctx, a, emailBatch); err != nil {
 		return nil, fmt.Errorf("create announcement: %w", err)
+	}
+	if emailBatch != nil {
+		s.emailQueue.WakeAnnouncementWorker()
 	}
 	return a, nil
 }
@@ -189,15 +209,114 @@ func (s *AnnouncementService) Update(ctx context.Context, id int64, input *Updat
 			return nil, ErrAnnouncementInvalidSchedule
 		}
 	}
+	if input.SendEmail && a.Status != AnnouncementStatusActive {
+		return nil, ErrAnnouncementEmailRequiresActive
+	}
 
 	if input.ActorID != nil && *input.ActorID > 0 {
 		a.UpdatedBy = input.ActorID
 	}
 
-	if err := s.announcementRepo.Update(ctx, a); err != nil {
+	var emailBatch *AnnouncementEmailBatch
+	if input.SendEmail {
+		emailBatch, err = s.prepareAnnouncementEmail(ctx, a)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := s.announcementRepo.UpdateWithEmailBatch(ctx, a, emailBatch); err != nil {
 		return nil, fmt.Errorf("update announcement: %w", err)
 	}
+	if emailBatch != nil {
+		s.emailQueue.WakeAnnouncementWorker()
+	}
 	return a, nil
+}
+
+func (s *AnnouncementService) prepareAnnouncementEmail(ctx context.Context, announcement *Announcement) (*AnnouncementEmailBatch, error) {
+	if s.emailQueue == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	if _, err := s.emailQueue.GetSMTPConfig(ctx); err != nil {
+		return nil, err
+	}
+	recipients, err := s.listAnnouncementEmailRecipients(ctx, announcement.Targeting)
+	if err != nil {
+		return nil, err
+	}
+	return &AnnouncementEmailBatch{
+		CampaignID:  uuid.NewString(),
+		Title:       announcement.Title,
+		Content:     announcement.Content,
+		Recipients:  recipients,
+		MaxAttempts: 5,
+	}, nil
+}
+
+func (s *AnnouncementService) ListEmailBatches(ctx context.Context, announcementID int64) ([]AnnouncementEmailBatch, error) {
+	if _, err := s.announcementRepo.GetByID(ctx, announcementID); err != nil {
+		return nil, err
+	}
+	if s.emailQueue == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	return s.emailQueue.ListAnnouncementBatches(ctx, announcementID)
+}
+
+func (s *AnnouncementService) listAnnouncementEmailRecipients(ctx context.Context, targeting AnnouncementTargeting) ([]string, error) {
+	const pageSize = 500
+	includeSubscriptions := announcementTargetingNeedsSubscriptions(targeting)
+	recipients := make([]string, 0)
+	seen := make(map[string]struct{})
+
+	for pageNumber := 1; ; pageNumber++ {
+		users, page, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{
+			Page: pageNumber, PageSize: pageSize, SortBy: "id", SortOrder: pagination.SortOrderAsc,
+		}, UserListFilters{Status: StatusActive, IncludeSubscriptions: &includeSubscriptions})
+		if err != nil {
+			return nil, fmt.Errorf("list announcement email recipients: %w", err)
+		}
+
+		for i := range users {
+			user := users[i]
+			activeGroupIDs := make(map[int64]struct{}, len(user.Subscriptions))
+			for j := range user.Subscriptions {
+				if user.Subscriptions[j].IsActive() {
+					activeGroupIDs[user.Subscriptions[j].GroupID] = struct{}{}
+				}
+			}
+			if !targeting.Matches(user.Balance, activeGroupIDs) {
+				continue
+			}
+			email := strings.TrimSpace(user.Email)
+			key := strings.ToLower(email)
+			if email == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			recipients = append(recipients, email)
+		}
+
+		if len(users) < pageSize || page == nil || pageNumber >= page.Pages {
+			break
+		}
+	}
+	return recipients, nil
+}
+
+func announcementTargetingNeedsSubscriptions(targeting AnnouncementTargeting) bool {
+	for i := range targeting.AnyOf {
+		for j := range targeting.AnyOf[i].AllOf {
+			if targeting.AnyOf[i].AllOf[j].Type == AnnouncementConditionTypeSubscription {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *AnnouncementService) Delete(ctx context.Context, id int64) error {

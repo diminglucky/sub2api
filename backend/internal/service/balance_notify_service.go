@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"html"
 	"log/slog"
@@ -203,6 +204,57 @@ func (s *BalanceNotifyService) CheckAccountQuotaAfterIncrement(ctx context.Conte
 		account = freshAccount // use fresh data for alert metadata
 	}
 	s.checkQuotaDimCrossings(account, dims, cost, adminEmails, siteName)
+}
+
+// NotifyUpstreamBalanceLow sends an administrator alert after a persisted
+// upstream CNY balance snapshot crosses into the low-balance state. It returns
+// an error when no message was delivered so the balance poller can retry.
+func (s *BalanceNotifyService) NotifyUpstreamBalanceLow(ctx context.Context, accountID int64, accountName, platformName string, balance, threshold float64) error {
+	if s == nil || s.emailService == nil || s.settingRepo == nil || threshold <= 0 {
+		return errors.New("upstream balance notification service is unavailable")
+	}
+	if !s.isAccountQuotaNotifyEnabled(ctx) {
+		return errors.New("account quota notifications are disabled")
+	}
+	recipients := s.getAccountQuotaNotifyEmails(ctx)
+	if len(recipients) == 0 {
+		return errors.New("no administrator notification recipients are configured")
+	}
+	siteName := s.getSiteName(ctx)
+	subject := fmt.Sprintf("[%s] %s 上游余额不足", siteName, strings.TrimSpace(platformName))
+	body := fmt.Sprintf(`<!doctype html>
+<html><body>
+<h2>%s</h2>
+<p>上游平台人民币余额已达到预警线。</p>
+<table style="border-collapse:collapse">
+<tr><td style="padding:6px 12px">平台</td><td style="padding:6px 12px"><b>%s</b></td></tr>
+<tr><td style="padding:6px 12px">账号</td><td style="padding:6px 12px">%s (#%d)</td></tr>
+<tr><td style="padding:6px 12px">当前余额</td><td style="padding:6px 12px"><b>¥%.2f</b></td></tr>
+<tr><td style="padding:6px 12px">预警线</td><td style="padding:6px 12px">¥%.2f</td></tr>
+</table>
+</body></html>`,
+		html.EscapeString(siteName),
+		html.EscapeString(strings.TrimSpace(platformName)),
+		html.EscapeString(strings.TrimSpace(accountName)),
+		accountID,
+		balance,
+		threshold,
+	)
+	delivered := 0
+	for _, to := range recipients {
+		sendCtx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+		err := s.emailService.SendEmail(sendCtx, to, subject, body)
+		cancel()
+		if err != nil {
+			slog.Error("failed to send upstream balance notification", "to", to, "account_id", accountID, "platform", platformName, "error", err)
+			continue
+		}
+		delivered++
+	}
+	if delivered == 0 {
+		return errors.New("failed to deliver upstream balance notification to every recipient")
+	}
+	return nil
 }
 
 // fetchFreshAccount loads the latest account from DB; falls back to the snapshot on error.

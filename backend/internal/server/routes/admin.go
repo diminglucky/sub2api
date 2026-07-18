@@ -34,6 +34,7 @@ func RegisterAdminRoutes(
 
 		// 账号管理
 		registerAccountRoutes(admin, h)
+		registerUpstreamBalanceRoutes(admin, h)
 
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
@@ -106,6 +107,15 @@ func RegisterAdminRoutes(
 
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
+	}
+}
+
+func registerUpstreamBalanceRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	balances := admin.Group("/upstream-balances")
+	{
+		balances.GET("", h.Admin.UpstreamBalance.Overview)
+		balances.PUT("/:account_id", h.Admin.UpstreamBalance.Configure)
+		balances.POST("/refresh", h.Admin.UpstreamBalance.Refresh)
 	}
 }
 
@@ -356,6 +366,7 @@ func registerAnnouncementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		announcements.GET("/:id", h.Admin.Announcement.GetByID)
 		announcements.PUT("/:id", h.Admin.Announcement.Update)
 		announcements.DELETE("/:id", h.Admin.Announcement.Delete)
+		announcements.GET("/:id/email-batches", h.Admin.Announcement.ListEmailBatches)
 		announcements.GET("/:id/read-status", h.Admin.Announcement.ListReadStatus)
 	}
 }

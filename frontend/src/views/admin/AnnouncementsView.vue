@@ -122,6 +122,13 @@
                 <Icon name="eye" size="sm" />
               </button>
               <button
+                @click="openEmailStatus(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400"
+                :title="t('admin.announcements.emailStatus')"
+              >
+                <Icon name="mail" size="sm" />
+              </button>
+              <button
                 @click="openEditDialog(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-600 dark:hover:text-gray-300"
                 :title="t('common.edit')"
@@ -208,6 +215,26 @@
           v-model="form.targeting"
           :groups="subscriptionGroups"
         />
+
+        <label
+          class="flex items-start gap-3 border-t border-gray-200 pt-4 dark:border-gray-700"
+          :class="form.status === 'active' ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'"
+        >
+          <input
+            v-model="form.send_email"
+            type="checkbox"
+            :disabled="form.status !== 'active'"
+            class="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span>
+            <span class="block text-sm font-medium text-gray-900 dark:text-gray-100">
+              {{ t('admin.announcements.form.sendEmail') }}
+            </span>
+            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.announcements.form.sendEmailHint') }}
+            </span>
+          </span>
+        </label>
       </form>
 
       <template #footer>
@@ -240,11 +267,17 @@
       :announcement-id="readStatusAnnouncementId"
       @close="showReadStatusDialog = false"
     />
+
+    <AnnouncementEmailStatusDialog
+      :show="showEmailStatusDialog"
+      :announcement-id="emailStatusAnnouncementId"
+      @close="showEmailStatusDialog = false"
+    />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -265,6 +298,7 @@ import Icon from '@/components/icons/Icon.vue'
 
 import AnnouncementTargetingEditor from '@/components/admin/announcements/AnnouncementTargetingEditor.vue'
 import AnnouncementReadStatusDialog from '@/components/admin/announcements/AnnouncementReadStatusDialog.vue'
+import AnnouncementEmailStatusDialog from '@/components/admin/announcements/AnnouncementEmailStatusDialog.vue'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -420,7 +454,12 @@ const form = reactive({
   notify_mode: 'silent',
   starts_at_str: '',
   ends_at_str: '',
+  send_email: false,
   targeting: { any_of: [] } as AnnouncementTargeting
+})
+
+watch(() => form.status, (status) => {
+  if (status !== 'active') form.send_email = false
 })
 
 const subscriptionGroups = ref<AdminGroup[]>([])
@@ -442,6 +481,7 @@ function resetForm() {
   form.notify_mode = 'silent'
   form.starts_at_str = ''
   form.ends_at_str = ''
+  form.send_email = false
   form.targeting = { any_of: [] }
 }
 
@@ -450,6 +490,7 @@ function fillFormFromAnnouncement(a: Announcement) {
   form.content = a.content
   form.status = a.status
   form.notify_mode = a.notify_mode || 'silent'
+  form.send_email = false
 
   // Backend returns RFC3339 strings
   form.starts_at_str = a.starts_at ? formatDateTimeLocalInput(Math.floor(new Date(a.starts_at).getTime() / 1000)) : ''
@@ -486,7 +527,8 @@ function buildCreatePayload() {
     notify_mode: form.notify_mode as any,
     targeting: form.targeting,
     starts_at: startsAt ?? undefined,
-    ends_at: endsAt ?? undefined
+    ends_at: endsAt ?? undefined,
+    send_email: form.status === 'active' && form.send_email
   }
 }
 
@@ -517,10 +559,13 @@ function buildUpdatePayload(original: Announcement) {
     payload.targeting = form.targeting
   }
 
+  if (form.status === 'active' && form.send_email) payload.send_email = true
+
   return payload
 }
 
 async function handleSave() {
+  if (saving.value) return
   // Frontend validation for targeting (to avoid ANNOUNCEMENT_INVALID_TARGET)
   const anyOf = form.targeting?.any_of ?? []
   if (anyOf.length > 50) {
@@ -540,7 +585,7 @@ async function handleSave() {
     if (!editingAnnouncement.value) {
       const payload = buildCreatePayload()
       await adminAPI.announcements.create(payload)
-      appStore.showSuccess(t('common.success'))
+      appStore.showSuccess(payload.send_email ? t('admin.announcements.emailQueued') : t('common.success'))
       showEditDialog.value = false
       await loadAnnouncements()
       return
@@ -549,7 +594,7 @@ async function handleSave() {
     const original = editingAnnouncement.value
     const payload = buildUpdatePayload(original)
     await adminAPI.announcements.update(original.id, payload)
-    appStore.showSuccess(t('common.success'))
+    appStore.showSuccess(payload.send_email ? t('admin.announcements.emailQueued') : t('common.success'))
     showEditDialog.value = false
     editingAnnouncement.value = null
     await loadAnnouncements()
@@ -592,6 +637,14 @@ const readStatusAnnouncementId = ref<number | null>(null)
 function openReadStatus(row: Announcement) {
   readStatusAnnouncementId.value = row.id
   showReadStatusDialog.value = true
+}
+
+const showEmailStatusDialog = ref(false)
+const emailStatusAnnouncementId = ref<number | null>(null)
+
+function openEmailStatus(row: Announcement) {
+  emailStatusAnnouncementId.value = row.id
+  showEmailStatusDialog.value = true
 }
 
 onMounted(async () => {

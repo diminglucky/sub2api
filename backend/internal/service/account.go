@@ -589,6 +589,10 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 				"gemini-3.1-pro-low",
 			})
 			applyAntigravityGemini31ProAliases(result)
+		} else if a.Platform == domain.PlatformOpenAI && !a.IsShadow() {
+			ensureOpenAIDefaultPassthroughs(result, []string{
+				"gpt-5.6-sol",
+			})
 		}
 		return result
 	}
@@ -653,6 +657,25 @@ func ensureAntigravityDefaultPassthroughs(mapping map[string]string, models []st
 	for _, model := range models {
 		ensureAntigravityDefaultPassthrough(mapping, model)
 	}
+}
+
+func ensureOpenAIDefaultPassthroughs(mapping map[string]string, models []string) {
+	for _, model := range models {
+		ensureOpenAIDefaultPassthrough(mapping, model)
+	}
+}
+
+func ensureOpenAIDefaultPassthrough(mapping map[string]string, model string) {
+	if mapping == nil || model == "" {
+		return
+	}
+	if _, exists := mapping[model]; exists {
+		return
+	}
+	if mappingHasWildcardForModel(mapping, model) {
+		return
+	}
+	mapping[model] = model
 }
 
 func applyAntigravityGemini31ProAliases(mapping map[string]string) {

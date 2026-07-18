@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -15,10 +18,11 @@ import (
 
 type announcementRepository struct {
 	client *dbent.Client
+	db     *sql.DB
 }
 
-func NewAnnouncementRepository(client *dbent.Client) service.AnnouncementRepository {
-	return &announcementRepository{client: client}
+func NewAnnouncementRepository(client *dbent.Client, db *sql.DB) service.AnnouncementRepository {
+	return &announcementRepository{client: client, db: db}
 }
 
 func (r *announcementRepository) Create(ctx context.Context, a *service.Announcement) error {
@@ -50,6 +54,42 @@ func (r *announcementRepository) Create(ctx context.Context, a *service.Announce
 
 	applyAnnouncementEntityToService(a, created)
 	return nil
+}
+
+func (r *announcementRepository) CreateWithEmailBatch(ctx context.Context, a *service.Announcement, batch *service.AnnouncementEmailBatch) (err error) {
+	if batch == nil {
+		return r.Create(ctx, a)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	targeting, err := json.Marshal(a.Targeting)
+	if err != nil {
+		return fmt.Errorf("encode announcement targeting: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO announcements (
+			title, content, status, notify_mode, targeting, starts_at, ends_at,
+			created_by, updated_by, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		RETURNING id, created_at, updated_at
+	`, a.Title, a.Content, a.Status, a.NotifyMode, targeting, a.StartsAt, a.EndsAt, a.CreatedBy, a.UpdatedBy).
+		Scan(&a.ID, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	batch.AnnouncementID = a.ID
+	if err = insertAnnouncementEmailBatch(ctx, tx, batch); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *announcementRepository) GetByID(ctx context.Context, id int64) (*service.Announcement, error) {
@@ -98,6 +138,76 @@ func (r *announcementRepository) Update(ctx context.Context, a *service.Announce
 	}
 
 	a.UpdatedAt = updated.UpdatedAt
+	return nil
+}
+
+func (r *announcementRepository) UpdateWithEmailBatch(ctx context.Context, a *service.Announcement, batch *service.AnnouncementEmailBatch) (err error) {
+	if batch == nil {
+		return r.Update(ctx, a)
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+
+	targeting, err := json.Marshal(a.Targeting)
+	if err != nil {
+		return fmt.Errorf("encode announcement targeting: %w", err)
+	}
+	err = tx.QueryRowContext(ctx, `
+		UPDATE announcements
+		SET title = $2, content = $3, status = $4, notify_mode = $5, targeting = $6,
+			starts_at = $7, ends_at = $8, created_by = $9, updated_by = $10, updated_at = NOW()
+		WHERE id = $1
+		RETURNING updated_at
+	`, a.ID, a.Title, a.Content, a.Status, a.NotifyMode, targeting,
+		a.StartsAt, a.EndsAt, a.CreatedBy, a.UpdatedBy).Scan(&a.UpdatedAt)
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAnnouncementNotFound, nil)
+	}
+	batch.AnnouncementID = a.ID
+	if err = insertAnnouncementEmailBatch(ctx, tx, batch); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func insertAnnouncementEmailBatch(ctx context.Context, tx *sql.Tx, batch *service.AnnouncementEmailBatch) error {
+	recipients, err := json.Marshal(batch.Recipients)
+	if err != nil {
+		return fmt.Errorf("encode announcement email recipients: %w", err)
+	}
+	status := service.AnnouncementEmailBatchStatusPending
+	var completedAt any
+	if len(batch.Recipients) == 0 {
+		status = service.AnnouncementEmailBatchStatusCompleted
+		completedAt = time.Now()
+	}
+	if batch.MaxAttempts <= 0 {
+		batch.MaxAttempts = 5
+	}
+	err = tx.QueryRowContext(ctx, `
+		INSERT INTO announcement_email_batches (
+			announcement_id, campaign_id, title, content, recipients, status,
+			max_attempts, total_count, next_attempt_at, completed_at
+		) VALUES ($1, $2::uuid, $3, $4, $5, $6, $7, $8, NOW(), $9)
+		RETURNING id, status, next_attempt_at, created_at, updated_at
+	`, batch.AnnouncementID, batch.CampaignID, batch.Title, batch.Content, recipients,
+		status, batch.MaxAttempts, len(batch.Recipients), completedAt).
+		Scan(&batch.ID, &batch.Status, &batch.NextAttemptAt, &batch.CreatedAt, &batch.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	batch.TotalCount = len(batch.Recipients)
+	if completedAt != nil {
+		completed := completedAt.(time.Time)
+		batch.CompletedAt = &completed
+	}
 	return nil
 }
 

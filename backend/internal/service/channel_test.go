@@ -513,7 +513,6 @@ func TestSupportedModels_WildcardExpandedFromPricing(t *testing.T) {
 	}
 }
 
-
 func TestSupportedModels_MissingPricingKeepsNilPricing(t *testing.T) {
 	ch := &Channel{
 		ModelMapping: map[string]map[string]string{
@@ -550,6 +549,47 @@ func TestSupportedModels_DedupAndSort(t *testing.T) {
 	require.Equal(t, "claude-sonnet-4-6", got[1].Name)
 	require.Equal(t, "openai", got[2].Platform)
 	require.Equal(t, "gpt-4o", got[2].Name)
+}
+
+func TestSupportedModels_OpenAIAddsGPT56SolWhenGPT55Exists(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 55, Platform: PlatformOpenAI, Models: []string{"gpt-5.5"}, InputPrice: testPtrFloat64(3e-6)},
+		},
+		ModelMapping: map[string]map[string]string{
+			PlatformOpenAI: {"gpt-5.5": "gpt-5.5"},
+		},
+	}
+
+	got := ch.SupportedModels()
+	byName := make(map[string]SupportedModel, len(got))
+	for _, model := range got {
+		byName[model.Name] = model
+	}
+
+	require.Contains(t, byName, "gpt-5.5")
+	require.Contains(t, byName, "gpt-5.6-sol")
+	require.NotNil(t, byName["gpt-5.6-sol"].Pricing)
+	require.Equal(t, int64(55), byName["gpt-5.6-sol"].Pricing.ID)
+}
+
+func TestSupportedModels_OpenAIKeepsExplicitGPT56SolPricing(t *testing.T) {
+	ch := &Channel{
+		ModelPricing: []ChannelModelPricing{
+			{ID: 55, Platform: PlatformOpenAI, Models: []string{"gpt-5.5"}, InputPrice: testPtrFloat64(3e-6)},
+			{ID: 56, Platform: PlatformOpenAI, Models: []string{"gpt-5.6-sol"}, InputPrice: testPtrFloat64(4e-6)},
+		},
+	}
+
+	got := ch.SupportedModels()
+	for _, model := range got {
+		if model.Name == "gpt-5.6-sol" {
+			require.NotNil(t, model.Pricing)
+			require.Equal(t, int64(56), model.Pricing.ID)
+			return
+		}
+	}
+	require.Fail(t, "gpt-5.6-sol not found")
 }
 
 func TestSupportedModels_NilChannelAndEmpty(t *testing.T) {

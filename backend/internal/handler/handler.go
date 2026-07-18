@@ -10,6 +10,7 @@ type AdminHandlers struct {
 	User                   *admin.UserHandler
 	Group                  *admin.GroupHandler
 	Account                *admin.AccountHandler
+	UpstreamBalance        *admin.UpstreamBalanceHandler
 	Announcement           *admin.AnnouncementHandler
 	Lottery                *admin.LotteryHandler
 	DataManagement         *admin.DataManagementHandler

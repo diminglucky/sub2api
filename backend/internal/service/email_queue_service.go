@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"sync"
 	"time"
 
@@ -19,35 +20,48 @@ const (
 type EmailTask struct {
 	Email    string
 	SiteName string
-	TaskType string // "verify_code" or "password_reset"
+	TaskType string
 	ResetURL string // Only used for password_reset task type
 	Locale   string // Optional Accept-Language locale hint
 }
 
 // EmailQueueService 异步邮件队列服务
 type EmailQueueService struct {
-	emailService *EmailService
-	taskChan     chan EmailTask
-	wg           sync.WaitGroup
-	stopChan     chan struct{}
-	workers      int
+	emailService          *EmailService
+	announcementBatchRepo AnnouncementEmailBatchRepository
+	taskChan              chan EmailTask
+	announcementWake      chan struct{}
+	wg                    sync.WaitGroup
+	stopChan              chan struct{}
+	workers               int
 }
 
 // NewEmailQueueService 创建邮件队列服务
 func NewEmailQueueService(emailService *EmailService, workers int) *EmailQueueService {
+	return newEmailQueueService(emailService, nil, workers)
+}
+
+func NewPersistentEmailQueueService(emailService *EmailService, batchRepo AnnouncementEmailBatchRepository, workers int) *EmailQueueService {
+	return newEmailQueueService(emailService, batchRepo, workers)
+}
+
+func newEmailQueueService(emailService *EmailService, batchRepo AnnouncementEmailBatchRepository, workers int) *EmailQueueService {
 	if workers <= 0 {
 		workers = 3 // 默认3个工作协程
 	}
 
 	service := &EmailQueueService{
-		emailService: emailService,
-		taskChan:     make(chan EmailTask, 100), // 缓冲100个任务
-		stopChan:     make(chan struct{}),
-		workers:      workers,
+		emailService:          emailService,
+		announcementBatchRepo: batchRepo,
+		taskChan:              make(chan EmailTask, 100), // 缓冲100个任务
+		announcementWake:      make(chan struct{}, 1),
+		stopChan:              make(chan struct{}),
+		workers:               workers,
 	}
 
 	// 启动工作协程
 	service.start()
+	service.WakeAnnouncementWorker()
 
 	return service
 }
@@ -58,7 +72,102 @@ func (s *EmailQueueService) start() {
 		s.wg.Add(1)
 		go s.worker(i)
 	}
+	if s.announcementBatchRepo != nil {
+		s.wg.Add(1)
+		go s.announcementWorker()
+	}
 	logger.LegacyPrintf("service.email_queue", "[EmailQueue] Started %d workers", s.workers)
+}
+
+func (s *EmailQueueService) announcementWorker() {
+	defer s.wg.Done()
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.announcementWake:
+			s.processDueAnnouncementBatches()
+		case <-ticker.C:
+			s.processDueAnnouncementBatches()
+		case <-s.stopChan:
+			return
+		}
+	}
+}
+
+func (s *EmailQueueService) processDueAnnouncementBatches() {
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		batch, err := s.announcementBatchRepo.ClaimDue(ctx, 10*time.Minute)
+		cancel()
+		if err != nil {
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Failed to claim announcement email batch: %v", err)
+			return
+		}
+		if batch == nil {
+			return
+		}
+		s.processPersistentAnnouncementBatch(batch)
+	}
+}
+
+func (s *EmailQueueService) processPersistentAnnouncementBatch(batch *AnnouncementEmailBatch) {
+	heartbeatDone := make(chan struct{})
+	heartbeatStopped := make(chan struct{})
+	go s.refreshAnnouncementBatchLock(batch.ID, heartbeatDone, heartbeatStopped)
+
+	processed, failed, sendErr := s.sendAnnouncementRecipients(batch.AnnouncementID, batch.CampaignID, batch.Recipients, batch.Title, batch.Content)
+	close(heartbeatDone)
+	<-heartbeatStopped
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if sendErr == nil {
+		if err := s.announcementBatchRepo.MarkCompleted(ctx, batch.ID, processed); err != nil {
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Failed to complete announcement email batch %d: %v", batch.ID, err)
+		}
+		return
+	}
+
+	nextAttemptAt := time.Now().Add(announcementEmailRetryDelay(batch.AttemptCount))
+	lastError := sendErr.Error()
+	if len(lastError) > 2000 {
+		lastError = lastError[:2000]
+	}
+	if err := s.announcementBatchRepo.MarkRetry(ctx, batch.ID, processed, failed, lastError, nextAttemptAt); err != nil {
+		logger.LegacyPrintf("service.email_queue", "[EmailQueue] Failed to reschedule announcement email batch %d: %v", batch.ID, err)
+	}
+}
+
+func (s *EmailQueueService) refreshAnnouncementBatchLock(batchID int64, done <-chan struct{}, stopped chan<- struct{}) {
+	defer close(stopped)
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			err := s.announcementBatchRepo.RefreshLock(ctx, batchID)
+			cancel()
+			if err != nil {
+				logger.LegacyPrintf("service.email_queue", "[EmailQueue] Failed to refresh announcement email batch %d lock: %v", batchID, err)
+			}
+		case <-done:
+			return
+		}
+	}
+}
+
+func announcementEmailRetryDelay(attempt int) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	delay := time.Minute << min(attempt-1, 6)
+	if delay > time.Hour {
+		return time.Hour
+	}
+	return delay
 }
 
 // worker 工作协程
@@ -99,6 +208,43 @@ func (s *EmailQueueService) processTask(workerID int, task EmailTask) {
 	}
 }
 
+func (s *EmailQueueService) sendAnnouncementRecipients(announcementID int64, campaignID string, recipients []string, title, content string) (int, int, error) {
+	if s == nil || s.emailService == nil || s.emailService.notificationEmailService == nil {
+		return 0, len(recipients), ErrEmailNotConfigured
+	}
+
+	processed := 0
+	failed := 0
+	var lastErr error
+	for _, recipient := range recipients {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+			Event:          NotificationEmailEventAnnouncementPublished,
+			RecipientEmail: recipient,
+			RecipientName:  emailRecipientName(recipient),
+			SourceType:     "announcement",
+			SourceID:       strconv.FormatInt(announcementID, 10),
+			ReminderKey:    campaignID,
+			Variables: map[string]string{
+				"announcement_title":   title,
+				"announcement_content": content,
+			},
+		})
+		cancel()
+		if err != nil {
+			failed++
+			lastErr = err
+			logger.LegacyPrintf("service.email_queue", "[EmailQueue] Failed to send announcement to recipient %s: %v", notificationEmailHash(recipient), err)
+			continue
+		}
+		processed++
+	}
+	if failed > 0 {
+		return processed, failed, fmt.Errorf("%d announcement email recipients failed; last error: %w", failed, lastErr)
+	}
+	return processed, 0, nil
+}
+
 // EnqueueVerifyCode 将验证码发送任务加入队列
 func (s *EmailQueueService) EnqueueVerifyCode(email, siteName string, locale ...string) error {
 	task := EmailTask{
@@ -134,6 +280,32 @@ func (s *EmailQueueService) EnqueuePasswordReset(email, siteName, resetURL strin
 	default:
 		return fmt.Errorf("email queue is full")
 	}
+}
+
+// GetSMTPConfig validates that announcement email can be sent before the
+// announcement is persisted and queued.
+func (s *EmailQueueService) GetSMTPConfig(ctx context.Context) (*SMTPConfig, error) {
+	if s == nil || s.emailService == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	return s.emailService.GetSMTPConfig(ctx)
+}
+
+func (s *EmailQueueService) WakeAnnouncementWorker() {
+	if s == nil || s.announcementBatchRepo == nil {
+		return
+	}
+	select {
+	case s.announcementWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *EmailQueueService) ListAnnouncementBatches(ctx context.Context, announcementID int64) ([]AnnouncementEmailBatch, error) {
+	if s == nil || s.announcementBatchRepo == nil {
+		return nil, ErrEmailNotConfigured
+	}
+	return s.announcementBatchRepo.ListByAnnouncement(ctx, announcementID)
 }
 
 // Stop 停止队列服务

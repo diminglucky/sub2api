@@ -809,6 +809,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/upstream-balances', label: t('nav.upstreamBalances'), icon: CreditCardIcon },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     ...buildAdminCustomNavAfterAnnouncements(t, { GiftIcon }),
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },
