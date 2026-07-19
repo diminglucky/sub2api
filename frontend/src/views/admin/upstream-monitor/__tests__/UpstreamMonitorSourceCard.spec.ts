@@ -45,6 +45,7 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
         path: "",
       },
     ],
+    monitored_group_keys: ["up:gpt"],
     last_sync_at: null,
     last_sync_status: "idle",
     last_sync_error: "",
@@ -237,14 +238,14 @@ describe("UpstreamMonitorSourceCard", () => {
     expect(wrapper.get('[data-test="source-auth-section"]').text()).toContain("admin.upstreamMonitor.sources.authModeHints.login");
   });
 
-  it("hides endpoint management controls for standard sources", () => {
+  it("allows overriding the endpoint for standard sources", () => {
     const wrapper = mountCard();
 
-    expect(wrapper.text()).not.toContain("https://api.example.com/api/user/self/groups");
-    expect(wrapper.text()).not.toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
+    expect(wrapper.text()).toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
+    expect(wrapper.get('input').element).toBeTruthy();
   });
 
-  it("shows the pricing endpoint field only for custom sources", () => {
+  it("shows the pricing endpoint field for custom sources", () => {
     const wrapper = mountCard({
       props: {
         source: source({ kind: "custom", pricing_url: "" }),
@@ -254,14 +255,22 @@ describe("UpstreamMonitorSourceCard", () => {
     expect(wrapper.text()).toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
   });
 
-  it("does not show empty endpoint hints for standard sources", () => {
+  it("emits the selected upstream group for monitoring", async () => {
+    const wrapper = mountCard();
+
+    await wrapper.get('[data-test="monitor-group-up:gpt"]').trigger("click");
+
+    expect(wrapper.emitted("toggle-monitor-group")).toEqual([["up:gpt"]]);
+  });
+
+  it("keeps the endpoint override available when a standard source is empty", () => {
     const wrapper = mountCard({
       props: {
         source: source({ pricing_url: "", base_url: "" }),
       },
     });
 
-    expect(wrapper.text()).not.toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
+    expect(wrapper.text()).toContain("admin.upstreamMonitor.sources.fields.pricingUrl");
   });
 
   it("keeps the sync action disabled when the parent marks it unavailable", async () => {

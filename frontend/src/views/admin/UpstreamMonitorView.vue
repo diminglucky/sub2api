@@ -94,6 +94,7 @@
               @clear-auth-token="clearSourceAuthToken(source)"
               @sync="syncSource(source)"
               @toggle-account="toggleSourceAccount(source, $event)"
+              @toggle-monitor-group="toggleSourceMonitorGroup(source, $event)"
               @add-mapping="addSourceGroupMapping(source)"
               @remove-mapping="removeSourceGroupMapping(source, $event)"
               @bind-mapping="bindSourceGroupMapping(source, $event)"
@@ -304,6 +305,7 @@ function createSource(): UpstreamMonitorSourceConfig {
     exchange_rate: form.value.default_exchange_rate || 7.2,
     reference_multiplier: 0,
     upstream_group_options: [],
+    monitored_group_keys: [],
     last_sync_at: null,
     last_sync_status: "idle",
     last_sync_error: "",
@@ -331,13 +333,16 @@ type SourceFieldUpdatePayload = {
 };
 
 function updateSourceField(source: UpstreamMonitorSourceConfig, payload: SourceFieldUpdatePayload) {
+  const previousPricingURL = String(source.pricing_url || "").trim();
+  const previousDefaultPricingURL = defaultPricingURLForSource(source);
   source[payload.field] = payload.value as never;
   if (payload.field === "auth_token" && String(payload.value || "").trim()) {
     source.auth_token_cleared = false;
   }
   if (payload.field === "kind" || payload.field === "base_url") {
     const nextPricingURL = defaultPricingURLForSource(source);
-    if (nextPricingURL && (usesStandardRateEndpoint(source) || !String(source.pricing_url || "").trim())) {
+    const endpointIsAutomatic = isAutomaticPricingURLForSource(source, previousPricingURL, previousDefaultPricingURL);
+    if (nextPricingURL && endpointIsAutomatic) {
       source.pricing_url = nextPricingURL;
       source.fetch_mode = "auto";
       source.pricing_path_hint = "";
@@ -372,6 +377,22 @@ function toggleSourceAccount(source: UpstreamMonitorSourceConfig, accountID: num
     current.add(accountID);
   }
   source.account_ids = Array.from(current);
+}
+
+function toggleSourceMonitorGroup(source: UpstreamMonitorSourceConfig, groupKey: string) {
+  const key = String(groupKey || "").trim();
+  if (!key) return;
+  const current = new Set(
+    Array.isArray(source.monitored_group_keys)
+      ? source.monitored_group_keys.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+  );
+  if (current.has(key)) {
+    current.delete(key);
+  } else {
+    current.add(key);
+  }
+  source.monitored_group_keys = Array.from(current);
 }
 
 function modelFamilyForGroup(group: UpstreamMonitorPreviewGroupOption): UpstreamMonitorGroupMapping["model_family"] {
@@ -577,6 +598,27 @@ function defaultPricingURLForSource(source: UpstreamMonitorSourceConfig): string
   return "";
 }
 
+function isAutomaticPricingURLForSource(
+  source: UpstreamMonitorSourceConfig,
+  pricingURL: string,
+  defaultURL: string,
+): boolean {
+  if (!pricingURL || pricingURL === defaultURL) {
+    return true;
+  }
+  try {
+    const pathname = new URL(pricingURL).pathname.replace(/\/+$/, "");
+    const legacyPaths = source.kind === "newapi"
+      ? ["/api/ratio_config", "/api/user/self/groups"]
+      : source.kind === "sub2api"
+        ? ["/api/v1/groups/available"]
+        : [];
+    return legacyPaths.includes(pathname);
+  } catch {
+    return false;
+  }
+}
+
 function usesStandardRateEndpoint(source: UpstreamMonitorSourceConfig): boolean {
   return source.kind === "sub2api" || source.kind === "newapi";
 }
@@ -744,6 +786,9 @@ function sanitizeConfig(options: { dropIncompleteMappings: boolean }): UpstreamM
       auth_token: (source.auth_token || "").trim(),
       auth_token_cleared: Boolean(source.auth_token_cleared) && !String(source.auth_token || "").trim(),
       account_ids: Array.isArray(source.account_ids) ? uniqueNumberIDs(source.account_ids) : [],
+      monitored_group_keys: Array.isArray(source.monitored_group_keys)
+        ? Array.from(new Set(source.monitored_group_keys.map((key) => String(key || "").trim()).filter(Boolean)))
+        : [],
       last_sync_at: source.last_sync_at || null,
       last_sync_status: source.last_sync_status || "idle",
       last_sync_error: source.last_sync_error.trim(),
@@ -837,10 +882,11 @@ async function syncSource(source: UpstreamMonitorSourceConfig) {
       appStore.showError(refreshedSource.last_sync_error || t("admin.upstreamMonitor.failedToRefresh"));
       return;
     }
+    const pulledGroupCount = refreshedSource?.upstream_group_options.length || 0;
     appStore.showSuccess(
-      t("admin.upstreamMonitor.sources.pullGroupsSuccess", {
-        count: refreshedSource?.upstream_group_options.length || 0,
-      }),
+      pulledGroupCount > 0
+        ? t("admin.upstreamMonitor.sources.pullGroupsSuccess", { count: pulledGroupCount })
+        : t("admin.upstreamMonitor.sources.pullGroupsReferenceOnly"),
     );
   } catch (error) {
     appStore.showError(extractApiErrorMessage(error, t("admin.upstreamMonitor.failedToRefresh")));

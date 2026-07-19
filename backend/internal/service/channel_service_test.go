@@ -114,6 +114,54 @@ func (m *mockChannelRepository) GetChannelIDByGroupID(ctx context.Context, group
 	return 0, nil
 }
 
+func TestBindNewGroupToCopiedGroupsChannel_InheritsChannel(t *testing.T) {
+	var boundChannelID int64
+	var boundGroupIDs []int64
+	repo := &mockChannelRepository{
+		getChannelIDByGroupIDFn: func(_ context.Context, groupID int64) (int64, error) {
+			if groupID == 10 {
+				return 7, nil
+			}
+			return 0, nil
+		},
+		getGroupIDsFn: func(_ context.Context, channelID int64) ([]int64, error) {
+			require.Equal(t, int64(7), channelID)
+			return []int64{10, 11}, nil
+		},
+		setGroupIDsFn: func(_ context.Context, channelID int64, groupIDs []int64) error {
+			boundChannelID = channelID
+			boundGroupIDs = append([]int64(nil), groupIDs...)
+			return nil
+		},
+	}
+
+	svc := NewChannelService(repo, &stubGroupRepoForAvailable{}, nil, nil)
+	err := svc.BindNewGroupToCopiedGroupsChannel(context.Background(), 99, []int64{10, 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(7), boundChannelID)
+	require.Equal(t, []int64{10, 11, 99}, boundGroupIDs)
+}
+
+func TestBindNewGroupToCopiedGroupsChannel_RejectsDifferentChannels(t *testing.T) {
+	repo := &mockChannelRepository{
+		getChannelIDByGroupIDFn: func(_ context.Context, groupID int64) (int64, error) {
+			if groupID == 10 {
+				return 7, nil
+			}
+			return 8, nil
+		},
+		setGroupIDsFn: func(_ context.Context, _ int64, _ []int64) error {
+			t.Fatal("must not update a channel after detecting a conflict")
+			return nil
+		},
+	}
+
+	svc := NewChannelService(repo, &stubGroupRepoForAvailable{}, nil, nil)
+	err := svc.BindNewGroupToCopiedGroupsChannel(context.Background(), 99, []int64{10, 20})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "different channels")
+}
+
 func (m *mockChannelRepository) GetGroupsInOtherChannels(ctx context.Context, channelID int64, groupIDs []int64) ([]int64, error) {
 	if m.getGroupsInOtherChannelsFn != nil {
 		return m.getGroupsInOtherChannelsFn(ctx, channelID, groupIDs)

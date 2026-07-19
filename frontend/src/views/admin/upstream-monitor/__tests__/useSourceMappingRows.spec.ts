@@ -39,6 +39,7 @@ function source(partial: Partial<UpstreamMonitorSourceConfig> = {}): UpstreamMon
         path: "",
       },
     ],
+    monitored_group_keys: [],
     last_sync_at: null,
     last_sync_status: "idle",
     last_sync_error: "",

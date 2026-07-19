@@ -106,7 +106,6 @@
           />
           <div class="space-y-2">
             <Input
-              v-if="!usesStandardEndpoint"
               :model-value="source.pricing_url"
               :label="t('admin.upstreamMonitor.sources.fields.pricingUrl')"
               :placeholder="t('admin.upstreamMonitor.sources.fields.pricingUrlPlaceholder')"
@@ -156,6 +155,46 @@
                 >
                   {{ t('admin.upstreamMonitor.sources.morePulledGroups', { count: hiddenUpstreamGroupOptionCount }) }}
                 </span>
+              </div>
+            </div>
+            <div
+              v-if="upstreamGroupOptions.length > 0"
+              class="rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-dark-600 dark:bg-dark-800/60"
+              data-test="monitored-groups-section"
+            >
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t('admin.upstreamMonitor.sources.fields.monitoredGroups') }}
+                  </div>
+                  <p class="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    {{ t('admin.upstreamMonitor.sources.fields.monitoredGroupsHint') }}
+                  </p>
+                </div>
+                <span class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.upstreamMonitor.sources.fields.selectedCount', { count: source.monitored_group_keys.length }) }}
+                </span>
+              </div>
+              <div class="mt-3 grid max-h-56 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                <button
+                  v-for="option in upstreamGroupOptions"
+                  :key="`${sourceId}_monitor_${option.value}`"
+                  type="button"
+                  class="monitor-group-option"
+                  :class="{ 'monitor-group-option-selected': isMonitoredGroupSelected(option.value) }"
+                  :data-test="`monitor-group-${option.value}`"
+                  @click="emit('toggle-monitor-group', option.value)"
+                >
+                  <span
+                    class="monitor-group-check"
+                    :class="{ 'monitor-group-check-selected': isMonitoredGroupSelected(option.value) }"
+                  >
+                    <Icon v-if="isMonitoredGroupSelected(option.value)" name="check" size="xs" />
+                  </span>
+                  <span class="min-w-0 truncate text-left text-xs text-gray-700 dark:text-gray-200">
+                    {{ option.label }}
+                  </span>
+                </button>
               </div>
             </div>
           </div>
@@ -369,6 +408,7 @@ const emit = defineEmits<{
   (event: "sync"): void;
   (event: "update-source", payload: SourceFieldUpdatePayload): void;
   (event: "toggle-account", accountID: number): void;
+  (event: "toggle-monitor-group", groupKey: string): void;
   (event: "clear-auth-token"): void;
   (event: "add-mapping"): void;
   (event: "remove-mapping", mapping: UpstreamMonitorGroupMapping): void;
@@ -379,7 +419,6 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 
-const usesStandardEndpoint = computed(() => props.source.kind === "sub2api" || props.source.kind === "newapi");
 const authModeHint = computed(() => {
   switch (props.source.auth_mode) {
     case "login":
@@ -427,6 +466,10 @@ function handleAuthModeChange(value: string) {
   if (nextMode !== "header") {
     updateSourceField("auth_header_name", "");
   }
+}
+
+function isMonitoredGroupSelected(groupKey: string): boolean {
+  return props.source.monitored_group_keys.includes(groupKey);
 }
 
 function handleUpdateLocalMapping(payload: SourceMappingUpdatePayload) {
@@ -490,5 +533,21 @@ function handleSelectUpstreamMapping(payload: SourceMappingUpdatePayload) {
 
 .source-section-header p {
   @apply mt-1 text-sm text-gray-500 dark:text-gray-400;
+}
+
+.monitor-group-option {
+  @apply flex min-h-10 items-center gap-2 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left transition-colors hover:border-primary-200 hover:bg-primary-50/40 dark:border-dark-600 dark:bg-dark-800 dark:hover:border-primary-500/40 dark:hover:bg-primary-950/20;
+}
+
+.monitor-group-option-selected {
+  @apply border-primary-300 bg-primary-50/70 dark:border-primary-500/60 dark:bg-primary-950/30;
+}
+
+.monitor-group-check {
+  @apply flex h-4 w-4 shrink-0 items-center justify-center rounded border border-gray-300 text-transparent dark:border-dark-500;
+}
+
+.monitor-group-check-selected {
+  @apply border-primary-500 bg-primary-500 text-white;
 }
 </style>

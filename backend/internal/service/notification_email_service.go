@@ -1114,7 +1114,7 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Category:    "ops",
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
-			"group_name", "model_family", "severity", "status", "local_multiplier", "reference_multiplier", "estimated_margin_rate", "source_names", "issues", "triggered_at"),
+			"alert_type", "group_name", "model_family", "severity", "status", "local_multiplier", "reference_multiplier", "estimated_margin_rate", "source_names", "issues", "upstream_name", "upstream_group", "old_multiplier", "new_multiplier", "change_percent", "change_summary", "triggered_at"),
 	},
 }
 

@@ -847,6 +847,80 @@ func (s *ChannelService) checkGroupConflicts(ctx context.Context, channelID int6
 	return nil
 }
 
+// BindNewGroupToCopiedGroupsChannel makes a newly-created pricing group usable
+// through the same channel as its source groups. Account bindings alone are
+// insufficient: channel pricing, model mapping, and the public model page all
+// derive their data from channel_groups.
+//
+// A group can belong to only one channel. Sources from different channels are
+// rejected instead of silently choosing one and exposing an incorrect price.
+func (s *ChannelService) BindNewGroupToCopiedGroupsChannel(ctx context.Context, groupID int64, sourceGroupIDs []int64) error {
+	if groupID <= 0 || len(sourceGroupIDs) == 0 {
+		return nil
+	}
+
+	channelID, err := s.copiedGroupsChannelID(ctx, sourceGroupIDs)
+	if err != nil {
+		return err
+	}
+
+	// Source groups without a channel have no channel pricing to inherit.
+	if channelID == 0 {
+		return nil
+	}
+
+	groupIDs, err := s.repo.GetGroupIDs(ctx, channelID)
+	if err != nil {
+		return fmt.Errorf("get source channel groups: %w", err)
+	}
+	for _, existingGroupID := range groupIDs {
+		if existingGroupID == groupID {
+			return nil
+		}
+	}
+	groupIDs = append(groupIDs, groupID)
+
+	if err := s.repo.SetGroupIDs(ctx, channelID, groupIDs); err != nil {
+		return fmt.Errorf("bind new group to source channel: %w", err)
+	}
+	s.invalidateCache()
+	return nil
+}
+
+// ValidateCopiedGroupsChannel checks the source channel constraint before a
+// new group is persisted. A group can belong to only one channel.
+func (s *ChannelService) ValidateCopiedGroupsChannel(ctx context.Context, sourceGroupIDs []int64) error {
+	_, err := s.copiedGroupsChannelID(ctx, sourceGroupIDs)
+	return err
+}
+
+func (s *ChannelService) copiedGroupsChannelID(ctx context.Context, sourceGroupIDs []int64) (int64, error) {
+	var channelID int64
+	seen := make(map[int64]struct{}, len(sourceGroupIDs))
+	for _, sourceGroupID := range sourceGroupIDs {
+		if sourceGroupID <= 0 {
+			continue
+		}
+		if _, ok := seen[sourceGroupID]; ok {
+			continue
+		}
+		seen[sourceGroupID] = struct{}{}
+
+		sourceChannelID, err := s.repo.GetChannelIDByGroupID(ctx, sourceGroupID)
+		if err != nil {
+			return 0, fmt.Errorf("get channel for source group %d: %w", sourceGroupID, err)
+		}
+		if sourceChannelID == 0 {
+			continue
+		}
+		if channelID != 0 && channelID != sourceChannelID {
+			return 0, fmt.Errorf("source groups belong to different channels")
+		}
+		channelID = sourceChannelID
+	}
+	return channelID, nil
+}
+
 // getOldGroupIDs 获取渠道更新前的关联分组 ID（用于失效 auth 缓存）。
 func (s *ChannelService) getOldGroupIDs(ctx context.Context, channelID int64) []int64 {
 	if s.authCacheInvalidator == nil {

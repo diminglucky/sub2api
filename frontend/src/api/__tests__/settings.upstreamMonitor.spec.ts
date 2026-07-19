@@ -26,6 +26,7 @@ describe("admin settings upstream monitor helpers", () => {
           exchange_rate: 1,
           reference_multiplier: 0,
           upstream_group_options: [],
+          monitored_group_keys: [],
           last_sync_at: null,
           last_sync_status: "idle",
           last_sync_error: "",

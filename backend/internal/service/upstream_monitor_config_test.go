@@ -402,6 +402,46 @@ func TestNormalizeUpstreamMonitorConfig_DerivesKnownPricingURLs(t *testing.T) {
 	require.NoError(t, validateUpstreamMonitorConfig(cfg))
 }
 
+func TestNormalizeUpstreamMonitorConfig_MigratesLegacyMappedGroupsToMonitoredKeys(t *testing.T) {
+	cfg := &UpstreamMonitorConfig{
+		Sources: []UpstreamMonitorSource{{ID: "pool", Name: "Pool", Kind: "custom"}},
+		GroupMappings: []UpstreamMonitorGroupMap{{
+			ID:               "mapping_1",
+			LocalGroup:       "VIP",
+			UpstreamGroupKey: "id:7",
+			UpstreamGroup:    "vip",
+			ModelFamily:      "mixed",
+			SourceIDs:        []string{"pool"},
+		}},
+	}
+
+	normalizeUpstreamMonitorConfig(cfg)
+
+	require.Equal(t, []string{"id:7"}, cfg.Sources[0].MonitoredGroupKeys)
+}
+
+func TestUpstreamMonitorSourceGroupMultiplierChangesOnlyReportsSelectedChanges(t *testing.T) {
+	source := UpstreamMonitorSource{
+		ID:                 "pool",
+		Name:               "Pool",
+		MonitoredGroupKeys: []string{"id:1", "id:2"},
+		UpstreamGroupOptions: []UpstreamMonitorUpstreamGroupOption{
+			{Key: "id:1", Name: "cheap", ReferenceMultiplier: 0.2},
+			{Key: "id:2", Name: "premium", ReferenceMultiplier: 0.9},
+			{Key: "id:3", Name: "ignored", ReferenceMultiplier: 2},
+		},
+	}
+	previous := map[string]string{"id:1": upstreamMonitorMultiplierState(0.1), "id:2": upstreamMonitorMultiplierState(0.9)}
+
+	changes, current := upstreamMonitorSourceGroupMultiplierChanges(source, previous)
+
+	require.Len(t, changes, 1)
+	require.Equal(t, "id:1", changes[0].GroupKey)
+	require.InDelta(t, 0.1, changes[0].OldMultiplier, 0.0001)
+	require.InDelta(t, 0.2, changes[0].NewMultiplier, 0.0001)
+	require.Equal(t, upstreamMonitorMultiplierState(0.2), current["id:1"])
+}
+
 func TestValidateUpstreamMonitorConfig_AllowsLegacyJSONPathOnStandardSources(t *testing.T) {
 	cfg := &UpstreamMonitorConfig{
 		RefreshIntervalMinutes: 10,
@@ -515,6 +555,110 @@ func TestFetchUpstreamPricingSnapshot_SendsNewAPICookieCredential(t *testing.T) 
 	require.Len(t, snapshot.GroupOptions, 2)
 	require.InDelta(t, 1, snapshot.GroupMultipliers["default"], 0.0001)
 	require.InDelta(t, 0.2, snapshot.GroupMultipliers["vip"], 0.0001)
+}
+
+func TestFetchUpstreamPricingSnapshot_NewAPIFallsBackToSub2APIGroupEndpoint(t *testing.T) {
+	var paths []string
+	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/api/user/self/groups" {
+			return http.StatusNotFound, "application/json", `{"message":"not found"}`
+		}
+		if r.URL.Path == "/api/v1/groups/available" {
+			return http.StatusOK, "application/json", `{"data":[{"id":7,"name":"codex-cheap","description":"cheap","rate_multiplier":0.08}]}`
+		}
+		return http.StatusNotFound, "text/plain", ""
+	})
+
+	snapshot, err := fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:        "newapi",
+		Name:      "NewAPI fork",
+		Kind:      "newapi",
+		BaseURL:   "https://relay.example.com",
+		AuthMode:  "bearer",
+		AuthToken: "token",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"/api/user/self/groups", "/api/v1/groups/available"}, paths)
+	require.Len(t, snapshot.GroupOptions, 1)
+	require.Equal(t, "codex-cheap", snapshot.GroupOptions[0].Name)
+}
+
+func TestParseSub2APIBillingRateValidatesEffectiveMultiplier(t *testing.T) {
+	rate, err := parseSub2APIBillingRate([]byte(`{
+		"object":"sub2api.key_billing",
+		"schema_version":1,
+		"billing_scope":"token",
+		"group_rate_multiplier":0.8,
+		"user_rate_multiplier":0.6,
+		"resolved_rate_multiplier":0.6,
+		"peak_rate_enabled":true,
+		"peak_rate_multiplier":1.5,
+		"applied_peak_multiplier":1.5,
+		"effective_rate_multiplier":0.9,
+		"observed_at":"2026-07-13T01:00:00Z"
+	}`))
+
+	require.NoError(t, err)
+	require.InDelta(t, 0.9, rate, 0.0001)
+
+	_, err = parseSub2APIBillingRate([]byte(`{
+		"object":"sub2api.key_billing",
+		"schema_version":1,
+		"billing_scope":"token",
+		"group_rate_multiplier":0.8,
+		"resolved_rate_multiplier":0.8,
+		"peak_rate_enabled":false,
+		"effective_rate_multiplier":1.2,
+		"observed_at":"2026-07-13T01:00:00Z"
+	}`))
+	require.ErrorContains(t, err, "effective multiplier is inconsistent")
+}
+
+func TestUpstreamMonitorFallsBackToAccountBillingProbe(t *testing.T) {
+	stubUpstreamMonitorClientFunc(t, func(r *http.Request) (int, string, string) {
+		switch r.URL.Path {
+		case "/api/v1/groups/available":
+			return http.StatusNotFound, "application/json", `{"message":"not found"}`
+		case "/v1/sub2api/billing":
+			require.Equal(t, "Bearer upstream-key", r.Header.Get("Authorization"))
+			return http.StatusOK, "application/json", `{
+				"object":"sub2api.key_billing",
+				"schema_version":1,
+				"billing_scope":"token",
+				"group_rate_multiplier":0.8,
+				"resolved_rate_multiplier":0.8,
+				"peak_rate_enabled":false,
+				"effective_rate_multiplier":0.8,
+				"observed_at":"2026-07-13T01:00:00Z"
+			}`
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+			return http.StatusNotFound, "text/plain", ""
+		}
+	})
+
+	svc := NewUpstreamMonitorService(newUpstreamMonitorSettingRepo())
+	svc.SetAccountLister(upstreamMonitorTestAccountLister{accounts: []Account{{
+		ID:          17,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Credentials: map[string]any{"api_key": "upstream-key"},
+	}}})
+
+	snapshot, err := svc.fetchUpstreamPricingSnapshot(context.Background(), &UpstreamMonitorSource{
+		ID:         "pool",
+		Name:       "Pool",
+		Kind:       "sub2api",
+		BaseURL:    "https://pool.gptstore.club",
+		AccountIDs: []int64{17},
+	})
+
+	require.NoError(t, err)
+	require.True(t, snapshot.HasReference)
+	require.InDelta(t, 0.8, snapshot.ReferenceMultiplier, 0.0001)
 }
 
 func TestFetchUpstreamPricingSnapshot_NewAPICookieRequiresUserID(t *testing.T) {

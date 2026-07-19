@@ -1405,6 +1405,7 @@ export interface UpstreamMonitorSourceConfig {
   exchange_rate: number;
   reference_multiplier: number;
   upstream_group_options: UpstreamMonitorUpstreamGroupOption[];
+  monitored_group_keys: string[];
   last_sync_at: string | null;
   last_sync_status: UpstreamMonitorSyncStatus;
   last_sync_error: string;
@@ -1657,6 +1658,9 @@ export function normalizeUpstreamMonitorConfig(
           exchange_rate: toFiniteNumber(source.exchange_rate) ?? defaultExchangeRate ?? 7.2,
           reference_multiplier: toFiniteNumber(source.reference_multiplier) ?? 0,
           upstream_group_options: normalizeUpstreamGroupOptions(source.upstream_group_options),
+          monitored_group_keys: Array.isArray(source.monitored_group_keys)
+            ? Array.from(new Set(source.monitored_group_keys.map((key) => String(key || "").trim()).filter(Boolean)))
+            : [],
           last_sync_at: source.last_sync_at ? String(source.last_sync_at) : null,
           last_sync_status: (source.last_sync_status || "idle") as UpstreamMonitorSyncStatus,
           last_sync_error: String(source.last_sync_error || ""),

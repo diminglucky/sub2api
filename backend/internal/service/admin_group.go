@@ -315,8 +315,22 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RPMLimit:                        input.RPMLimit,
 	}
 	sanitizeGroupMessagesDispatchFields(group)
+	if s.channelService != nil && len(input.CopyAccountsFromGroupIDs) > 0 {
+		if err := s.channelService.ValidateCopiedGroupsChannel(ctx, input.CopyAccountsFromGroupIDs); err != nil {
+			return nil, fmt.Errorf("invalid source channel configuration: %w", err)
+		}
+	}
 	if err := s.groupRepo.Create(ctx, group); err != nil {
 		return nil, err
+	}
+
+	// A pricing group copied from an existing group must inherit its channel as
+	// well as its accounts. Without this association the group cannot use that
+	// channel's models and is absent from the public model price list.
+	if s.channelService != nil && len(input.CopyAccountsFromGroupIDs) > 0 {
+		if err := s.channelService.BindNewGroupToCopiedGroupsChannel(ctx, group.ID, input.CopyAccountsFromGroupIDs); err != nil {
+			return nil, fmt.Errorf("failed to inherit source channel: %w", err)
+		}
 	}
 
 	// require_oauth_only: 过滤掉 apikey 类型账号

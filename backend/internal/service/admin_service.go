@@ -588,6 +588,7 @@ type adminServiceImpl struct {
 	userSubRepo          UserSubscriptionRepository
 	privacyClientFactory PrivacyClientFactory
 	runtimeBlocker       AccountRuntimeBlocker
+	channelService       *ChannelService
 }
 
 type userGroupRateBatchReader interface {
@@ -614,6 +615,7 @@ func NewAdminService(
 	userSubRepo UserSubscriptionRepository,
 	privacyClientFactory PrivacyClientFactory,
 	runtimeBlocker AccountRuntimeBlocker,
+	channelService *ChannelService,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -634,5 +636,6 @@ func NewAdminService(
 		userSubRepo:          userSubRepo,
 		privacyClientFactory: privacyClientFactory,
 		runtimeBlocker:       runtimeBlocker,
+		channelService:       channelService,
 	}
 }

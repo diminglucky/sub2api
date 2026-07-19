@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -62,6 +63,7 @@ type UpstreamMonitorSource struct {
 	ExchangeRate         float64                              `json:"exchange_rate"`
 	ReferenceMultiplier  float64                              `json:"reference_multiplier"`
 	UpstreamGroupOptions []UpstreamMonitorUpstreamGroupOption `json:"upstream_group_options"`
+	MonitoredGroupKeys   []string                             `json:"monitored_group_keys"`
 	LastSyncAt           *time.Time                           `json:"last_sync_at,omitempty"`
 	LastSyncStatus       string                               `json:"last_sync_status"`
 	LastSyncError        string                               `json:"last_sync_error"`
@@ -423,6 +425,7 @@ func normalizeUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) {
 		src.Currency = normalizeUpstreamCurrency(src.Currency)
 		src.AccountIDs = cleanUpstreamMonitorInt64IDs(src.AccountIDs)
 		src.UpstreamGroupOptions = normalizeUpstreamGroupOptions(src.UpstreamGroupOptions)
+		src.MonitoredGroupKeys = normalizeUpstreamMonitorGroupKeys(src.MonitoredGroupKeys)
 		src.LastSyncStatus = normalizeUpstreamSyncStatus(src.LastSyncStatus)
 		src.LastSyncError = strings.TrimSpace(src.LastSyncError)
 		src.Notes = strings.TrimSpace(src.Notes)
@@ -473,6 +476,32 @@ func normalizeUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) {
 		mapping.SourceIDs = cleaned
 	}
 	cfg.GroupMappings = splitUpstreamMonitorGroupMappingsBySource(cfg.GroupMappings)
+
+	// Older configurations used local mappings as the only way to identify
+	// monitored upstream groups. Preserve that behavior once, while allowing an
+	// explicit empty list to mean that the administrator monitors nothing.
+	for i := range cfg.Sources {
+		if cfg.Sources[i].MonitoredGroupKeys != nil {
+			continue
+		}
+		keys := make([]string, 0)
+		seen := make(map[string]struct{})
+		for _, mapping := range cfg.GroupMappings {
+			if len(mapping.SourceIDs) != 1 || strings.TrimSpace(mapping.SourceIDs[0]) != cfg.Sources[i].ID {
+				continue
+			}
+			key := strings.TrimSpace(mapping.UpstreamGroupKey)
+			if key == "" {
+				continue
+			}
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			keys = append(keys, key)
+		}
+		cfg.Sources[i].MonitoredGroupKeys = normalizeUpstreamMonitorGroupKeys(keys)
+	}
 }
 
 func splitUpstreamMonitorGroupMappingsBySource(values []UpstreamMonitorGroupMap) []UpstreamMonitorGroupMap {
@@ -623,6 +652,9 @@ func validateUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) error {
 			if accountID <= 0 {
 				return fmt.Errorf("source[%d]: account_ids must be positive", i)
 			}
+		}
+		if len(src.MonitoredGroupKeys) > 500 {
+			return fmt.Errorf("source[%d]: too many monitored_group_keys (max 500)", i)
 		}
 		if src.Enabled && src.FetchMode == upstreamMonitorFetchModeJSONPath && src.AutoSyncEnabled && !upstreamMonitorUsesStandardRateEndpoint(src.Kind) && src.PricingPathHint == "" {
 			return fmt.Errorf("source[%d]: pricing_path_hint is required for json_path fetch mode", i)
@@ -1053,7 +1085,7 @@ func (s *UpstreamMonitorService) refreshUpstreamMonitorConfig(ctx context.Contex
 		}
 
 		summary.AttemptedCount++
-		pricing, err := fetchUpstreamPricingSnapshot(ctx, source)
+		pricing, err := s.fetchUpstreamPricingSnapshot(ctx, source)
 		ts := now
 		source.LastSyncAt = &ts
 		if err != nil {
@@ -1101,6 +1133,162 @@ func (s *UpstreamMonitorService) refreshUpstreamMonitorConfig(ctx context.Contex
 	}
 
 	return result, nil
+}
+
+// fetchUpstreamPricingSnapshot keeps the group-list API for mapping, but falls
+// back to the versioned billing probe used by current Sub2API upstreams when a
+// fork does not expose a public group list endpoint.
+func (s *UpstreamMonitorService) fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSource) (*upstreamMonitorPricingSnapshot, error) {
+	pricing, err := fetchUpstreamPricingSnapshot(ctx, source)
+	if err == nil || source == nil || (normalizeUpstreamSourceKind(source.Kind) != "sub2api" && normalizeUpstreamSourceKind(source.Kind) != "newapi") || s == nil || s.accountLister == nil {
+		return pricing, err
+	}
+
+	rate, probeErr := s.fetchSub2APIBillingRate(ctx, source)
+	if probeErr != nil {
+		return nil, fmt.Errorf("%w; billing probe: %v", err, probeErr)
+	}
+	return &upstreamMonitorPricingSnapshot{
+		ReferenceMultiplier: rate,
+		HasReference:        true,
+		GroupMultipliers:    map[string]float64{},
+		GroupOptions:        []UpstreamMonitorUpstreamGroupOption{},
+	}, nil
+}
+
+type upstreamMonitorSub2APIBillingResponse struct {
+	Object                  string   `json:"object"`
+	SchemaVersion           int      `json:"schema_version"`
+	BillingScope            string   `json:"billing_scope"`
+	GroupRateMultiplier     *float64 `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64 `json:"user_rate_multiplier"`
+	ResolvedRateMultiplier  *float64 `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         *bool    `json:"peak_rate_enabled"`
+	PeakRateMultiplier      *float64 `json:"peak_rate_multiplier"`
+	AppliedPeakMultiplier   *float64 `json:"applied_peak_multiplier"`
+	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
+	ObservedAt              string   `json:"observed_at"`
+}
+
+func (s *UpstreamMonitorService) fetchSub2APIBillingRate(ctx context.Context, source *UpstreamMonitorSource) (float64, error) {
+	if s.accountLister == nil {
+		return 0, fmt.Errorf("account lister is not configured")
+	}
+	accounts, err := s.accountLister.ListActive(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list probe accounts: %w", err)
+	}
+	origin := upstreamMonitorSourceOrigin(source.BaseURL, source.PricingURL)
+	if origin == "" {
+		return 0, fmt.Errorf("source site url is empty")
+	}
+	client := newUpstreamMonitorHTTPClient()
+	var highest float64
+	var found bool
+	var lastErr error
+	for _, accountID := range source.AccountIDs {
+		for i := range accounts {
+			account := &accounts[i]
+			if account.ID != accountID {
+				continue
+			}
+			apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+			if apiKey == "" {
+				lastErr = fmt.Errorf("account #%d api_key is missing", account.ID)
+				continue
+			}
+			resp, requestErr := client.R().
+				SetContext(ctx).
+				SetHeader("Accept", "application/json").
+				SetHeader("Authorization", "Bearer "+apiKey).
+				Get(origin + "/v1/sub2api/billing")
+			if requestErr != nil {
+				lastErr = requestErr
+				continue
+			}
+			if !resp.IsSuccessState() {
+				lastErr = fmt.Errorf("billing probe returned status %d", resp.StatusCode)
+				continue
+			}
+			rate, parseErr := parseSub2APIBillingRate(resp.Bytes())
+			if parseErr != nil {
+				lastErr = parseErr
+				continue
+			}
+			if !found || rate > highest {
+				highest = rate
+			}
+			found = true
+		}
+	}
+	if !found {
+		if lastErr == nil {
+			return 0, fmt.Errorf("no eligible account is bound to this source")
+		}
+		return 0, lastErr
+	}
+	return highest, nil
+}
+
+func parseSub2APIBillingRate(body []byte) (float64, error) {
+	var response upstreamMonitorSub2APIBillingResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return 0, fmt.Errorf("billing probe response is not valid JSON: %w", err)
+	}
+	if response.Object != "sub2api.key_billing" || response.SchemaVersion != 1 || response.BillingScope != "token" {
+		return 0, fmt.Errorf("billing probe returned an unsupported response schema")
+	}
+	if response.GroupRateMultiplier == nil || response.ResolvedRateMultiplier == nil ||
+		response.PeakRateEnabled == nil || response.EffectiveRateMultiplier == nil {
+		return 0, fmt.Errorf("billing probe response is incomplete")
+	}
+	if response.UserRateMultiplier != nil && !validUpstreamMonitorMultiplier(*response.UserRateMultiplier) {
+		return 0, fmt.Errorf("billing probe user multiplier is invalid")
+	}
+	for _, value := range []float64{*response.GroupRateMultiplier, *response.ResolvedRateMultiplier, *response.EffectiveRateMultiplier} {
+		if !validUpstreamMonitorMultiplier(value) {
+			return 0, fmt.Errorf("billing probe multiplier is invalid")
+		}
+	}
+	expectedResolved := *response.GroupRateMultiplier
+	if response.UserRateMultiplier != nil {
+		expectedResolved = *response.UserRateMultiplier
+	}
+	if !equalUpstreamMonitorMultiplier(*response.ResolvedRateMultiplier, expectedResolved) {
+		return 0, fmt.Errorf("billing probe resolved multiplier is inconsistent")
+	}
+	if response.ObservedAt == "" {
+		return 0, fmt.Errorf("billing probe observed_at is missing")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, response.ObservedAt); err != nil {
+		return 0, fmt.Errorf("billing probe observed_at is invalid")
+	}
+	peakMultiplier := 1.0
+	if *response.PeakRateEnabled {
+		if response.PeakRateMultiplier == nil || response.AppliedPeakMultiplier == nil ||
+			!validUpstreamMonitorMultiplier(*response.PeakRateMultiplier) || !validUpstreamMonitorMultiplier(*response.AppliedPeakMultiplier) {
+			return 0, fmt.Errorf("billing probe peak multiplier is incomplete")
+		}
+		peakMultiplier = *response.AppliedPeakMultiplier
+	} else if response.AppliedPeakMultiplier != nil && !equalUpstreamMonitorMultiplier(*response.AppliedPeakMultiplier, 1) {
+		return 0, fmt.Errorf("billing probe applied peak multiplier is inconsistent")
+	}
+	if !equalUpstreamMonitorMultiplier(*response.EffectiveRateMultiplier, *response.ResolvedRateMultiplier*peakMultiplier) {
+		return 0, fmt.Errorf("billing probe effective multiplier is inconsistent")
+	}
+	return *response.EffectiveRateMultiplier, nil
+}
+
+func validUpstreamMonitorMultiplier(value float64) bool {
+	return value >= 0 && value <= 1000 && !math.IsNaN(value) && !math.IsInf(value, 0)
+}
+
+func equalUpstreamMonitorMultiplier(left, right float64) bool {
+	if !validUpstreamMonitorMultiplier(left) || !validUpstreamMonitorMultiplier(right) {
+		return false
+	}
+	scale := math.Max(1, math.Max(math.Abs(left), math.Abs(right)))
+	return math.Abs(left-right) <= 1e-9*scale
 }
 
 func (s *UpstreamMonitorService) PreviewUpstreamMonitorConfig(ctx context.Context, cfg *UpstreamMonitorConfig) (*UpstreamMonitorPreviewSnapshot, error) {
@@ -1639,6 +1827,26 @@ func normalizeUpstreamGroupOptions(values []UpstreamMonitorUpstreamGroupOption) 
 	return out
 }
 
+func normalizeUpstreamMonitorGroupKeys(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, raw := range values {
+		key := strings.TrimSpace(raw)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, key)
+	}
+	return out
+}
+
 func upstreamGroupOptionKey(rawID, name, path string) string {
 	rawID = strings.TrimSpace(rawID)
 	if rawID != "" {
@@ -1669,6 +1877,9 @@ func cloneUpstreamMonitorConfig(cfg *UpstreamMonitorConfig) *UpstreamMonitorConf
 			}
 			if cfg.Sources[i].UpstreamGroupOptions != nil {
 				cloned.Sources[i].UpstreamGroupOptions = append([]UpstreamMonitorUpstreamGroupOption(nil), cfg.Sources[i].UpstreamGroupOptions...)
+			}
+			if cfg.Sources[i].MonitoredGroupKeys != nil {
+				cloned.Sources[i].MonitoredGroupKeys = append([]string(nil), cfg.Sources[i].MonitoredGroupKeys...)
 			}
 		}
 	}
@@ -1709,6 +1920,14 @@ func fetchUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSo
 	}
 	if strings.TrimSpace(source.PricingURL) == "" {
 		return nil, fmt.Errorf("pricing url is empty")
+	}
+
+	return fetchGenericUpstreamPricingSnapshot(ctx, source)
+}
+
+func fetchGenericUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMonitorSource) (*upstreamMonitorPricingSnapshot, error) {
+	if source == nil {
+		return nil, fmt.Errorf("source is nil")
 	}
 
 	client := newUpstreamMonitorHTTPClient()
@@ -1764,18 +1983,13 @@ func fetchSub2APIUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMo
 	if err != nil {
 		return nil, err
 	}
-	body, err := requestUpstreamMonitorJSON(ctx, client, origin+"/api/v1/groups/available", headers)
+	body, endpoint, err := requestUpstreamMonitorJSONCandidates(ctx, client, upstreamMonitorStandardEndpointCandidates(source, origin+"/api/v1/groups/available"), headers)
 	if err != nil {
-		return nil, fmt.Errorf("sub2api groups available: %w", err)
+		return nil, fmt.Errorf("sub2api groups available (%s): %w", endpoint, err)
 	}
 
-	var groups []struct {
-		ID             uint64  `json:"id"`
-		Name           string  `json:"name"`
-		Description    string  `json:"description"`
-		RateMultiplier float64 `json:"rate_multiplier"`
-	}
-	if err := json.Unmarshal(body, &groups); err != nil {
+	groups, err := decodeSub2APIGroupList(body)
+	if err != nil {
 		return nil, fmt.Errorf("sub2api groups available decode: %w", err)
 	}
 
@@ -1820,44 +2034,46 @@ func fetchNewAPIUpstreamPricingSnapshot(ctx context.Context, source *UpstreamMon
 	if err != nil {
 		return nil, err
 	}
-	body, err := requestUpstreamMonitorJSON(ctx, client, origin+"/api/user/self/groups", headers)
+	body, endpoint, err := requestUpstreamMonitorJSONCandidates(ctx, client, upstreamMonitorStandardEndpointCandidates(source, origin+"/api/user/self/groups"), headers)
 	if err != nil {
-		return nil, fmt.Errorf("newapi groups: %w", err)
-	}
-	var raw map[string]struct {
-		Ratio json.RawMessage `json:"ratio"`
-		Desc  string          `json:"desc"`
-	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return nil, fmt.Errorf("newapi groups decode: %w", err)
+		return nil, fmt.Errorf("newapi groups (%s): %w", endpoint, err)
 	}
 
-	options := make([]UpstreamMonitorUpstreamGroupOption, 0, len(raw))
-	groupMultipliers := make(map[string]float64, len(raw))
-	for name, value := range raw {
-		groupName := strings.TrimSpace(name)
-		if groupName == "" {
-			continue
-		}
-		var multiplier float64
-		if err := json.Unmarshal(value.Ratio, &multiplier); err != nil {
-			continue
-		}
-		options = append(options, UpstreamMonitorUpstreamGroupOption{
-			Key:                 upstreamGroupOptionKey("", groupName, ""),
-			Name:                groupName,
-			Description:         strings.TrimSpace(value.Desc),
-			ReferenceMultiplier: multiplier,
-		})
-		groupMultipliers[strings.ToLower(groupName)] = multiplier
+	if pricing, ok := parseNewAPIGroupSnapshot(body); ok {
+		return validateUpstreamPricingSnapshot(pricing)
 	}
-	return validateUpstreamPricingSnapshot(&upstreamMonitorPricingSnapshot{
-		GroupMultipliers: groupMultipliers,
-		GroupOptions:     options,
-	})
+	pricing, err := parseUpstreamPricingSnapshot(body, "application/json", upstreamMonitorFetchModeAuto, "")
+	if err != nil {
+		return nil, fmt.Errorf("newapi groups decode: %w", err)
+	}
+	return validateUpstreamPricingSnapshot(pricing)
 }
 
 func requestUpstreamMonitorJSON(ctx context.Context, client *req.Client, url string, headers map[string]string) ([]byte, error) {
+	body, _, err := requestUpstreamMonitorJSONResponse(ctx, client, url, headers)
+	return body, err
+}
+
+func requestUpstreamMonitorJSONCandidates(ctx context.Context, client *req.Client, candidates []string, headers map[string]string) ([]byte, string, error) {
+	var failures []string
+	for _, endpoint := range candidates {
+		body, status, err := requestUpstreamMonitorJSONResponse(ctx, client, endpoint, headers)
+		if err == nil {
+			return body, endpoint, nil
+		}
+		failure := fmt.Sprintf("%s: %s", endpoint, err)
+		failures = append(failures, failure)
+		if status == http.StatusUnauthorized || status == http.StatusForbidden {
+			break
+		}
+	}
+	if len(failures) == 0 {
+		return nil, "", fmt.Errorf("no pricing endpoints configured")
+	}
+	return nil, strings.Join(failures, "; "), fmt.Errorf("all pricing endpoints failed")
+}
+
+func requestUpstreamMonitorJSONResponse(ctx context.Context, client *req.Client, url string, headers map[string]string) ([]byte, int, error) {
 	request := client.
 		R().
 		SetContext(ctx).
@@ -1870,19 +2086,164 @@ func requestUpstreamMonitorJSON(ctx context.Context, client *req.Client, url str
 	}
 	resp, err := request.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if !resp.IsSuccessState() {
 		switch resp.StatusCode {
 		case http.StatusUnauthorized:
-			return nil, fmt.Errorf("returned 401 unauthorized: check credential mode and credential")
+			return nil, resp.StatusCode, fmt.Errorf("returned 401 unauthorized: check credential mode and credential")
 		case http.StatusForbidden:
-			return nil, fmt.Errorf("returned 403 forbidden: the upstream rejected this request")
+			return nil, resp.StatusCode, fmt.Errorf("returned 403 forbidden: the upstream rejected this request")
 		default:
-			return nil, fmt.Errorf("returned status %d", resp.StatusCode)
+			return nil, resp.StatusCode, fmt.Errorf("returned status %d", resp.StatusCode)
 		}
 	}
-	return resp.Bytes(), nil
+	return resp.Bytes(), resp.StatusCode, nil
+}
+
+func upstreamMonitorStandardEndpointCandidates(source *UpstreamMonitorSource, defaultEndpoint string) []string {
+	seen := make(map[string]struct{}, 3)
+	result := make([]string, 0, 3)
+	add := func(endpoint string) {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return
+		}
+		if _, ok := seen[endpoint]; ok {
+			return
+		}
+		seen[endpoint] = struct{}{}
+		result = append(result, endpoint)
+	}
+	if source != nil {
+		add(source.PricingURL)
+	}
+	add(defaultEndpoint)
+	if source != nil && normalizeUpstreamSourceKind(source.Kind) == "newapi" {
+		origin := upstreamMonitorSourceOrigin(source.BaseURL, source.PricingURL)
+		if origin != "" {
+			// NewAPI forks commonly expose the Sub2API-compatible endpoint instead.
+			add(origin + "/api/v1/groups/available")
+		}
+	}
+	return result
+}
+
+type upstreamMonitorSub2APIGroup struct {
+	ID             uint64  `json:"id"`
+	Name           string  `json:"name"`
+	Description    string  `json:"description"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+}
+
+func decodeSub2APIGroupList(body []byte) ([]upstreamMonitorSub2APIGroup, error) {
+	var groups []upstreamMonitorSub2APIGroup
+	if err := json.Unmarshal(body, &groups); err == nil {
+		return groups, nil
+	}
+	var wrapped struct {
+		Data   json.RawMessage `json:"data"`
+		Groups json.RawMessage `json:"groups"`
+	}
+	if err := json.Unmarshal(body, &wrapped); err != nil {
+		return nil, err
+	}
+	for _, raw := range []json.RawMessage{wrapped.Data, wrapped.Groups} {
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+		if err := json.Unmarshal(raw, &groups); err == nil {
+			return groups, nil
+		}
+		var nested struct {
+			Groups json.RawMessage `json:"groups"`
+		}
+		if err := json.Unmarshal(raw, &nested); err == nil && len(nested.Groups) > 0 {
+			if err := json.Unmarshal(nested.Groups, &groups); err == nil {
+				return groups, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("response is not a group list")
+}
+
+func parseNewAPIGroupSnapshot(body []byte) (*upstreamMonitorPricingSnapshot, bool) {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(body, &root); err != nil {
+		return nil, false
+	}
+	for _, key := range []string{"data", "groups", "usable_group", "usableGroup"} {
+		if nested, ok := root[key]; ok {
+			var nestedBody map[string]json.RawMessage
+			if json.Unmarshal(nested, &nestedBody) == nil {
+				if pricing, ok := parseNewAPIGroupMap(nestedBody); ok {
+					return pricing, true
+				}
+			}
+		}
+	}
+	return parseNewAPIGroupMap(root)
+}
+
+func parseNewAPIGroupMap(raw map[string]json.RawMessage) (*upstreamMonitorPricingSnapshot, bool) {
+	options := make([]UpstreamMonitorUpstreamGroupOption, 0, len(raw))
+	groupMultipliers := make(map[string]float64, len(raw))
+	for name, value := range raw {
+		groupName := strings.TrimSpace(name)
+		if groupName == "" || isUpstreamMonitorGenericContainerKey(groupName) || isUpstreamMonitorGenericMultiplierKey(groupName) {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(value, &fields) != nil {
+			continue
+		}
+		multiplier := 0.0
+		found := false
+		for _, key := range []string{"ratio", "rate_multiplier", "multiplier", "group_ratio", "price"} {
+			if candidate, ok := fields[key]; ok {
+				if number, ok := jsonRawFloat(candidate); ok {
+					multiplier, found = number, true
+					break
+				}
+			}
+		}
+		if !found {
+			continue
+		}
+		description := ""
+		for _, key := range []string{"desc", "description", "title", "name"} {
+			if candidate, ok := fields[key]; ok {
+				_ = json.Unmarshal(candidate, &description)
+				if strings.TrimSpace(description) != "" {
+					break
+				}
+			}
+		}
+		options = append(options, UpstreamMonitorUpstreamGroupOption{
+			Key:                 upstreamGroupOptionKey("", groupName, ""),
+			Name:                groupName,
+			Description:         strings.TrimSpace(description),
+			ReferenceMultiplier: multiplier,
+		})
+		groupMultipliers[strings.ToLower(groupName)] = multiplier
+	}
+	if len(options) == 0 {
+		return nil, false
+	}
+	return &upstreamMonitorPricingSnapshot{GroupMultipliers: groupMultipliers, GroupOptions: options}, true
+}
+
+func jsonRawFloat(raw json.RawMessage) (float64, bool) {
+	var number float64
+	if err := json.Unmarshal(raw, &number); err == nil && !math.IsNaN(number) && !math.IsInf(number, 0) {
+		return number, true
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return 0, false
+	}
+	number, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+	return number, err == nil && !math.IsNaN(number) && !math.IsInf(number, 0)
 }
 
 func validateUpstreamPricingSnapshot(pricing *upstreamMonitorPricingSnapshot) (*upstreamMonitorPricingSnapshot, error) {
@@ -2691,6 +3052,12 @@ func ensureUpstreamGroupOptionsFromMappings(cfg *UpstreamMonitorConfig, source *
 	if cfg == nil || source == nil || strings.TrimSpace(source.ID) == "" {
 		return
 	}
+	// A successful group-list response is authoritative. Only synthesize
+	// mapping options for legacy/reference-only snapshots such as billing probe
+	// fallbacks; otherwise a removed upstream group would look unchanged.
+	if len(source.UpstreamGroupOptions) > 0 {
+		return
+	}
 	options := append([]UpstreamMonitorUpstreamGroupOption(nil), source.UpstreamGroupOptions...)
 	existing := make(map[string]struct{}, len(options))
 	for _, option := range normalizeUpstreamGroupOptions(options) {
@@ -2923,6 +3290,145 @@ func maskUpstreamMonitorSecrets(cfg *UpstreamMonitorConfig) {
 	}
 }
 
+type upstreamMonitorGroupMultiplierChange struct {
+	GroupKey      string
+	GroupName     string
+	OldMultiplier float64
+	NewMultiplier float64
+	OldAvailable  bool
+	NewAvailable  bool
+}
+
+func upstreamMonitorSourceGroupMultiplierStateKey(sourceID string) string {
+	sourceID = strings.TrimSpace(sourceID)
+	if sourceID == "" {
+		sourceID = "unknown"
+	}
+	return "upstream_monitor_source_multiplier_state:" + sourceID
+}
+
+func upstreamMonitorSourceGroupState(source UpstreamMonitorSource) map[string]string {
+	state := make(map[string]string, len(source.MonitoredGroupKeys))
+	options := make(map[string]UpstreamMonitorUpstreamGroupOption, len(source.UpstreamGroupOptions))
+	for _, option := range source.UpstreamGroupOptions {
+		options[option.Key] = option
+	}
+	for _, key := range normalizeUpstreamMonitorGroupKeys(source.MonitoredGroupKeys) {
+		option, ok := options[key]
+		if !ok {
+			state[key] = "missing"
+			continue
+		}
+		state[key] = upstreamMonitorMultiplierState(option.ReferenceMultiplier)
+	}
+	return state
+}
+
+func decodeUpstreamMonitorSourceGroupState(raw string) (map[string]string, error) {
+	state := make(map[string]string)
+	if strings.TrimSpace(raw) == "" {
+		return state, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return nil, err
+	}
+	return state, nil
+}
+
+func upstreamMonitorSourceGroupMultiplierChanges(source UpstreamMonitorSource, previous map[string]string) ([]upstreamMonitorGroupMultiplierChange, map[string]string) {
+	current := upstreamMonitorSourceGroupState(source)
+	if previous == nil {
+		return nil, current
+	}
+	optionNames := make(map[string]string, len(source.UpstreamGroupOptions))
+	for _, option := range source.UpstreamGroupOptions {
+		optionNames[option.Key] = firstNonEmpty(option.Name, option.Key)
+	}
+	changes := make([]upstreamMonitorGroupMultiplierChange, 0)
+	for key, next := range current {
+		previousValue, ok := previous[key]
+		if !ok || previousValue == next {
+			continue
+		}
+		oldMultiplier, oldAvailable := parseUpstreamMonitorGroupStateMultiplier(previousValue)
+		newMultiplier, newAvailable := parseUpstreamMonitorGroupStateMultiplier(next)
+		changes = append(changes, upstreamMonitorGroupMultiplierChange{
+			GroupKey:      key,
+			GroupName:     optionNames[key],
+			OldMultiplier: oldMultiplier,
+			NewMultiplier: newMultiplier,
+			OldAvailable:  oldAvailable,
+			NewAvailable:  newAvailable,
+		})
+	}
+	sort.SliceStable(changes, func(i, j int) bool {
+		return strings.ToLower(changes[i].GroupName) < strings.ToLower(changes[j].GroupName)
+	})
+	return changes, current
+}
+
+func parseUpstreamMonitorGroupStateMultiplier(raw string) (float64, bool) {
+	if strings.TrimSpace(raw) == "missing" {
+		return 0, false
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || value < 0 {
+		return 0, false
+	}
+	return value, true
+}
+
+func upstreamMonitorGroupChangeSummary(changes []upstreamMonitorGroupMultiplierChange) string {
+	items := make([]string, 0, len(changes))
+	for _, change := range changes {
+		oldValue := "missing"
+		if change.OldAvailable {
+			oldValue = formatUpstreamMonitorFloat(change.OldMultiplier)
+		}
+		newValue := "missing"
+		if change.NewAvailable {
+			newValue = formatUpstreamMonitorFloat(change.NewMultiplier)
+		}
+		items = append(items, fmt.Sprintf("%s: %s -> %s", firstNonEmpty(change.GroupName, change.GroupKey), oldValue, newValue))
+	}
+	return strings.Join(items, "; ")
+}
+
+func upstreamMonitorGroupChangeEmailVariables(source UpstreamMonitorSource, changes []upstreamMonitorGroupMultiplierChange) map[string]string {
+	groupName := firstNonEmpty(source.Name, source.ID)
+	oldMultiplier := 0.0
+	newMultiplier := 0.0
+	if len(changes) == 1 {
+		groupName = firstNonEmpty(changes[0].GroupName, changes[0].GroupKey)
+		oldMultiplier = changes[0].OldMultiplier
+		newMultiplier = changes[0].NewMultiplier
+	}
+	changePercent := 0.0
+	if oldMultiplier > 0 {
+		changePercent = (newMultiplier - oldMultiplier) / oldMultiplier
+	}
+	summary := upstreamMonitorGroupChangeSummary(changes)
+	return map[string]string{
+		"alert_type":            "upstream_group_multiplier_change",
+		"group_name":            groupName,
+		"upstream_name":         firstNonEmpty(source.Name, source.ID),
+		"upstream_group":        groupName,
+		"model_family":          "upstream_group",
+		"severity":              "change",
+		"status":                "changed",
+		"local_multiplier":      formatUpstreamMonitorFloat(oldMultiplier),
+		"reference_multiplier":  formatUpstreamMonitorFloat(newMultiplier),
+		"old_multiplier":        formatUpstreamMonitorFloat(oldMultiplier),
+		"new_multiplier":        formatUpstreamMonitorFloat(newMultiplier),
+		"change_percent":        formatUpstreamMonitorPercent(changePercent),
+		"estimated_margin_rate": formatUpstreamMonitorPercent(changePercent),
+		"source_names":          firstNonEmpty(source.Name, source.ID),
+		"change_summary":        summary,
+		"issues":                firstNonEmpty(summary, "monitored upstream group multiplier changed"),
+		"triggered_at":          time.Now().UTC().Format(time.RFC3339),
+	}
+}
+
 func (s *UpstreamMonitorService) notifyUpstreamMonitorAlerts(ctx context.Context, cfg *UpstreamMonitorConfig) {
 	if s == nil || s.notificationEmailService == nil || cfg == nil {
 		return
@@ -2936,6 +3442,54 @@ func (s *UpstreamMonitorService) notifyUpstreamMonitorAlerts(ctx context.Context
 	recipients := s.getUpstreamMonitorAlertRecipients(ctx)
 	if len(recipients) == 0 {
 		return
+	}
+
+	for _, source := range cfg.Sources {
+		if len(source.MonitoredGroupKeys) == 0 {
+			_ = s.settingRepo.Delete(ctx, upstreamMonitorSourceGroupMultiplierStateKey(source.ID))
+			continue
+		}
+		stateKey := upstreamMonitorSourceGroupMultiplierStateKey(source.ID)
+		rawState, err := s.settingRepo.GetValue(ctx, stateKey)
+		if errors.Is(err, ErrSettingNotFound) {
+			if state, marshalErr := json.Marshal(upstreamMonitorSourceGroupState(source)); marshalErr == nil {
+				_ = s.settingRepo.Set(ctx, stateKey, string(state))
+			}
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		previousState, err := decodeUpstreamMonitorSourceGroupState(rawState)
+		if err != nil {
+			if state, marshalErr := json.Marshal(upstreamMonitorSourceGroupState(source)); marshalErr == nil {
+				_ = s.settingRepo.Set(ctx, stateKey, string(state))
+			}
+			continue
+		}
+		changes, currentState := upstreamMonitorSourceGroupMultiplierChanges(source, previousState)
+		if len(changes) == 0 {
+			if state, marshalErr := json.Marshal(currentState); marshalErr == nil {
+				_ = s.settingRepo.Set(ctx, stateKey, string(state))
+			}
+			continue
+		}
+		allSent := true
+		for _, recipient := range recipients {
+			if err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
+				Event:          NotificationEmailEventUpstreamMonitorAlert,
+				RecipientEmail: recipient.Email,
+				RecipientName:  recipient.Name,
+				Variables:      upstreamMonitorGroupChangeEmailVariables(source, changes),
+			}); err != nil {
+				allSent = false
+			}
+		}
+		if allSent {
+			if state, marshalErr := json.Marshal(currentState); marshalErr == nil {
+				_ = s.settingRepo.Set(ctx, stateKey, string(state))
+			}
+		}
 	}
 
 	for _, row := range snapshot.GroupRows {
@@ -3205,6 +3759,7 @@ func upstreamMonitorAlertEmailVariables(row UpstreamMonitorPreviewGroupRow, seve
 		issues = strings.Join(row.Issues, ", ")
 	}
 	return map[string]string{
+		"alert_type":            "margin_alert",
 		"group_name":            firstNonEmpty(strings.TrimSpace(row.LocalGroup), "-"),
 		"model_family":          firstNonEmpty(strings.TrimSpace(row.ModelFamily), "-"),
 		"severity":              severity,
@@ -3213,6 +3768,12 @@ func upstreamMonitorAlertEmailVariables(row UpstreamMonitorPreviewGroupRow, seve
 		"reference_multiplier":  formatUpstreamMonitorFloat(row.ReferenceMultiplier),
 		"estimated_margin_rate": formatUpstreamMonitorPercent(row.EstimatedMarginRate),
 		"source_names":          sourceNames,
+		"upstream_name":         sourceNames,
+		"upstream_group":        firstNonEmpty(strings.TrimSpace(row.UpstreamGroup), "-"),
+		"old_multiplier":        formatUpstreamMonitorFloat(row.ReferenceMultiplier),
+		"new_multiplier":        formatUpstreamMonitorFloat(row.ReferenceMultiplier),
+		"change_percent":        "0.00%",
+		"change_summary":        issues,
 		"issues":                issues,
 		"triggered_at":          time.Now().UTC().Format(time.RFC3339),
 	}
@@ -3229,6 +3790,7 @@ func upstreamMonitorAccountAlertEmailVariables(row UpstreamMonitorPreviewAccount
 		groupNames = strings.Join(row.GroupNames, ", ")
 	}
 	return map[string]string{
+		"alert_type":            "account_alert",
 		"group_name":            firstNonEmpty(strings.TrimSpace(row.AccountName), "Account #"+strconv.FormatInt(row.AccountID, 10)),
 		"model_family":          firstNonEmpty(strings.TrimSpace(row.AccountPlatform), "-"),
 		"severity":              severity,
@@ -3237,6 +3799,12 @@ func upstreamMonitorAccountAlertEmailVariables(row UpstreamMonitorPreviewAccount
 		"reference_multiplier":  formatUpstreamMonitorFloat(row.EstimatedCostMultiplier),
 		"estimated_margin_rate": formatUpstreamMonitorPercent(row.EstimatedMarginRate),
 		"source_names":          sourceNames + " / " + groupNames,
+		"upstream_name":         sourceNames,
+		"upstream_group":        groupNames,
+		"old_multiplier":        formatUpstreamMonitorFloat(row.EstimatedCostMultiplier),
+		"new_multiplier":        formatUpstreamMonitorFloat(row.EstimatedCostMultiplier),
+		"change_percent":        "0.00%",
+		"change_summary":        issues,
 		"issues":                issues,
 		"triggered_at":          time.Now().UTC().Format(time.RFC3339),
 	}
