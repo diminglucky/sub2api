@@ -198,9 +198,48 @@ func TestValidatePlanPatch_AllNil(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestValidatePlanPatch_NegativePurchaseLimit(t *testing.T) {
-	neg := -1
-	err := validatePlanPatch(UpdatePlanRequest{PurchaseLimitPerUser: &neg})
+// --- normalizePlanCurrency tests ---
+// Empty must stay empty (not coerced to the default payment currency),
+// so existing plans keep rendering without any currency label.
+
+func TestNormalizePlanCurrency_EmptyKeepsEmpty(t *testing.T) {
+	currency, err := normalizePlanCurrency("")
+	require.NoError(t, err)
+	require.Equal(t, "", currency)
+}
+
+func TestNormalizePlanCurrency_WhitespaceKeepsEmpty(t *testing.T) {
+	currency, err := normalizePlanCurrency("   ")
+	require.NoError(t, err)
+	require.Equal(t, "", currency)
+}
+
+func TestNormalizePlanCurrency_LowercaseNormalized(t *testing.T) {
+	currency, err := normalizePlanCurrency("nzd")
+	require.NoError(t, err)
+	require.Equal(t, "NZD", currency)
+}
+
+func TestNormalizePlanCurrency_ValidUppercase(t *testing.T) {
+	currency, err := normalizePlanCurrency("USD")
+	require.NoError(t, err)
+	require.Equal(t, "USD", currency)
+}
+
+func TestNormalizePlanCurrency_TooShort(t *testing.T) {
+	_, err := normalizePlanCurrency("NZ")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "purchase limit")
+	require.Contains(t, err.Error(), "currency")
+}
+
+func TestNormalizePlanCurrency_TooLong(t *testing.T) {
+	_, err := normalizePlanCurrency("NZDD")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "currency")
+}
+
+func TestNormalizePlanCurrency_NonLetter(t *testing.T) {
+	_, err := normalizePlanCurrency("N2D")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "currency")
 }

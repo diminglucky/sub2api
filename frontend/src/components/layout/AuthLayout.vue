@@ -33,7 +33,7 @@
           <div
             class="auth-logo mb-2 inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl shadow-lg shadow-primary-500/25"
           >
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </div>
           <h1 class="text-gradient text-2xl font-bold leading-tight">
             {{ siteName }}

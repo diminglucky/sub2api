@@ -9,7 +9,6 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -19,15 +18,13 @@ import (
 
 // PaymentHandler handles user-facing payment requests.
 type PaymentHandler struct {
-	channelService *service.ChannelService
 	paymentService *service.PaymentService
 	configService  *service.PaymentConfigService
 }
 
 // NewPaymentHandler creates a new PaymentHandler.
-func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService, channelService *service.ChannelService) *PaymentHandler {
+func NewPaymentHandler(paymentService *service.PaymentService, configService *service.PaymentConfigService) *PaymentHandler {
 	return &PaymentHandler{
-		channelService: channelService,
 		paymentService: paymentService,
 		configService:  configService,
 	}
@@ -54,26 +51,26 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 	}
 	// Enrich plans with group platform for frontend color coding
 	type planWithPlatform struct {
-		ID                   int64    `json:"id"`
-		GroupID              int64    `json:"group_id"`
-		GroupPlatform        string   `json:"group_platform"`
-		GroupName            string   `json:"group_name"`
-		RateMultiplier       float64  `json:"rate_multiplier"`
-		PeakRateEnabled      bool     `json:"peak_rate_enabled"`
-		PeakStart            string   `json:"peak_start"`
-		PeakEnd              string   `json:"peak_end"`
-		PeakRateMultiplier   float64  `json:"peak_rate_multiplier"`
-		Name                 string   `json:"name"`
-		Description          string   `json:"description"`
-		Price                float64  `json:"price"`
-		OriginalPrice        *float64 `json:"original_price,omitempty"`
-		ValidityDays         int      `json:"validity_days"`
-		ValidityUnit         string   `json:"validity_unit"`
-		PurchaseLimitPerUser int      `json:"purchase_limit_per_user"`
-		Features             string   `json:"features"`
-		ProductName          string   `json:"product_name"`
-		ForSale              bool     `json:"for_sale"`
-		SortOrder            int      `json:"sort_order"`
+		ID                 int64    `json:"id"`
+		GroupID            int64    `json:"group_id"`
+		GroupPlatform      string   `json:"group_platform"`
+		GroupName          string   `json:"group_name"`
+		RateMultiplier     float64  `json:"rate_multiplier"`
+		PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+		PeakStart          string   `json:"peak_start"`
+		PeakEnd            string   `json:"peak_end"`
+		PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+		Name               string   `json:"name"`
+		Description        string   `json:"description"`
+		Price              float64  `json:"price"`
+		OriginalPrice      *float64 `json:"original_price,omitempty"`
+		Currency           string   `json:"currency,omitempty"`
+		ValidityDays       int      `json:"validity_days"`
+		ValidityUnit       string   `json:"validity_unit"`
+		Features           string   `json:"features"`
+		ProductName        string   `json:"product_name"`
+		ForSale            bool     `json:"for_sale"`
+		SortOrder          int      `json:"sort_order"`
 	}
 	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
 	result := make([]planWithPlatform, 0, len(plans))
@@ -85,23 +82,12 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 			RateMultiplier: gi.RateMultiplier, PeakRateEnabled: gi.PeakRateEnabled,
 			PeakStart: gi.PeakStart, PeakEnd: gi.PeakEnd, PeakRateMultiplier: gi.PeakRateMultiplier,
 			Name: p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit,
-			PurchaseLimitPerUser: p.PurchaseLimitPerUser, Features: p.Features,
+			Currency:     p.Currency,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
 			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
 		})
 	}
 	response.Success(c, result)
-}
-
-// GetChannels returns enabled payment channels.
-// GET /api/v1/payment/channels
-func (h *PaymentHandler) GetChannels(c *gin.Context) {
-	channels, _, err := h.channelService.List(c.Request.Context(), pagination.PaginationParams{Page: 1, PageSize: 1000}, "active", "")
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
-	response.Success(c, channels)
 }
 
 // GetCheckoutInfo returns all data the payment page needs in a single call:
@@ -123,6 +109,14 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	alipayMobilePrecreateDeepLink := false
+	if cfg.AlipayMobilePrecreateDeepLink {
+		alipayMobilePrecreateDeepLink, err = h.configService.UsesOfficialAlipayVisibleMethod(ctx)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+	}
 
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)
@@ -140,74 +134,68 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			WeeklyLimitUSD: gi.WeeklyLimitUSD, MonthlyLimitUSD: gi.MonthlyLimitUSD,
 			ModelScopes: gi.ModelScopes,
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
-			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit,
-			PurchaseLimitPerUser: p.PurchaseLimitPerUser, Features: parseFeatures(p.Features),
+			Currency:     p.Currency,
+			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
 			ProductName: p.ProductName,
 		})
 	}
 
 	response.Success(c, checkoutInfoResponse{
-		Methods:                   limitsResp.Methods,
-		GlobalMin:                 limitsResp.GlobalMin,
-		GlobalMax:                 limitsResp.GlobalMax,
-		MinAmount:                 cfg.MinAmount,
-		MaxAmount:                 cfg.MaxAmount,
-		Plans:                     planList,
-		BalanceDisabled:           cfg.BalanceDisabled,
-		BalanceRechargeMultiplier: cfg.BalanceRechargeMultiplier,
-		SubscriptionUSDToCNYRate:  cfg.SubscriptionUSDToCNYRate,
-		RechargeFeeRate:           cfg.RechargeFeeRate,
-		HelpText:                  cfg.HelpText,
-		HelpImageURL:              cfg.HelpImageURL,
-		RechargePackages:          cfg.RechargePackages,
-		RechargeCardProducts:      cfg.RechargeCardProducts,
-		StripePublishableKey:      cfg.StripePublishableKey,
-		AlipayForceQRCode:         cfg.AlipayForceQRCode,
+		Methods:                       limitsResp.Methods,
+		GlobalMin:                     limitsResp.GlobalMin,
+		GlobalMax:                     limitsResp.GlobalMax,
+		Plans:                         planList,
+		BalanceDisabled:               cfg.BalanceDisabled,
+		BalanceRechargeMultiplier:     cfg.BalanceRechargeMultiplier,
+		SubscriptionUSDToCNYRate:      cfg.SubscriptionUSDToCNYRate,
+		RechargeFeeRate:               cfg.RechargeFeeRate,
+		HelpText:                      cfg.HelpText,
+		HelpImageURL:                  cfg.HelpImageURL,
+		StripePublishableKey:          cfg.StripePublishableKey,
+		AlipayForceQRCode:             cfg.AlipayForceQRCode,
+		AlipayMobilePrecreateDeepLink: alipayMobilePrecreateDeepLink,
 	})
 }
 
 type checkoutInfoResponse struct {
-	Methods                   map[string]service.MethodLimits `json:"methods"`
-	GlobalMin                 float64                         `json:"global_min"`
-	GlobalMax                 float64                         `json:"global_max"`
-	MinAmount                 float64                         `json:"min_amount"`
-	MaxAmount                 float64                         `json:"max_amount"`
-	Plans                     []checkoutPlan                  `json:"plans"`
-	BalanceDisabled           bool                            `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64                         `json:"balance_recharge_multiplier"`
-	SubscriptionUSDToCNYRate  float64                         `json:"subscription_usd_to_cny_rate"`
-	RechargeFeeRate           float64                         `json:"recharge_fee_rate"`
-	HelpText                  string                          `json:"help_text"`
-	HelpImageURL              string                          `json:"help_image_url"`
-	RechargePackages          []service.RechargePackage       `json:"recharge_packages"`
-	RechargeCardProducts      []service.RechargeCardProduct   `json:"recharge_card_products"`
-	StripePublishableKey      string                          `json:"stripe_publishable_key"`
-	AlipayForceQRCode         bool                            `json:"alipay_force_qrcode"`
+	Methods                       map[string]service.MethodLimits `json:"methods"`
+	GlobalMin                     float64                         `json:"global_min"`
+	GlobalMax                     float64                         `json:"global_max"`
+	Plans                         []checkoutPlan                  `json:"plans"`
+	BalanceDisabled               bool                            `json:"balance_disabled"`
+	BalanceRechargeMultiplier     float64                         `json:"balance_recharge_multiplier"`
+	SubscriptionUSDToCNYRate      float64                         `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate               float64                         `json:"recharge_fee_rate"`
+	HelpText                      string                          `json:"help_text"`
+	HelpImageURL                  string                          `json:"help_image_url"`
+	StripePublishableKey          string                          `json:"stripe_publishable_key"`
+	AlipayForceQRCode             bool                            `json:"alipay_force_qrcode"`
+	AlipayMobilePrecreateDeepLink bool                            `json:"alipay_mobile_precreate_deep_link"`
 }
 
 type checkoutPlan struct {
-	ID                   int64    `json:"id"`
-	GroupID              int64    `json:"group_id"`
-	GroupPlatform        string   `json:"group_platform"`
-	GroupName            string   `json:"group_name"`
-	RateMultiplier       float64  `json:"rate_multiplier"`
-	PeakRateEnabled      bool     `json:"peak_rate_enabled"`
-	PeakStart            string   `json:"peak_start"`
-	PeakEnd              string   `json:"peak_end"`
-	PeakRateMultiplier   float64  `json:"peak_rate_multiplier"`
-	DailyLimitUSD        *float64 `json:"daily_limit_usd"`
-	WeeklyLimitUSD       *float64 `json:"weekly_limit_usd"`
-	MonthlyLimitUSD      *float64 `json:"monthly_limit_usd"`
-	ModelScopes          []string `json:"supported_model_scopes"`
-	Name                 string   `json:"name"`
-	Description          string   `json:"description"`
-	Price                float64  `json:"price"`
-	OriginalPrice        *float64 `json:"original_price,omitempty"`
-	ValidityDays         int      `json:"validity_days"`
-	ValidityUnit         string   `json:"validity_unit"`
-	PurchaseLimitPerUser int      `json:"purchase_limit_per_user"`
-	Features             []string `json:"features"`
-	ProductName          string   `json:"product_name"`
+	ID                 int64    `json:"id"`
+	GroupID            int64    `json:"group_id"`
+	GroupPlatform      string   `json:"group_platform"`
+	GroupName          string   `json:"group_name"`
+	RateMultiplier     float64  `json:"rate_multiplier"`
+	PeakRateEnabled    bool     `json:"peak_rate_enabled"`
+	PeakStart          string   `json:"peak_start"`
+	PeakEnd            string   `json:"peak_end"`
+	PeakRateMultiplier float64  `json:"peak_rate_multiplier"`
+	DailyLimitUSD      *float64 `json:"daily_limit_usd"`
+	WeeklyLimitUSD     *float64 `json:"weekly_limit_usd"`
+	MonthlyLimitUSD    *float64 `json:"monthly_limit_usd"`
+	ModelScopes        []string `json:"supported_model_scopes"`
+	Name               string   `json:"name"`
+	Description        string   `json:"description"`
+	Price              float64  `json:"price"`
+	OriginalPrice      *float64 `json:"original_price,omitempty"`
+	Currency           string   `json:"currency,omitempty"`
+	ValidityDays       int      `json:"validity_days"`
+	ValidityUnit       string   `json:"validity_unit"`
+	Features           []string `json:"features"`
+	ProductName        string   `json:"product_name"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.
