@@ -663,6 +663,7 @@ type ServerConfig struct {
 	Mode                     string    `mapstructure:"mode"`                  // debug/release
 	EnableServerTiming       bool      `mapstructure:"enable_server_timing"`  // Admin UI Server-Timing response header
 	FrontendURL              string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
+	APIOnlyHosts             []string  `mapstructure:"api_only_hosts"`        // 只允许 AI 网关传输端点的域名
 	ReadHeaderTimeout        int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
 	MaxHeaderBytes           int       `mapstructure:"max_header_bytes"`      // 请求头最大字节数（HTTP/2 映射为 header-list 上限）
 	IdleTimeout              int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
@@ -708,6 +709,7 @@ type SecurityConfig struct {
 	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
 	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
 	CSP             CSPConfig            `mapstructure:"csp"`
+	RegionBlock     RegionBlockConfig    `mapstructure:"region_block"`
 	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
 	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
 	// TrustForwardedIPForAPIKeyACL enables legacy raw forwarded-header takeover.

@@ -189,6 +189,10 @@ const smtpIOTimeout = 20 * time.Second
 
 // SendEmailWithConfig 使用指定配置发送邮件
 func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body string) error {
+	if s != nil && s.sendWithConfig != nil {
+		return s.sendWithConfig(config, to, subject, body)
+	}
+
 	message, err := buildSMTPMessage(config, to, subject, body)
 	if err != nil {
 		return err

@@ -1258,6 +1258,11 @@ func (a *Account) IsOpenAI() bool {
 	return a.Platform == PlatformOpenAI
 }
 
+func (a *Account) IsOpenAICompatibleAPIKey() bool {
+	return a != nil && a.Type == AccountTypeAPIKey &&
+		(a.Platform == PlatformOpenAI || a.Platform == PlatformZhipu)
+}
+
 func (a *Account) IsOpenAILongContextBillingEnabled() bool {
 	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return false

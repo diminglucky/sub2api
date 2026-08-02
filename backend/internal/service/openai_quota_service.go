@@ -199,7 +199,7 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		switch {
 		case hasDetailCount:
 			payload.RateLimitResetCredits.AvailableCount = *details.AvailableCount
-		case details.CreditListPresent:
+		case details.CreditListPresent && details.CreditListAuthoritative:
 			payload.RateLimitResetCredits.AvailableCount = details.AvailableCreditCount
 		}
 	}

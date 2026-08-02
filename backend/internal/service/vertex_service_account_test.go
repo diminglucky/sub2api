@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"

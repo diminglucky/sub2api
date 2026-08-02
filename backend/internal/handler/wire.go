@@ -223,6 +223,7 @@ func ProvideHandlers(
 // can keep custom features isolated from the upstream provider list.
 var CustomFeatureProviderSet = wire.NewSet(
 	NewLotteryHandler,
+	admin.NewUpstreamBalanceHandler,
 	admin.NewLotteryHandler,
 )
 
@@ -283,6 +284,7 @@ var ProviderSet = wire.NewSet(
 	admin.NewAffiliateHandler,
 	admin.NewComplianceHandler,
 	admin.NewAuditLogHandler,
+	CustomFeatureProviderSet,
 
 	// AdminHandlers and Handlers constructors
 	ProvideAdminHandlers,

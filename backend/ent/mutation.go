@@ -39445,32 +39445,34 @@ func (m *SettingMutation) ResetEdge(name string) error {
 // SubscriptionPlanMutation represents an operation that mutates the SubscriptionPlan nodes in the graph.
 type SubscriptionPlanMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	group_id          *int64
-	addgroup_id       *int64
-	name              *string
-	description       *string
-	price             *float64
-	addprice          *float64
-	original_price    *float64
-	addoriginal_price *float64
-	currency          *string
-	validity_days     *int
-	addvalidity_days  *int
-	validity_unit     *string
-	features          *string
-	product_name      *string
-	for_sale          *bool
-	sort_order        *int
-	addsort_order     *int
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*SubscriptionPlan, error)
-	predicates        []predicate.SubscriptionPlan
+	op                         Op
+	typ                        string
+	id                         *int64
+	group_id                   *int64
+	addgroup_id                *int64
+	name                       *string
+	description                *string
+	price                      *float64
+	addprice                   *float64
+	original_price             *float64
+	addoriginal_price          *float64
+	currency                   *string
+	validity_days              *int
+	addvalidity_days           *int
+	validity_unit              *string
+	features                   *string
+	product_name               *string
+	for_sale                   *bool
+	purchase_limit_per_user    *int
+	addpurchase_limit_per_user *int
+	sort_order                 *int
+	addsort_order              *int
+	created_at                 *time.Time
+	updated_at                 *time.Time
+	clearedFields              map[string]struct{}
+	done                       bool
+	oldValue                   func(context.Context) (*SubscriptionPlan, error)
+	predicates                 []predicate.SubscriptionPlan
 }
 
 var _ ent.Mutation = (*SubscriptionPlanMutation)(nil)
@@ -40279,7 +40281,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 15)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}

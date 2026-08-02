@@ -635,6 +635,7 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+	channelService       *ChannelService
 }
 
 type adminRechargeAffiliateAccruer interface {
@@ -668,6 +669,7 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
+	channelService *ChannelService,
 ) AdminService {
 	return &adminServiceImpl{
 		userRepo:             userRepo,
@@ -693,5 +695,6 @@ func NewAdminService(
 		affiliateService:     affiliateService,
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
+		channelService:       channelService,
 	}
 }

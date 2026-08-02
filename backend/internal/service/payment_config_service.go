@@ -34,6 +34,8 @@ const (
 	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
 	SettingHelpText                      = "PAYMENT_HELP_TEXT"
+	SettingRechargePackages              = "RECHARGE_PACKAGES"
+	SettingRechargeCardProducts          = "RECHARGE_CARD_PRODUCTS"
 	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
 	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
 	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
@@ -186,33 +188,35 @@ type UpdateProviderInstanceRequest struct {
 	AllowUserRefund *bool             `json:"allow_user_refund"`
 }
 type CreatePlanRequest struct {
-	GroupID       int64    `json:"group_id"`
-	Name          string   `json:"name"`
-	Description   string   `json:"description"`
-	Price         float64  `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	Currency      string   `json:"currency"`
-	ValidityDays  int      `json:"validity_days"`
-	ValidityUnit  string   `json:"validity_unit"`
-	Features      string   `json:"features"`
-	ProductName   string   `json:"product_name"`
-	ForSale       bool     `json:"for_sale"`
-	SortOrder     int      `json:"sort_order"`
+	GroupID              int64    `json:"group_id"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	Price                float64  `json:"price"`
+	OriginalPrice        *float64 `json:"original_price"`
+	Currency             string   `json:"currency"`
+	ValidityDays         int      `json:"validity_days"`
+	ValidityUnit         string   `json:"validity_unit"`
+	Features             string   `json:"features"`
+	ProductName          string   `json:"product_name"`
+	PurchaseLimitPerUser int      `json:"purchase_limit_per_user"`
+	ForSale              bool     `json:"for_sale"`
+	SortOrder            int      `json:"sort_order"`
 }
 
 type UpdatePlanRequest struct {
-	GroupID       *int64   `json:"group_id"`
-	Name          *string  `json:"name"`
-	Description   *string  `json:"description"`
-	Price         *float64 `json:"price"`
-	OriginalPrice *float64 `json:"original_price"`
-	Currency      *string  `json:"currency"`
-	ValidityDays  *int     `json:"validity_days"`
-	ValidityUnit  *string  `json:"validity_unit"`
-	Features      *string  `json:"features"`
-	ProductName   *string  `json:"product_name"`
-	ForSale       *bool    `json:"for_sale"`
-	SortOrder     *int     `json:"sort_order"`
+	GroupID              *int64   `json:"group_id"`
+	Name                 *string  `json:"name"`
+	Description          *string  `json:"description"`
+	Price                *float64 `json:"price"`
+	OriginalPrice        *float64 `json:"original_price"`
+	Currency             *string  `json:"currency"`
+	ValidityDays         *int     `json:"validity_days"`
+	ValidityUnit         *string  `json:"validity_unit"`
+	Features             *string  `json:"features"`
+	ProductName          *string  `json:"product_name"`
+	PurchaseLimitPerUser *int     `json:"purchase_limit_per_user"`
+	ForSale              *bool    `json:"for_sale"`
+	SortOrder            *int     `json:"sort_order"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for
@@ -368,6 +372,16 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 			return infraerrors.BadRequest("INVALID_RECHARGE_FEE_RATE", "recharge fee rate allows at most 2 decimal places")
 		}
 	}
+	if req.RechargeCardProducts != nil {
+		if _, err := normalizeRechargeCardProducts(*req.RechargeCardProducts); err != nil {
+			return err
+		}
+	}
+	if req.RechargePackages != nil {
+		if _, err := normalizeRechargePackages(*req.RechargePackages); err != nil {
+			return err
+		}
+	}
 	m := make(map[string]string)
 	if req.Enabled != nil {
 		m[SettingPaymentEnabled] = formatBoolOrEmpty(req.Enabled)
@@ -417,6 +431,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	if req.HelpText != nil {
 		m[SettingHelpText] = derefStr(req.HelpText)
 	}
+	if req.RechargePackages != nil {
+		m[SettingRechargePackages] = formatRechargePackages(req.RechargePackages)
+	}
 	if req.CancelRateLimitEnabled != nil {
 		m[SettingCancelRateLimitOn] = formatBoolOrEmpty(req.CancelRateLimitEnabled)
 	}
@@ -449,6 +466,9 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.VisibleMethodWxpayEnabled != nil {
 		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
+	}
+	if req.RechargeCardProducts != nil {
+		m[SettingRechargeCardProducts] = formatRechargeCardProducts(req.RechargeCardProducts)
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
 }

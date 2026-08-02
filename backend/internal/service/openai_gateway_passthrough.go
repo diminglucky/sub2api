@@ -924,6 +924,28 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+// Chat Completions historically retries context-window failures on another
+// account when the payload may fit that account. Keep that compatibility
+// policy local to this endpoint; Responses and Messages use the stricter
+// stream-failure policy above.
+func openAICompatChatFailedEventShouldFailover(payload []byte, message string) bool {
+	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+		return false
+	}
+	if isOpenAIContextWindowError(message, payload) {
+		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String()))
+		if code == "" {
+			code = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.code").String()))
+		}
+		errType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String()))
+		if errType == "" {
+			errType = strings.ToLower(strings.TrimSpace(gjson.GetBytes(payload, "error.type").String()))
+		}
+		return code != "context_length_exceeded" && !strings.Contains(errType, "invalid_request")
+	}
+	return openAIStreamFailedEventShouldFailover(payload, message)
+}
+
 func openAIStreamFailedEventRetryableOnSameAccount(account *Account, payload []byte, message string) bool {
 	if account == nil || !account.IsPoolMode() {
 		return false
