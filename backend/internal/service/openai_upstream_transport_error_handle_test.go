@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -35,6 +37,21 @@ func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorde
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	return c, rec
+}
+
+type failingOpenAIHTTPUpstream struct {
+	err   error
+	calls int
+}
+
+func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.calls++
+	return nil, u.err
+}
+
+func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	u.calls++
+	return nil, u.err
 }
 
 // A durable proxy/credential failure must (a) temporarily unschedule the account
