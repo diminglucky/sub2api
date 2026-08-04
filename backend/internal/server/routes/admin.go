@@ -42,6 +42,9 @@ func RegisterAdminRoutes(
 		// 账号管理
 		registerAccountRoutes(admin, h, stepUpAuth)
 
+		// 上游余额
+		registerUpstreamBalanceRoutes(admin, h)
+
 		// 公告管理
 		registerAnnouncementRoutes(admin, h)
 
@@ -56,6 +59,9 @@ func RegisterAdminRoutes(
 
 		// Antigravity OAuth
 		registerAntigravityOAuthRoutes(admin, h)
+
+		// Grok OAuth
+		registerGrokOAuthRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)

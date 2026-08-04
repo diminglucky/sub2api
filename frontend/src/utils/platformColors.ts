@@ -5,7 +5,7 @@
  * instead of defining their own color mappings.
  */
 
-export type Platform = 'anthropic' | 'openai' | 'antigravity' | 'gemini' | 'grok' | 'composite'
+export type Platform = 'anthropic' | 'openai' | 'zhipu' | 'antigravity' | 'gemini' | 'grok' | 'composite'
 
 // ── Badge (bg + text + border, for inline badges with border) ───────
 const BADGE: Record<Platform, string> = {
@@ -46,6 +46,7 @@ const BORDER_DEFAULT = 'border-gray-200 dark:border-dark-700'
 const BORDER_STRONG: Record<Platform, string> = {
   anthropic: 'border-orange-500/35 dark:border-orange-500/30',
   openai: 'border-green-500/35 dark:border-green-500/30',
+  zhipu: 'border-cyan-500/35 dark:border-cyan-500/30',
   antigravity: 'border-purple-500/35 dark:border-purple-500/30',
   gemini: 'border-blue-500/35 dark:border-blue-500/30',
   grok: 'border-zinc-800/35 dark:border-zinc-500/35',
@@ -58,6 +59,7 @@ const BORDER_STRONG_DEFAULT = 'border-gray-300 dark:border-dark-600'
 const ACCENT: Record<Platform, string> = {
   anthropic: '#f97316', // orange-500
   openai: '#22c55e', // green-500
+  zhipu: '#06b6d4', // cyan-500
   antigravity: '#a855f7', // purple-500
   gemini: '#3b82f6', // blue-500
   grok: '#71717a', // zinc-500

@@ -272,6 +272,7 @@ const props = withDefaults(defineProps<{
   showSourceToggle?: boolean
   showMetricToggle?: boolean
   showAccountCost?: boolean
+  enableBreakdown?: boolean
   rankingLoading?: boolean
   rankingError?: boolean
   startDate?: string
@@ -291,6 +292,7 @@ const props = withDefaults(defineProps<{
   showSourceToggle: false,
   showMetricToggle: false,
   showAccountCost: true,
+  enableBreakdown: true,
   rankingLoading: false,
   rankingError: false
 })

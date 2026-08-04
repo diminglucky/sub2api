@@ -593,22 +593,3 @@ func buildCodexSparkWindowExtraUpdates(usage *OpenAIQuotaUsage, now time.Time) m
 	updates["codex_usage_updated_at"] = now.Format(time.RFC3339)
 	return updates
 }
-
-// mapOpenAIQuotaUpstreamStatus collapses upstream HTTP statuses into a stable set we
-// surface from the admin handler. 4xx upstream errors are surfaced as 502
-// (BadGateway) so callers can distinguish "your input is bad" (400) from
-// "upstream said no" (502); 401/403 are bubbled directly to hint at re-auth.
-func mapOpenAIQuotaUpstreamStatus(status int) int {
-	switch {
-	case status == http.StatusUnauthorized || status == http.StatusForbidden:
-		return status
-	case status == http.StatusTooManyRequests:
-		return http.StatusTooManyRequests
-	case status >= 400 && status < 500:
-		return http.StatusBadGateway
-	case status >= 500:
-		return http.StatusBadGateway
-	default:
-		return http.StatusBadGateway
-	}
-}

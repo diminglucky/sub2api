@@ -128,6 +128,7 @@ const props = withDefaults(defineProps<{
   metric?: DistributionMetric
   showMetricToggle?: boolean
   showAccountCost?: boolean
+  enableBreakdown?: boolean
   startDate?: string
   endDate?: string
   filters?: Record<string, any>
@@ -136,6 +137,7 @@ const props = withDefaults(defineProps<{
   metric: 'tokens',
   showMetricToggle: false,
   showAccountCost: true,
+  enableBreakdown: true,
 })
 
 const emit = defineEmits<{

@@ -8136,6 +8136,12 @@ import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
 import {
+  defaultFingerprintSignalRows,
+  parseFingerprintSignalsToRows,
+  serializeFingerprintRowsToJSON,
+  type FingerprintSignalRow,
+} from "@/views/admin/codexFingerprintSignals";
+import {
   isRegistrationEmailSuffixDomainValid,
   normalizeRegistrationEmailSuffixDomain,
   normalizeRegistrationEmailSuffixDomains,
@@ -9657,6 +9663,71 @@ function parseTablePageSizeOptionsInput(raw: string): number[] | null {
   return deduped;
 }
 
+interface CodexClientRow {
+  originator: string;
+  uaContains: string;
+  skipEngineFingerprint?: boolean;
+}
+
+const codexBlacklistRows = ref<CodexClientRow[]>([]);
+const codexWhitelistRows = ref<CodexClientRow[]>([]);
+const codexFingerprintRows = ref<FingerprintSignalRow[]>([]);
+const codexFingerprintNoRequired = computed(
+  () => !codexFingerprintRows.value.some((row) => row.required),
+);
+
+function addCodexFingerprintRow(): void {
+  codexFingerprintRows.value.push({ type: "header_exact", match: "", required: false });
+}
+
+function removeCodexFingerprintRow(index: number): void {
+  codexFingerprintRows.value.splice(index, 1);
+}
+
+function parseCodexEntriesToRows(raw: string): CodexClientRow[] {
+  if (!raw.trim()) return [];
+  try {
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries)) return [];
+    return entries.map((entry) => ({
+      originator: typeof entry?.originator === "string" ? entry.originator : "",
+      uaContains: Array.isArray(entry?.ua_contains)
+        ? entry.ua_contains.filter((value: unknown) => typeof value === "string").join(", ")
+        : "",
+      skipEngineFingerprint: entry?.skip_engine_fingerprint === true,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function serializeCodexRowsToJSON(rows: CodexClientRow[]): string {
+  const entries = rows
+    .map((row) => ({
+      originator: row.originator.trim(),
+      ua_contains: row.uaContains.split(",").map((value) => value.trim()).filter(Boolean),
+      ...(row.skipEngineFingerprint ? { skip_engine_fingerprint: true } : {}),
+    }))
+    .filter((entry) => entry.originator !== "" || entry.ua_contains.length > 0);
+  return entries.length > 0 ? JSON.stringify(entries) : "";
+}
+
+function addCodexBlacklistRow(): void {
+  codexBlacklistRows.value.push({ originator: "", uaContains: "" });
+}
+
+function removeCodexBlacklistRow(index: number): void {
+  codexBlacklistRows.value.splice(index, 1);
+}
+
+function addCodexWhitelistRow(): void {
+  codexWhitelistRows.value.push({ originator: "", uaContains: "", skipEngineFingerprint: false });
+}
+
+function removeCodexWhitelistRow(index: number): void {
+  codexWhitelistRows.value.splice(index, 1);
+}
+
 function normalizeClaudeOAuthSystemPromptBlocks(raw: string | null | undefined): string {
   const trimmed = raw?.trim() || "";
   if (!trimmed) {
@@ -9704,6 +9775,11 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    codexBlacklistRows.value = parseCodexEntriesToRows(form.codex_cli_only_blacklist);
+    codexWhitelistRows.value = parseCodexEntriesToRows(form.codex_cli_only_whitelist);
+    codexFingerprintRows.value = form.codex_cli_only_engine_fingerprint_signals
+      ? parseFingerprintSignalsToRows(form.codex_cli_only_engine_fingerprint_signals)
+      : defaultFingerprintSignalRows();
     form.claude_oauth_system_prompt_blocks =
       normalizeClaudeOAuthSystemPromptBlocks(
         settings.claude_oauth_system_prompt_blocks,
@@ -10262,12 +10338,12 @@ async function saveSettings() {
         form.antigravity_user_agent_version?.trim() || "",
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
-      codex_cli_only_blacklist: form.codex_cli_only_blacklist?.trim() || "",
-      codex_cli_only_whitelist: form.codex_cli_only_whitelist?.trim() || "",
+      codex_cli_only_blacklist: serializeCodexRowsToJSON(codexBlacklistRows.value),
+      codex_cli_only_whitelist: serializeCodexRowsToJSON(codexWhitelistRows.value),
       codex_cli_only_allow_app_server_clients:
         form.codex_cli_only_allow_app_server_clients,
       codex_cli_only_engine_fingerprint_signals:
-        form.codex_cli_only_engine_fingerprint_signals?.trim() || "",
+        serializeFingerprintRowsToJSON(codexFingerprintRows.value),
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:
         Number(form.cyber_session_block_ttl_seconds) || 3600,
