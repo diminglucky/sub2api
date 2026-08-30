@@ -95,6 +95,10 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 用户可用模型（模型页面使用，不受「可用渠道」菜单开关影响）
+		// 与渠道接口使用相同的认证和用户可见分组过滤逻辑。
+		authenticated.GET("/models/available", h.AvailableChannel.ListModels)
+
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）
 		usage := authenticated.Group("/usage")
 		usage.Use(panelRateLimiter.Heavy())
