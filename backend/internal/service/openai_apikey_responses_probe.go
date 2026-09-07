@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strings"
@@ -17,13 +18,26 @@ import (
 )
 
 // openaiResponsesProbeTimeout 是探测请求的超时时长。
-// 探测在后台异步执行，不阻塞账号创建/更新；留出余量给推理型模型先思考再产出工具调用。
+// 探测在后台 goroutine 中异步执行,不阻塞账号创建/更新;留出余量给推理型模型
+// 先思考再产出 function_call 的往返。超时则保持 unknown,不下结论。
 const openaiResponsesProbeTimeout = 15 * time.Second
 
+// responsesProbeMaxBodyBytes 限制读取探测响应体的字节数,够判定 output 项类型即可。
 const responsesProbeMaxBodyBytes = 256 * 1024
 
-// openaiResponsesProbePayload 构造探测请求：强制工具调用，用于区分
-// "Responses 端点存在但工具调用不可用" 的第三方上游。
+// openaiResponsesProbeMaxOutputTokens 是探测请求的输出预算。
+// 推理型模型可能把预算全烧在 reasoning 上,还没轮到 function_call 就被截断——
+// 那种响应不能用来判定工具能力,见 responsesProbeVerdictIsConclusive。
+const openaiResponsesProbeMaxOutputTokens = 512
+
+// openaiResponsesProbePayload 构造探测用的 Responses 请求体。
+//
+// 关键设计:请求携带一个工具并以 tool_choice=required 强制模型调用它。这样
+// 一个真正支持 Responses 工具调用的上游必须在响应里产出 function_call 输出项;
+// 而"端点存在、基础补全可用、但工具调用坏掉"的上游(如火山方舟 coding/v3 ×
+// kimi-k2.6,只回 reasoning、不产出 function_call)会被这一步暴露出来。
+//
+// Stream=false 便于一次性读取 output 数组判定;不带 instructions 以免干扰。
 func openaiResponsesProbePayload(modelID string) []byte {
 	if strings.TrimSpace(modelID) == "" {
 		modelID = openai.DefaultTestModel
@@ -53,12 +67,18 @@ func openaiResponsesProbePayload(modelID string) []byte {
 			},
 		},
 		"tool_choice":       "required",
-		"max_output_tokens": 512,
+		"max_output_tokens": openaiResponsesProbeMaxOutputTokens,
 		"stream":            false,
 	})
 	return body
 }
 
+// selectResponsesProbeModel 选出用于探测的上游模型。
+//
+// 工具能力探测必须用上游真实存在的模型——用占位模型(DefaultTestModel)打第三方
+// 上游只会拿到 400 model-not-found,无从判定工具能力。优先取账号 model_mapping
+// 的上游模型(值),按字典序取首个具体(非通配符)模型以保证可复现;无映射时回退
+// DefaultTestModel(适配 OpenAI 官方 APIKey 账号)。
 func selectResponsesProbeModel(account *Account) string {
 	mapping := account.GetModelMapping()
 	candidates := make([]string, 0, len(mapping))
@@ -82,8 +102,10 @@ func selectResponsesProbeModel(account *Account) string {
 // 调用时机：账号创建/更新后，且仅当 platform=openai && type=apikey 时。
 //
 // 探测策略（参见包文档 internal/pkg/openai_compat）：
-//   - 上游 404 / 405 → 不支持，写 false
-//   - 上游 2xx / 其他 4xx（401/422/400 等）/ 5xx → 支持，写 true
+//   - 上游 404 / 405 → 端点不存在,写 false
+//   - 上游 2xx → 端点存在,进一步看工具能力:响应含 function_call 输出项才写 true;
+//     仅 reasoning / 无 function_call(如火山方舟 coding/v3 × kimi-k2.6)写 false
+//   - 其他非 2xx（401/422/400/5xx 等）→ 端点存在但无法判定工具能力,保守写 true
 //   - 网络层失败（连接错误、超时）→ 不写标记，保持 unknown
 //     （后续请求仍按"现状即证据"默认走 Responses）
 //
@@ -97,8 +119,30 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		logger.LegacyPrintf("service.openai_probe", "probe_load_account_failed: account_id=%d err=%v", accountID, err)
 		return
 	}
-	if !account.IsOpenAICompatibleAPIKey() {
-		// 仅 OpenAI-compatible APIKey 账号需要探测；其他账号类型无能力差异。
+	if account.Type != AccountTypeAPIKey {
+		return
+	}
+	if account.IsCNProvider() {
+		// 国产 OpenAI 兼容上游默认仅支持 /v1/chat/completions。直接落标 false
+		// 走 Chat Completions 直转，跳过网络探测。
+		// 例外：deepseek / kimi 的固定 responses 和 adaptive 账号使用官方原生
+		// Responses 端点，落标 force_responses；其余协议显式重置为 auto，避免
+		// 切换后残留强制模式。
+		if account.UsesNativeCNResponses() {
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
+				openai_compat.ExtraKeyResponsesSupported: true,
+			})
+			return
+		}
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
+			openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeAuto),
+			openai_compat.ExtraKeyResponsesSupported: false,
+		})
+		return
+	}
+	if account.Platform != PlatformOpenAI {
+		// 仅 OpenAI APIKey 账号需要探测；其他账号类型无能力差异。
 		return
 	}
 
@@ -150,9 +194,26 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	}
 	defer func() { _ = resp.Body.Close() }()
 	bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, responsesProbeMaxBodyBytes))
+	// 有界排空剩余响应体:既帮助连接复用,又避免行为异常的上游用超大响应体拖住探测。
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, responsesProbeMaxBodyBytes))
 	if readErr != nil {
+		// 响应体读取失败(部分读取/传输错误):按网络层失败处理,保持 unknown,
+		// 不写标记——否则可能给一个 2xx 响应误写 supported=false。
 		logger.LegacyPrintf("service.openai_probe", "probe_read_body_failed: account_id=%d url=%s err=%v", accountID, probeURL, readErr)
+		return
+	}
+
+	// 本次响应不足以下结论时保持 unknown，与网络层失败、响应体读取失败一致：
+	// 标记一旦写成 false 就会一直粘住（只有下次账号创建/更新才重探），网关会静默
+	// 改走 /v1/chat/completions —— 对 Codex 客户端意味着 prompt 缓存前缀被打散。
+	// 宁可不写，让请求继续走既有的 Responses 路径。
+	if !responsesProbeVerdictIsConclusive(resp.StatusCode, bodyBytes) {
+		logger.LegacyPrintf("service.openai_probe",
+			"probe_inconclusive_keep_unknown: account_id=%d base_url=%s probe_model=%s status=%d response_status=%s reason=%s",
+			accountID, normalizedBaseURL, probeModel, resp.StatusCode,
+			gjson.GetBytes(bodyBytes, "status").String(),
+			gjson.GetBytes(bodyBytes, "incomplete_details.reason").String(),
+		)
 		return
 	}
 
@@ -165,10 +226,53 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 
+	if !supported {
+		// 落标为不支持等于把该账号长期钉在 /v1/chat/completions 上，成本与缓存命中率
+		// 都会变化，且不会自动恢复。这条必须能被运维看到（#5371）。
+		slog.Warn(
+			"openai_responses_probe_marked_unsupported",
+			"account_id", accountID,
+			"account_name", account.Name,
+			"base_url", normalizedBaseURL,
+			"probe_model", probeModel,
+			"upstream_status", resp.StatusCode,
+		)
+	}
+
 	logger.LegacyPrintf("service.openai_probe",
 		"probe_done: account_id=%d base_url=%s probe_model=%s status=%d supported=%v",
 		accountID, normalizedBaseURL, probeModel, resp.StatusCode, supported,
 	)
+}
+
+// responsesProbeVerdictIsConclusive 判断本次探测响应是否足以对「上游是否支持带工具的
+// Responses 调用」下结论。
+//
+// 2xx 分支靠「output 里有没有 function_call」下结论，但这只在响应真的跑完时成立：
+//
+//   - status=incomplete 且 incomplete_details.reason=max_output_tokens：探测请求自己
+//     只给了 openaiResponsesProbeMaxOutputTokens 的预算，推理型模型可能把预算全烧在
+//     reasoning 上，还没轮到 function_call 就被截断。此时「没有 function_call」是探测
+//     预算不足造成的，不是上游能力缺失。
+//   - status=failed：HTTP 200 携带的失败响应（上游瞬时故障）同样不构成能力证据。
+//
+// 其余 2xx 一律可下结论——尤其 status=completed 却只回 reasoning 的上游（火山方舟
+// coding/v3 × kimi-k2.6），仍按原逻辑判为不支持。
+//
+// 非 2xx 的结论只看状态码、不依赖响应内容，恒可下结论。
+// 缺少 status 字段的响应体（含非 JSON）也按可下结论处理，保持既有行为。
+func responsesProbeVerdictIsConclusive(status int, body []byte) bool {
+	if status < 200 || status >= 300 {
+		return true
+	}
+	switch strings.TrimSpace(gjson.GetBytes(body, "status").String()) {
+	case "failed":
+		return false
+	case "incomplete":
+		return strings.TrimSpace(gjson.GetBytes(body, "incomplete_details.reason").String()) != "max_output_tokens"
+	default:
+		return true
+	}
 }
 
 // isResponsesEndpointSupportedByStatus 根据探测响应的 HTTP 状态码判定上游
@@ -189,6 +293,15 @@ func isResponsesEndpointSupportedByStatus(status int) bool {
 	return true
 }
 
+// decideResponsesProbeSupport 依据探测响应判定上游 /v1/responses 是否真正可用于
+// 携带工具的请求。
+//
+//   - 404 / 405：端点不存在 → false
+//   - 其他非 2xx（401/403/422/5xx 等）：端点存在,但本次无法判定工具能力
+//     （鉴权/校验/瞬时故障）→ 保守按 true,保持既有"端点存在即支持"行为
+//   - 2xx：探测以 tool_choice=required 强制工具调用,响应必须含 function_call
+//     输出项才算真正可用;否则(如火山方舟 coding/v3 × kimi-k2.6 仅回 reasoning)
+//     判为 false,使网关改走 /v1/chat/completions 直转路径。
 func decideResponsesProbeSupport(status int, body []byte) bool {
 	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
 		return false
@@ -199,6 +312,8 @@ func decideResponsesProbeSupport(status int, body []byte) bool {
 	return responsesProbeBodyHasFunctionCall(body)
 }
 
+// responsesProbeBodyHasFunctionCall 判断非流式 Responses 响应体的 output 数组里
+// 是否存在 function_call 输出项。
 func responsesProbeBodyHasFunctionCall(body []byte) bool {
 	output := gjson.GetBytes(body, "output")
 	if !output.IsArray() {

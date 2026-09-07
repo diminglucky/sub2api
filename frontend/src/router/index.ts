@@ -1,5 +1,5 @@
 /**
- * Vue Router configuration for SuperAI frontend
+ * Vue Router configuration for Sub2API frontend
  * Defines all application routes with lazy loading and navigation guards
  */
 
@@ -13,19 +13,11 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
-import {
-  adminCustomFeatureRoutesAfterAnnouncements,
-  adminCustomFeatureRoutesAfterSettings,
-  publicCustomFeatureRoutes,
-  userCustomFeatureRoutesAfterAvailableChannels,
-  userCustomFeatureRoutesAfterKeys,
-  userCustomFeatureRoutesAfterRedeem
-} from './customFeatureRoutes'
 
 /**
  * Route definitions with lazy loading
  */
-export const routes: RouteRecordRaw[] = [
+const routes: RouteRecordRaw[] = [
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -174,7 +166,6 @@ export const routes: RouteRecordRaw[] = [
       title: 'Key Usage',
     }
   },
-  ...publicCustomFeatureRoutes,
   {
     path: '/legal/:documentId',
     name: 'LegalDocument',
@@ -224,7 +215,6 @@ export const routes: RouteRecordRaw[] = [
       descriptionKey: 'keys.description'
     }
   },
-  ...userCustomFeatureRoutesAfterKeys,
   {
     path: '/batch-image',
     name: 'BatchImageGuide',
@@ -262,7 +252,6 @@ export const routes: RouteRecordRaw[] = [
       descriptionKey: 'redeem.description'
     }
   },
-  ...userCustomFeatureRoutesAfterRedeem,
   {
     path: '/affiliate',
     name: 'Affiliate',
@@ -287,7 +276,6 @@ export const routes: RouteRecordRaw[] = [
       descriptionKey: 'availableChannels.description'
     }
   },
-  ...userCustomFeatureRoutesAfterAvailableChannels,
   {
     path: '/profile',
     name: 'Profile',
@@ -310,19 +298,6 @@ export const routes: RouteRecordRaw[] = [
       title: 'My Subscriptions',
       titleKey: 'userSubscriptions.title',
       descriptionKey: 'userSubscriptions.description'
-    }
-  },
-  {
-    path: '/recharge',
-    name: 'Recharge',
-    component: () => import('@/views/user/PaymentView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: false,
-      title: 'Recharge',
-      titleKey: 'nav.recharge',
-      descriptionKey: 'payment.description',
-      requiresPayment: false
     }
   },
   {
@@ -503,18 +478,6 @@ export const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/models',
-    name: 'AdminModels',
-    component: () => import('@/views/admin/ModelsView.vue'),
-    meta: {
-      requiresAuth: true,
-      requiresAdmin: true,
-      title: 'Model Management',
-      titleKey: 'admin.models.title',
-      descriptionKey: 'admin.models.description'
-    }
-  },
-  {
     path: '/admin/channels/monitor',
     name: 'AdminChannelMonitor',
     component: () => import('@/views/admin/ChannelMonitorView.vue'),
@@ -562,15 +525,15 @@ export const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/admin/upstream-balances',
-    name: 'AdminUpstreamBalances',
-    component: () => import('@/views/admin/UpstreamBalancesView.vue'),
+    path: '/admin/plugins',
+    name: 'AdminPlugins',
+    component: () => import('@/views/admin/PluginsView.vue'),
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Upstream Balances',
-      titleKey: 'admin.upstreamBalances.title',
-      descriptionKey: 'admin.upstreamBalances.description'
+      title: 'Plugin Management',
+      titleKey: 'admin.plugins.title',
+      descriptionKey: 'admin.plugins.description'
     }
   },
   {
@@ -585,7 +548,6 @@ export const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.announcements.description'
     }
   },
-  ...adminCustomFeatureRoutesAfterAnnouncements,
   {
     path: '/admin/proxies',
     name: 'AdminProxies',
@@ -633,11 +595,6 @@ export const routes: RouteRecordRaw[] = [
       titleKey: 'admin.settings.title',
       descriptionKey: 'admin.settings.description'
     }
-  },
-  ...adminCustomFeatureRoutesAfterSettings,
-  {
-    path: '/admin/backups',
-    redirect: { path: '/admin/settings', query: { tab: 'backup' } }
   },
   {
     path: '/admin/risk-control',
@@ -793,7 +750,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/public-models', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',

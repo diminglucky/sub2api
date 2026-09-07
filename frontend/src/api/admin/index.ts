@@ -16,8 +16,9 @@ import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
 import geminiAPI from './gemini'
-import grokAPI from './grok'
 import antigravityAPI from './antigravity'
+import grokAPI from './grok'
+import cnProvidersAPI from './cnProviders'
 import userAttributesAPI from './userAttributes'
 import opsAPI from './ops'
 import errorPassthroughAPI from './errorPassthrough'
@@ -32,9 +33,10 @@ import channelMonitorTemplateAPI from './channelMonitorTemplate'
 import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
-import lotteryAPI from './lottery'
 import adminComplianceAPI from './compliance'
 import auditAPI from './audit'
+import pluginsAPI from './plugins'
+import lotteryAPI from './lottery'
 import upstreamBalancesAPI from './upstreamBalances'
 
 /**
@@ -54,8 +56,9 @@ export const adminAPI = {
   subscriptions: subscriptionsAPI,
   usage: usageAPI,
   gemini: geminiAPI,
-  grok: grokAPI,
   antigravity: antigravityAPI,
+  grok: grokAPI,
+  cnProviders: cnProvidersAPI,
   userAttributes: userAttributesAPI,
   ops: opsAPI,
   errorPassthrough: errorPassthroughAPI,
@@ -70,9 +73,10 @@ export const adminAPI = {
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
-  lottery: lotteryAPI,
   compliance: adminComplianceAPI,
   audit: auditAPI,
+  plugins: pluginsAPI,
+  lottery: lotteryAPI,
   upstreamBalances: upstreamBalancesAPI
 }
 
@@ -90,8 +94,9 @@ export {
   subscriptionsAPI,
   usageAPI,
   geminiAPI,
-  grokAPI,
   antigravityAPI,
+  grokAPI,
+  cnProvidersAPI,
   userAttributesAPI,
   opsAPI,
   errorPassthroughAPI,
@@ -106,9 +111,10 @@ export {
   adminPaymentAPI,
   affiliatesAPI,
   riskControlAPI,
-  lotteryAPI,
   adminComplianceAPI,
   auditAPI,
+  pluginsAPI,
+  lotteryAPI,
   upstreamBalancesAPI
 }
 
@@ -121,3 +127,9 @@ export type { ErrorPassthroughRule, CreateRuleRequest, UpdateRuleRequest } from 
 export type { BackupAgentHealth, DataManagementConfig } from './dataManagement'
 export type { TLSFingerprintProfile, CreateProfileRequest, UpdateProfileRequest } from './tlsFingerprintProfile'
 export type { ContentModerationConfig, ContentModerationLog, ModerationMode } from './riskControl'
+export type {
+  PluginInstallation,
+  PluginCompatibility,
+  PluginUISession,
+  PluginTestResult
+} from './plugins'

@@ -8,6 +8,9 @@ import (
 )
 
 type openAIRateLimitResetCreditDetailPayload struct {
+	ID             string `json:"id,omitempty"`
+	CreditID       string `json:"credit_id,omitempty"`
+	CreditIDCamel  string `json:"creditId,omitempty"`
 	ExpiresAt      string `json:"expires_at,omitempty"`
 	ExpiresAtCamel string `json:"expiresAt,omitempty"`
 	ResetType      string `json:"reset_type,omitempty"`
@@ -25,11 +28,19 @@ type openAIRateLimitResetCreditDetailsPayload struct {
 }
 
 type openAIRateLimitResetCreditDetails struct {
-	AvailableCount          *int
-	AvailableCreditCount    int
-	CreditListPresent       bool
+	AvailableCount       *int
+	AvailableCreditCount int
+	CreditListPresent    bool
 	CreditListAuthoritative bool
-	Credits                 []OpenAIRateLimitResetCreditDetail
+	Credits              []OpenAIRateLimitResetCreditDetail
+	AutoResetCandidates  []openAIAutoResetCreditCandidate
+}
+
+// openAIAutoResetCreditCandidate 仅在服务内部流转。上游卡 ID 不进入 API DTO、
+// 账号 extra 或日志，避免管理端响应扩大敏感标识暴露面。
+type openAIAutoResetCreditCandidate struct {
+	ID        string
+	ExpiresAt string
 }
 
 func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCreditDetails, error) {
@@ -41,13 +52,12 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 	var rawCredits []*openAIRateLimitResetCreditDetailPayload
 	var availableCount *int
 	var creditListPresent bool
-	var creditListSource string
+	var creditListAuthoritative bool
 	if trimmed[0] == '[' {
 		if err := json.Unmarshal(trimmed, &rawCredits); err != nil {
 			return openAIRateLimitResetCreditDetails{}, err
 		}
 		creditListPresent = true
-		creditListSource = "array"
 	} else {
 		var payload openAIRateLimitResetCreditDetailsPayload
 		if err := json.Unmarshal(trimmed, &payload); err != nil {
@@ -55,7 +65,7 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 		}
 		availableCount = parseOpenAIResetCreditAvailableCount(payload.AvailableCount, payload.AvailableCountCamel)
 		var err error
-		rawCredits, creditListPresent, creditListSource, err = firstPresentResetCreditPayload(
+		rawCredits, creditListPresent, err = firstPresentResetCreditPayload(
 			payload.Credits,
 			payload.RateLimitResetCredits,
 			payload.Items,
@@ -64,9 +74,11 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 		if err != nil {
 			return openAIRateLimitResetCreditDetails{AvailableCount: availableCount}, err
 		}
+		creditListAuthoritative = creditListPresent
 	}
 
 	credits := make([]OpenAIRateLimitResetCreditDetail, 0, len(rawCredits))
+	autoResetCandidates := make([]openAIAutoResetCreditCandidate, 0, len(rawCredits))
 	availableCreditCount := 0
 	for _, raw := range rawCredits {
 		if raw == nil {
@@ -91,13 +103,25 @@ func parseOpenAIRateLimitResetCreditDetails(body []byte) (openAIRateLimitResetCr
 			continue
 		}
 		credits = append(credits, OpenAIRateLimitResetCreditDetail{ExpiresAt: expiresAt})
+		creditID := strings.TrimSpace(raw.ID)
+		if creditID == "" {
+			creditID = strings.TrimSpace(raw.CreditID)
+		}
+		if creditID == "" {
+			creditID = strings.TrimSpace(raw.CreditIDCamel)
+		}
+		autoResetCandidates = append(autoResetCandidates, openAIAutoResetCreditCandidate{
+			ID:        creditID,
+			ExpiresAt: expiresAt,
+		})
 	}
 	return openAIRateLimitResetCreditDetails{
-		AvailableCount:          availableCount,
-		AvailableCreditCount:    availableCreditCount,
-		CreditListPresent:       creditListPresent,
-		CreditListAuthoritative: creditListSource != "rate_limit_reset_credits",
-		Credits:                 credits,
+		AvailableCount:       availableCount,
+		AvailableCreditCount: availableCreditCount,
+		CreditListPresent:    creditListPresent,
+		CreditListAuthoritative: creditListAuthoritative,
+		Credits:              credits,
+		AutoResetCandidates:  autoResetCandidates,
 	}, nil
 }
 
@@ -129,18 +153,17 @@ func parseOpenAIResetCreditAvailableCount(values ...json.RawMessage) *int {
 	return nil
 }
 
-func firstPresentResetCreditPayload(values ...json.RawMessage) ([]*openAIRateLimitResetCreditDetailPayload, bool, string, error) {
-	sources := []string{"credits", "rate_limit_reset_credits", "items", "data"}
-	for index, value := range values {
+func firstPresentResetCreditPayload(values ...json.RawMessage) ([]*openAIRateLimitResetCreditDetailPayload, bool, error) {
+	for _, value := range values {
 		trimmed := bytes.TrimSpace(value)
 		if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
 			continue
 		}
 		var credits []*openAIRateLimitResetCreditDetailPayload
 		if err := json.Unmarshal(trimmed, &credits); err != nil {
-			return nil, false, "", err
+			return nil, false, err
 		}
-		return credits, true, sources[index], nil
+		return credits, true, nil
 	}
-	return nil, false, "", nil
+	return nil, false, nil
 }

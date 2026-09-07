@@ -31,10 +31,11 @@
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
-        <select v-model="form.role" class="input">
-          <option value="user">{{ t('admin.users.roles.user') }}</option>
-          <option value="admin">{{ t('admin.users.roles.admin') }}</option>
-        </select>
+        <Select
+          v-model="form.role"
+          :options="roleOptions"
+          :searchable="false"
+        />
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.notes') }}</label>
@@ -42,7 +43,16 @@
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>
-        <input v-model.number="form.concurrency" type="number" class="input" />
+        <input
+          v-model.number="form.concurrency"
+          type="number"
+          min="0"
+          step="1"
+          class="input"
+          :placeholder="t('admin.users.form.concurrencyPlaceholder')"
+          data-test="concurrency-input"
+        />
+        <p class="input-hint">{{ t('admin.users.form.concurrencyHint') }}</p>
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.form.rpmLimit') }}</label>
@@ -55,31 +65,6 @@
           :placeholder="t('admin.users.form.rpmLimitPlaceholder')"
         />
         <p class="input-hint">{{ t('admin.users.form.rpmLimitHint') }}</p>
-      </div>
-
-      <div v-if="exclusiveGroups.length > 0" class="space-y-2">
-        <label class="input-label">{{ t('admin.users.exclusiveGroups') }}</label>
-        <p class="input-hint">{{ t('admin.users.exclusiveGroupsAssignHint') }}</p>
-        <div class="grid gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-600 dark:bg-dark-800">
-          <label
-            v-for="group in exclusiveGroups"
-            :key="group.id"
-            class="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-white dark:hover:bg-dark-700"
-          >
-            <input
-              type="checkbox"
-              :checked="form.allowed_groups.includes(group.id)"
-              @change="toggleAllowedGroup(group.id, ($event.target as HTMLInputElement).checked)"
-              class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500 dark:border-dark-500"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ group.name }}</div>
-              <div class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                {{ group.platform }} · {{ t('admin.users.defaultRate') }} {{ group.rate_multiplier }}x
-              </div>
-            </div>
-          </label>
-        </div>
       </div>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
@@ -103,8 +88,9 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
-import type { AdminGroup, AdminUser, UserAttributeValuesMap } from '@/types'
+import type { AdminUser, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Select from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useStepUp, isStepUpBlocked, isStepUpCancelled, stepUpBlockReason } from '@/composables/useStepUp'
@@ -115,52 +101,27 @@ const emit = defineEmits(['close', 'success'])
 const { t } = useI18n(); const appStore = useAppStore(); const { copyToClipboard } = useClipboard()
 
 const submitting = ref(false); const passwordCopied = ref(false)
-const groups = ref<AdminGroup[]>([])
-const exclusiveGroups = computed(() =>
-  groups.value.filter((group) => group.status === 'active' && group.subscription_type === 'standard' && group.is_exclusive)
-)
+const roleOptions = computed(() => [
+  { value: 'user', label: t('admin.users.roles.user') },
+  { value: 'admin', label: t('admin.users.roles.admin') }
+])
 const form = reactive({
   email: '',
   password: '',
   username: '',
   notes: '',
-  role: 'user' as 'user' | 'admin',
+  role: 'user' as AdminUser['role'],
   concurrency: 1,
   rpm_limit: 0,
-  allowed_groups: [] as number[],
   customAttributes: {} as UserAttributeValuesMap
 })
 
 watch(() => props.user, (u) => {
   if (u) {
-    Object.assign(form, {
-      email: u.email,
-      password: '',
-      username: u.username || '',
-      notes: u.notes || '',
-      role: u.role || 'user',
-      concurrency: u.concurrency,
-      rpm_limit: u.rpm_limit ?? 0,
-      allowed_groups: [...(u.allowed_groups || [])],
-      customAttributes: {}
-    })
+    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', role: u.role || 'user', concurrency: u.concurrency, rpm_limit: u.rpm_limit ?? 0, customAttributes: {} })
     passwordCopied.value = false
   }
 }, { immediate: true })
-
-const loadGroups = async () => {
-  try {
-    groups.value = await adminAPI.groups.getAll()
-  } catch (error) {
-    console.error('Failed to load exclusive groups for edit user modal:', error)
-  }
-}
-
-watch(() => props.show, (show) => {
-  if (show) {
-    void loadGroups()
-  }
-})
 
 const generatePassword = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%^&*'
@@ -180,22 +141,15 @@ const handleUpdateUser = async () => {
     appStore.showError(t('admin.users.emailRequired'))
     return
   }
-  if (form.concurrency < 1) {
-    appStore.showError(t('admin.users.concurrencyMin'))
+  // 0 = 不限制，与网关 (AcquireUserSlot: maxConcurrency <= 0) 和批量改限额一致
+  if (!Number.isInteger(form.concurrency) || form.concurrency < 0) {
+    appStore.showError(t('admin.users.concurrencyNonNegative'))
     return
   }
   const userId = props.user.id
   submitting.value = true
   try {
-    const data: any = {
-      email: form.email,
-      username: form.username,
-      notes: form.notes,
-      role: form.role,
-      concurrency: form.concurrency,
-      rpm_limit: form.rpm_limit,
-      allowed_groups: form.allowed_groups
-    }
+    const data: any = { email: form.email, username: form.username, notes: form.notes, role: form.role, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
     if (form.password.trim()) data.password = form.password.trim()
     // 提升为管理员属敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 验证并重试
     await stepUp.run(() => adminAPI.users.update(userId, data))
@@ -215,11 +169,5 @@ const handleUpdateUser = async () => {
       appStore.showError(e?.message || t('admin.users.failedToUpdate'))
     }
   } finally { submitting.value = false }
-}
-
-const toggleAllowedGroup = (groupId: number, checked: boolean) => {
-  form.allowed_groups = checked
-    ? [...form.allowed_groups, groupId]
-    : form.allowed_groups.filter((id) => id !== groupId)
 }
 </script>
