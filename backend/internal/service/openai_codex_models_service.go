@@ -1383,6 +1383,7 @@ type codexModelsManifestRequest struct {
 	credentialAccount   *Account
 	accountConcurrency  int
 	useAPIKeyUpstream   bool
+	standardModelsList  bool
 }
 
 type codexModelsManifestCacheEntry struct {

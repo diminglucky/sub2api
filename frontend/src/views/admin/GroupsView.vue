@@ -4619,14 +4619,14 @@ import {
   supportsGroupOpenAIFast,
 } from "./groupsOpenAIFast";
 import {
-  buildModelsListConfig,
-  createModelsListState as createInitialModelsListState,
-  invertModelsListSelection,
-  moveModelsListItem,
-  selectAllModelsListItems,
-  setModelsListCandidates,
-} from "./groupsModelsList";
-import { createModelsListCandidatesTracker } from "./groupsModelsListCandidates";
+  buildModelAllowlistConfig as buildModelsListConfig,
+  createModelAllowlistState as createInitialModelsListState,
+  invertModelAllowlistSelection as invertModelsListSelection,
+  moveModelAllowlistItem as moveModelsListItem,
+  selectAllModelAllowlistItems as selectAllModelsListItems,
+  setModelAllowlistCandidates as setModelsListCandidates,
+} from "./groupModelAllowlist";
+import { createModelAllowlistCandidatesTracker as createModelsListCandidatesTracker } from "./modelAllowlistCandidates";
 import { normalizeSupportedModelScopesForPlatform } from "./groupsSupportedModelScopes";
 import {
   isProfitControlPlatform,
@@ -5475,7 +5475,7 @@ const loadModelsListCandidates = async (
   const loadingRef = mode === "create" ? createModelsListLoading : editModelsListLoading;
   loadingRef.value = true;
   try {
-    const models = await adminAPI.groups.getModelsListCandidates(groupID, platform);
+    const models = await adminAPI.groups.getModelAllowlistCandidates(groupID, platform);
     if (!modelsListCandidatesTracker.isCurrent(requestID, request)) {
       return;
     }

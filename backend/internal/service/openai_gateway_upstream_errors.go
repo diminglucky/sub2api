@@ -250,7 +250,21 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
-func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(args ...any) bool {
+	var statusCode int
+	var upstreamMsg string
+	var upstreamBody []byte
+	if len(args) == 3 {
+		statusCode, _ = args[0].(int)
+		upstreamMsg, _ = args[1].(string)
+		upstreamBody, _ = args[2].([]byte)
+	} else if len(args) == 4 {
+		statusCode, _ = args[1].(int)
+		upstreamMsg, _ = args[2].(string)
+		upstreamBody, _ = args[3].([]byte)
+	} else {
+		return false
+	}
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.

@@ -67,6 +67,9 @@ vi.mock('vue-i18n', () => ({
       if (key === 'auth.emailDomainRegistrationLimit') {
         return '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。'
       }
+      if (key === 'auth.emailDomainRegistrationLimit') {
+        return '该邮箱域名无法注册新账户。请使用主流邮箱注册；如需使用企业邮箱，请联系客服添加域名白名单。'
+      }
       return key
     },
     locale: { value: 'en' },

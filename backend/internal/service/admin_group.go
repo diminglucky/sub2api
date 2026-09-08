@@ -536,7 +536,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		RequirePrivacySet:               input.RequirePrivacySet,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
-		ModelsListConfig:                normalizeGroupModelsListConfig(input.ModelsListConfig),
+		ModelAllowlist:                  func() GroupModelAllowlist { cfg, _ := normalizeGroupModelAllowlist(input.ModelAllowlist); return cfg }(),
 		RPMLimit:                        input.RPMLimit,
 		MaxReasoningEffort:              maxReasoningEffort,
 		MaxReasoningEffortOverLimit:     maxReasoningEffortOverLimit,
@@ -914,8 +914,12 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	if input.MessagesDispatchModelConfig != nil {
 		group.MessagesDispatchModelConfig = normalizeOpenAIMessagesDispatchModelConfig(*input.MessagesDispatchModelConfig)
 	}
-	if input.ModelsListConfig != nil {
-		group.ModelsListConfig = normalizeGroupModelsListConfig(*input.ModelsListConfig)
+	if input.ModelAllowlist != nil {
+		modelAllowlist, normalizeErr := normalizeGroupModelAllowlist(*input.ModelAllowlist)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		group.ModelAllowlist = modelAllowlist
 	}
 	if input.RPMLimit != nil {
 		group.RPMLimit = *input.RPMLimit
@@ -1097,6 +1101,18 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 	}
 
 	return nil
+}
+
+func (s *adminServiceImpl) DeleteGroupIfEmpty(ctx context.Context, id int64) error {
+	if s == nil || s.groupRepo == nil {
+		return fmt.Errorf("guarded group deletion is unavailable")
+	}
+	guarded, ok := s.groupRepo.(interface{ DeleteCascadeIfEmpty(context.Context, int64) ([]int64, error) })
+	if !ok {
+		return fmt.Errorf("guarded group deletion is unavailable")
+	}
+	_, err := guarded.DeleteCascadeIfEmpty(ctx, id)
+	return err
 }
 
 func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {

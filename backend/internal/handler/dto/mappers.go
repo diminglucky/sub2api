@@ -407,6 +407,8 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	return out
 }
 
+func AccountListItemFromAccount(a *Account) *Account { return a }
+
 func redactAccountManagedExtra(extra map[string]any) map[string]any {
 	if extra == nil {
 		return nil

@@ -73,3 +73,22 @@ func detectOpenAICyberPolicy(payload []byte) (bool, string, string) {
 	}
 	return true, "cyber_policy", sanitizeUpstreamErrorMessage(message)
 }
+
+func markOpenAICyberPolicyEvent(c *gin.Context, payload []byte, upstreamStatus int, usage *OpenAIUsage) bool {
+	hit, code, message := detectOpenAICyberPolicy(payload)
+	if !hit {
+		return false
+	}
+	mark := CyberPolicyMark{
+		Code:           code,
+		Message:        message,
+		Body:           truncateString(string(payload), 4096),
+		UpstreamStatus: upstreamStatus,
+	}
+	if usage != nil {
+		mark.UpstreamInTok = usage.InputTokens
+		mark.UpstreamOutTok = usage.OutputTokens
+	}
+	MarkOpsCyberPolicy(c, mark)
+	return true
+}

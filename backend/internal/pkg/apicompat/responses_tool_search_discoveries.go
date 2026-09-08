@@ -95,6 +95,26 @@ func promoteResponsesToolSearchDiscoveries(req map[string]any) (bool, error) {
 	return true, nil
 }
 
+// promotedResponsesToolSearchDiscoveries returns only the declarations added
+// by promoteResponsesToolSearchDiscoveries. The chat-completions bridge uses
+// this form because it keeps the original Responses request immutable while
+// lowering its tool list.
+func promotedResponsesToolSearchDiscoveries(tools, input []any) ([]any, error) {
+	if len(tools) == 0 || len(input) == 0 {
+		return nil, nil
+	}
+	req := map[string]any{"tools": tools, "input": input}
+	before := len(tools)
+	if _, err := promoteResponsesToolSearchDiscoveries(req); err != nil {
+		return nil, err
+	}
+	updated, ok := req["tools"].([]any)
+	if !ok || len(updated) <= before {
+		return nil, nil
+	}
+	return updated[before:], nil
+}
+
 func hasResponsesToolSearchDeclaration(tools []any) bool {
 	for _, raw := range tools {
 		tool, ok := raw.(map[string]any)

@@ -322,6 +322,9 @@ type Account struct {
 	Groups   []*Group `json:"groups,omitempty"`
 }
 
+// AccountListItem is the compact account representation used by lite list APIs.
+type AccountListItem = Account
+
 type AccountGroup struct {
 	AccountID int64     `json:"account_id"`
 	GroupID   int64     `json:"group_id"`
