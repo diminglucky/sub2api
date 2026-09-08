@@ -1853,7 +1853,7 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 
 // handleConcurrencyError handles concurrency-related acquire errors.
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
-	status, errType, message := concurrencyErrorResponse(err, slotType)
+	status, errType, _, message := concurrencyErrorResponse(err, slotType)
 	h.handleStreamingAwareError(c, status, errType, message, streamStarted)
 }
 
@@ -1935,7 +1935,7 @@ func (h *GatewayHandler) handleStreamingAwareError(c *gin.Context, status int, e
 		// response.completed/failed/incomplete/cancelled 集合。
 		// Anthropic-backed Responses 路径同样会因为通用 error 帧被拒。
 		if inboundIsResponses(c) {
-			if writeResponsesFailedSSE(c, errType, message) {
+			if writeResponsesFailedSSE(c, errType, "", message) {
 				return
 			}
 		}
