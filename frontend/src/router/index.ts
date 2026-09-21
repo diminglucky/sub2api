@@ -13,11 +13,19 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import {
+  adminCustomFeatureRoutesAfterAnnouncements,
+  adminCustomFeatureRoutesAfterSettings,
+  publicCustomFeatureRoutes,
+  userCustomFeatureRoutesAfterAvailableChannels,
+  userCustomFeatureRoutesAfterKeys,
+  userCustomFeatureRoutesAfterRedeem,
+} from './customFeatureRoutes'
 
 /**
  * Route definitions with lazy loading
  */
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   // ==================== Setup Routes ====================
   {
     path: '/setup',
@@ -166,6 +174,7 @@ const routes: RouteRecordRaw[] = [
       title: 'Key Usage',
     }
   },
+  ...publicCustomFeatureRoutes,
   {
     path: '/legal/:documentId',
     name: 'LegalDocument',
@@ -228,6 +237,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'batchImageGuide.description'
     }
   },
+  ...userCustomFeatureRoutesAfterKeys,
   {
     path: '/usage',
     name: 'Usage',
@@ -252,6 +262,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'redeem.description'
     }
   },
+  ...userCustomFeatureRoutesAfterRedeem,
   {
     path: '/affiliate',
     name: 'Affiliate',
@@ -276,6 +287,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'availableChannels.description'
     }
   },
+  ...userCustomFeatureRoutesAfterAvailableChannels,
   {
     path: '/profile',
     name: 'Profile',
@@ -549,6 +561,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.announcements.description'
     }
   },
+  ...adminCustomFeatureRoutesAfterAnnouncements,
   {
     path: '/admin/proxies',
     name: 'AdminProxies',
@@ -597,6 +610,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.settings.description'
     }
   },
+  ...adminCustomFeatureRoutesAfterSettings,
   {
     path: '/admin/risk-control',
     name: 'AdminRiskControl',

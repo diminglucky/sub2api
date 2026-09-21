@@ -42,11 +42,6 @@ vi.mock('dompurify', () => ({
 
 const AppLayoutStub = { template: '<div><slot /></div>' }
 const IconStub = { template: '<span />' }
-const ImageUploadStub = {
-  props: ['modelValue'],
-  emits: ['update:modelValue'],
-  template: '<div />',
-}
 
 function mountPlayground() {
   return mount(PlaygroundView, {
@@ -54,7 +49,6 @@ function mountPlayground() {
       stubs: {
         AppLayout: AppLayoutStub,
         Icon: IconStub,
-        ImageUpload: ImageUploadStub,
       },
     },
   })
@@ -126,5 +120,70 @@ describe('PlaygroundView model loading', () => {
     expect(wrapper.text()).not.toContain('gpt-4o-realtime-preview')
     expect(wrapper.text()).not.toContain('playground.noChatModelsAvailable')
     expect(wrapper.text()).not.toContain('playground.noModelsAvailable')
+  })
+
+  it('sends reference images to /images/edits as multipart form data', async () => {
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: '测试',
+          key: 'sk-local',
+          status: 'active',
+          group_id: 2,
+        },
+      ],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/models')) {
+        return {
+          ok: true,
+          json: async () => ({
+            object: 'list',
+            data: [{ id: 'gpt-image-1' }],
+          }),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as Response
+      }
+      if (url.endsWith('/images/edits')) {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] }),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountPlayground()
+    await flushPromises()
+    await flushPromises()
+
+    const fileInput = wrapper.get('input[type="file"]')
+    const file = new File(['png'], 'reference.png', { type: 'image/png' })
+    Object.defineProperty(fileInput.element, 'files', {
+      configurable: true,
+      value: [file],
+    })
+    await fileInput.trigger('change')
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (wrapper.find('.image-reference-chip').exists()) break
+      await new Promise((resolve) => setTimeout(resolve, 5))
+    }
+
+    expect(wrapper.find('.image-reference-chip').exists()).toBe(true)
+    await wrapper.get('form.image-composer').trigger('submit')
+    await flushPromises()
+
+    const editCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/images/edits'))
+    expect(editCall).toBeTruthy()
+
+    const requestInit = editCall?.[1] as RequestInit
+    expect(requestInit.body).toBeInstanceOf(FormData)
+    expect((requestInit.body as FormData).getAll('image[]')).toHaveLength(1)
+    expect((requestInit.headers as Record<string, string>)['Content-Type']).toBeUndefined()
   })
 })

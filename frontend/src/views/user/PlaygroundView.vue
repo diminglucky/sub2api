@@ -141,160 +141,185 @@
         </main>
       </div>
 
-      <div v-else class="playground-grid playground-grid-image">
-        <aside class="playground-sidebar card-glass">
-          <div class="sidebar-section">
-            <div class="section-title">
-              <Icon name="key" size="sm" />
-              <span>{{ t('playground.imageApiKey') }}</span>
+      <div v-else class="image-studio">
+        <header class="image-studio__header">
+          <div class="image-studio__title">
+            <h1>{{ t('playground.imageStudioTitle') }}</h1>
+            <p>{{ t('playground.imageStudioSubtitle') }}</p>
+          </div>
+
+          <div class="image-studio__actions">
+            <div class="image-view-tabs" role="tablist" :aria-label="t('playground.imageModeLabel')">
+              <button
+                type="button"
+                class="image-view-tab"
+                :class="{ active: imageViewMode === 'gallery' }"
+                @click="imageViewMode = 'gallery'"
+              >
+                <Icon name="grid" size="sm" />
+                {{ t('playground.galleryMode') }}
+              </button>
+              <button
+                type="button"
+                class="image-view-tab"
+                :class="{ active: imageViewMode === 'agent' }"
+                @click="imageViewMode = 'agent'"
+              >
+                <Icon name="chat" size="sm" />
+                {{ t('playground.agentMode') }}
+              </button>
             </div>
-            <select v-model="selectedImageKeyId" class="input">
+            <button type="button" class="icon-button" :aria-label="t('playground.downloadImage')" :disabled="!selectedImage" @click="downloadImage(selectedImage)">
+              <Icon name="download" size="sm" />
+            </button>
+            <button type="button" class="icon-button" :aria-label="t('playground.clearResults')" :disabled="images.length === 0" @click="images = []; imageTurns = []; selectedImageId = null">
+              <Icon name="trash" size="sm" />
+            </button>
+          </div>
+        </header>
+
+        <div class="image-studio__toolbar">
+          <label class="toolbar-field toolbar-field--key">
+            <span><Icon name="key" size="xs" /> {{ t('playground.imageApiKey') }}</span>
+            <select v-model="selectedImageKeyId">
               <option :value="''">{{ t('playground.selectKey') }}</option>
               <option v-for="key in activeKeys" :key="key.id" :value="String(key.id)">
                 {{ key.name }} · {{ maskApiKey(key.key) }}
               </option>
             </select>
-          </div>
-
-          <div class="sidebar-section">
-            <div class="section-title">
-              <Icon name="brain" size="sm" />
-              <span>{{ t('playground.model') }}</span>
-              <span v-if="loadingImageModels" class="section-badge">{{ t('common.loading') }}</span>
-            </div>
-            <select v-if="imageModelOptions.length > 0" v-model="imageModel" class="input font-mono">
+          </label>
+          <label class="toolbar-field toolbar-field--model">
+            <span>
+              <Icon name="brain" size="xs" /> {{ t('playground.model') }}
+              <small v-if="loadingImageModels">{{ t('common.loading') }}</small>
+            </span>
+            <select v-if="imageModelOptions.length > 0" v-model="imageModel" class="font-mono">
               <option v-for="name in imageModelOptions" :key="name" :value="name">{{ name }}</option>
             </select>
-            <input
-              v-else
-              v-model="imageModel"
-              class="input font-mono"
-              :placeholder="t('playground.modelPlaceholder')"
-            />
-            <p v-if="imageModelLoadError" class="model-load-error">{{ imageModelLoadError }}</p>
+            <input v-else v-model="imageModel" class="font-mono" :placeholder="t('playground.modelPlaceholder')" />
+          </label>
+          <span v-if="imageModelLoadError" class="toolbar-error">{{ imageModelLoadError }}</span>
+        </div>
+
+        <section class="image-studio__canvas">
+          <div v-if="images.length === 0 && imageTurns.length === 0" class="studio-empty">
+            <div class="studio-empty__icon">
+              <Icon name="sparkles" size="xl" />
+            </div>
+            <p>{{ t('playground.imageEmptyTitle') }}</p>
+            <span>{{ t('playground.imageEmptyDescription') }}</span>
           </div>
 
-          <div class="sidebar-grid">
-            <label class="control-card">
-              <span class="control-label">
-                <Icon name="grid" size="xs" />
-                {{ t('playground.imageSize') }}
-              </span>
-              <select v-model="imageSize" class="input input-tight">
+          <div v-else-if="imageViewMode === 'gallery'" class="studio-grid">
+            <article
+              v-for="(image, index) in images"
+              :key="image.id"
+              class="studio-card"
+              :class="{ active: selectedImage?.id === image.id }"
+              @click="selectImage(image.id)"
+            >
+              <img :src="image.src" :alt="image.title" />
+              <div class="studio-card__overlay">
+                <span>{{ image.meta }}</span>
+                <div>
+                  <button type="button" class="icon-button icon-button--light" :aria-label="t('playground.downloadImage')" @click.stop="downloadImage(image)">
+                    <Icon name="download" size="xs" />
+                  </button>
+                  <button type="button" class="icon-button icon-button--light" :aria-label="t('playground.useAsReference')" @click.stop="useImageAsReference(image)">
+                    <Icon name="paperclip" size="xs" />
+                  </button>
+                </div>
+              </div>
+              <span class="studio-card__index">{{ index + 1 }}</span>
+            </article>
+          </div>
+
+          <div v-else class="studio-agent-thread">
+            <article v-for="turn in imageTurns" :key="turn.id" class="studio-turn">
+              <div class="studio-turn__prompt">
+                <span>{{ t('playground.you') }}</span>
+                <p>{{ turn.prompt }}</p>
+              </div>
+              <div class="studio-turn__results">
+                <button v-for="image in turn.images" :key="image.id" type="button" @click="selectImage(image.id)">
+                  <img :src="image.src" :alt="image.title" />
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <form class="image-composer" @submit.prevent="generateImage">
+          <div v-if="errorMessage" class="error-banner">{{ errorMessage }}</div>
+          <div v-if="referenceImages.length > 0" class="image-references">
+            <div v-for="item in referenceImages" :key="item.id" class="image-reference-chip">
+              <img :src="item.preview" :alt="item.name" />
+              <span>{{ item.name }}</span>
+              <button type="button" :aria-label="t('playground.removeImage')" @click="removeReferenceImage(item.id)">
+                <Icon name="x" size="xs" />
+              </button>
+            </div>
+          </div>
+          <textarea
+            v-model="imagePrompt"
+            rows="2"
+            class="image-composer__prompt"
+            :placeholder="t('playground.imagePromptPlaceholder')"
+            data-testid="playground-image-prompt"
+            @keydown.meta.enter.prevent="generateImage"
+            @keydown.ctrl.enter.prevent="generateImage"
+            @paste="onComposerPaste"
+          />
+          <div class="image-composer__controls">
+            <label>
+              <span>{{ t('playground.imageSize') }}</span>
+              <select v-model="imageSize">
                 <option v-for="option in imageSizeOptions" :key="option" :value="option">{{ option }}</option>
               </select>
             </label>
-            <label class="control-card">
-              <span class="control-label">
-                <Icon name="badge" size="xs" />
-                {{ t('playground.imageQuality') }}
-              </span>
-              <select v-model="imageQuality" class="input input-tight">
+            <label>
+              <span>{{ t('playground.imageQuality') }}</span>
+              <select v-model="imageQuality">
                 <option v-for="option in imageQualityOptions" :key="option" :value="option">{{ option }}</option>
               </select>
             </label>
-          </div>
-
-          <div class="sidebar-grid">
-            <label class="control-card">
-              <span class="control-label">
-                <Icon name="copy" size="xs" />
-                {{ t('playground.imageCount') }}
-              </span>
-              <input v-model.number="imageCount" type="number" min="1" max="4" step="1" class="input input-tight font-semibold" />
+            <label>
+              <span>{{ t('playground.imageFormat') }}</span>
+              <select v-model="imageFormat">
+                <option value="png">PNG</option>
+                <option value="jpeg">JPEG</option>
+                <option value="webp">WEBP</option>
+              </select>
             </label>
-            <label class="control-card">
-              <span class="control-label">
-                <Icon name="swap" size="xs" />
-                {{ t('playground.asyncImage') }}
-              </span>
-              <button type="button" class="toggle-like" :class="{ active: asyncImage }" @click="asyncImage = !asyncImage">
-                <span>{{ asyncImage ? 'On' : 'Off' }}</span>
-                <span class="toggle-like__dot" />
+            <label>
+              <span>{{ t('playground.imageBackground') }}</span>
+              <select v-model="imageBackground">
+                <option value="auto">{{ t('playground.autoOption') }}</option>
+                <option value="transparent">{{ t('playground.transparentOption') }}</option>
+                <option value="opaque">{{ t('playground.opaqueOption') }}</option>
+              </select>
+            </label>
+            <label>
+              <span>{{ t('playground.imageCount') }}</span>
+              <input v-model.number="imageCount" type="number" min="1" max="4" step="1" />
+            </label>
+            <label>
+              <span>{{ t('playground.asyncImage') }}</span>
+              <button type="button" class="mini-switch" :class="{ active: asyncImage }" @click="asyncImage = !asyncImage">
+                <span />
               </button>
             </label>
-          </div>
-
-          <details class="sidebar-section compact-extra" :open="Boolean(referenceImage)">
-            <summary class="section-title compact-summary">
+            <div class="image-composer__spacer" />
+            <input ref="referenceInput" type="file" accept="image/png,image/jpeg,image/webp" multiple class="hidden" @change="onReferenceFilesSelected" />
+            <button type="button" class="icon-button" :aria-label="t('playground.uploadImage')" @click="referenceInput?.click()">
               <Icon name="paperclip" size="sm" />
-              <span>{{ t('playground.referenceImage') }}</span>
-            </summary>
-            <ImageUpload
-              v-model="referenceImage"
-              :upload-label="t('playground.uploadImage')"
-              :remove-label="t('playground.removeImage')"
-              :hint="t('playground.referenceImageHint')"
-            />
-          </details>
-        </aside>
-
-        <main class="playground-panel card-glass">
-          <div class="image-stage">
-            <div v-if="images.length === 0" class="empty-stage empty-stage-image">
-              <div class="empty-stage__icon">
-                <Icon name="sparkles" size="lg" />
-              </div>
-              <p class="empty-stage__title">{{ t('playground.imageEmptyTitle') }}</p>
-              <p class="empty-stage__desc">{{ t('playground.imageEmptyDescription') }}</p>
-            </div>
-
-            <div v-else class="image-results">
-              <div class="image-viewer">
-                <template v-if="selectedImage">
-                  <div class="image-viewer__canvas">
-                    <img :src="selectedImage.src" :alt="selectedImage.title" class="image-viewer__img" />
-                    <button
-                      type="button"
-                      class="image-viewer__download"
-                      :aria-label="t('playground.downloadImage')"
-                      @click="downloadImage(selectedImage)"
-                    >
-                      <Icon name="download" size="sm" />
-                    </button>
-                  </div>
-                  <div v-if="images.length > 1" class="image-thumbs" :aria-label="t('playground.result')">
-                    <button
-                      v-for="(image, index) in images"
-                      :key="image.id"
-                      type="button"
-                      class="image-thumb"
-                      :class="{ active: image.id === selectedImage.id }"
-                      @click="selectImage(image.id)"
-                    >
-                      <img :src="image.src" :alt="`${t('playground.result')} ${index + 1}`" />
-                    </button>
-                  </div>
-                </template>
-                <div class="image-viewer__empty" v-else>
-                  <Icon name="sparkles" size="lg" />
-                  <p>{{ t('playground.imageViewerEmpty') }}</p>
-                </div>
-              </div>
-            </div>
+            </button>
+            <button type="submit" class="generate-button" :disabled="!canGenerateImage" data-testid="playground-image-generate">
+              <Icon name="sparkles" size="sm" />
+              {{ generatingImage ? t('playground.generating') : t('playground.generate') }}
+            </button>
           </div>
-
-          <form class="panel-composer panel-composer-image" @submit.prevent="generateImage">
-            <div v-if="errorMessage" class="error-banner">
-              {{ errorMessage }}
-            </div>
-            <div class="composer-shell">
-              <textarea
-                v-model="imagePrompt"
-                rows="3"
-                class="composer-input"
-                :placeholder="t('playground.imagePromptPlaceholder')"
-                data-testid="playground-image-prompt"
-                @keydown.meta.enter.prevent="generateImage"
-                @keydown.ctrl.enter.prevent="generateImage"
-              />
-              <button type="submit" class="send-button" :disabled="!canGenerateImage" data-testid="playground-image-generate">
-                <Icon name="sparkles" size="sm" />
-                {{ generatingImage ? t('playground.generating') : t('playground.generate') }}
-              </button>
-            </div>
-          </form>
-        </main>
+        </form>
       </div>
     </div>
   </AppLayout>
@@ -307,7 +332,6 @@ import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import ImageUpload from '@/components/common/ImageUpload.vue'
 import { authAPI, keysAPI } from '@/api'
 import type { ApiKey } from '@/types'
 import { resolvePlaygroundApiEndpoint } from '@/utils/apiEndpoint'
@@ -328,9 +352,23 @@ interface GeneratedImage {
   meta: string
 }
 
+interface ImageTurn {
+  id: number
+  prompt: string
+  images: GeneratedImage[]
+}
+
+interface ReferenceImageItem {
+  id: number
+  name: string
+  file: File
+  preview: string
+}
+
 const { t } = useI18n()
 
 const mode = ref<'chat' | 'image'>('image')
+const imageViewMode = ref<'gallery' | 'agent'>('gallery')
 const keys = ref<ApiKey[]>([])
 const selectedChatKeyId = ref('')
 const selectedImageKeyId = ref('')
@@ -355,15 +393,21 @@ const loadingChatModels = ref(false)
 const loadingImageModels = ref(false)
 const apiBaseUrl = ref('')
 const messagesEl = ref<HTMLElement | null>(null)
-const referenceImage = ref('')
+const referenceInput = ref<HTMLInputElement | null>(null)
+const referenceImages = ref<ReferenceImageItem[]>([])
 const imageSize = ref('1024x1024')
 const imageQuality = ref('high')
+const imageFormat = ref('png')
+const imageBackground = ref('auto')
 const imageCount = ref(1)
 const asyncImage = ref(true)
 const imageSizeOptions = ['1024x1024', '1536x1024', '1024x1536', '1792x1024']
 const imageQualityOptions = ['high', 'medium', 'low']
+const imageTurns = ref<ImageTurn[]>([])
 let nextMessageId = 1
 let nextImageId = 1
+let nextImageTurnId = 1
+let nextReferenceImageId = 1
 
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const selectedChatKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedChatKeyId.value) || null)
@@ -372,7 +416,7 @@ const modelOptions = computed(() => chatModelOptions.value)
 const canSubmitChat = computed(() => Boolean(apiBaseUrl.value && selectedChatKey.value && model.value.trim() && draft.value.trim() && !sending.value))
 const canGenerateImage = computed(() => Boolean(apiBaseUrl.value && selectedImageKey.value && imageModel.value.trim() && imagePrompt.value.trim() && !generatingImage.value))
 const selectedImage = computed(() => images.value.find((image) => image.id === selectedImageId.value) || images.value[0] || null)
-const hasReferenceImage = computed(() => Boolean(referenceImage.value.trim()))
+const hasReferenceImage = computed(() => referenceImages.value.length > 0)
 let chatModelsRequestId = 0
 let imageModelsRequestId = 0
 
@@ -682,11 +726,16 @@ async function generateImage() {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${selectedImageKey.value.key}`,
     }
-    headers['Content-Type'] = 'application/json'
+    const requestBody = hasReferenceImage.value
+      ? buildImageEditFormData(prompt)
+      : JSON.stringify(buildImagePayload(prompt))
+    if (!hasReferenceImage.value) {
+      headers['Content-Type'] = 'application/json'
+    }
     const response = await fetch(`${apiBaseUrl.value}${hasReferenceImage.value ? '/images/edits' : '/images/generations'}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(buildImagePayload(prompt)),
+      body: requestBody,
     })
 
     const payload = await readImageResponse(response)
@@ -718,6 +767,11 @@ async function generateImage() {
 
     images.value = nextImages
     selectedImageId.value = nextImages[0]?.id ?? null
+    imageTurns.value.push({
+      id: nextImageTurnId++,
+      prompt,
+      images: nextImages,
+    })
   } catch (error) {
     console.error('Image generation request failed:', error)
     errorMessage.value = normalizePlaygroundException(error)
@@ -732,14 +786,78 @@ function buildImagePayload(prompt: string) {
     prompt,
     size: imageSize.value,
     quality: imageQuality.value,
+    output_format: imageFormat.value,
+    background: imageBackground.value,
     n: Math.min(Math.max(Number(imageCount.value) || 1, 1), 4),
     stream: asyncImage.value,
     response_format: 'b64_json',
   }
-  if (hasReferenceImage.value) {
-    payload.images = [{ image_url: referenceImage.value.trim() }]
-  }
   return payload
+}
+
+function buildImageEditFormData(prompt: string) {
+  const formData = new FormData()
+  formData.append('model', imageModel.value.trim())
+  formData.append('prompt', prompt)
+  formData.append('size', imageSize.value)
+  formData.append('quality', imageQuality.value)
+  formData.append('output_format', imageFormat.value)
+  formData.append('background', imageBackground.value)
+  formData.append('response_format', 'b64_json')
+  formData.append('n', String(Math.min(Math.max(Number(imageCount.value) || 1, 1), 4)))
+  formData.append('stream', String(asyncImage.value))
+  for (const reference of referenceImages.value) {
+    formData.append('image[]', reference.file, reference.name)
+  }
+  return formData
+}
+
+function onReferenceFilesSelected(event: Event) {
+  const input = event.target as HTMLInputElement
+  addReferenceFiles(Array.from(input.files || []))
+  input.value = ''
+}
+
+function onComposerPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files || []).filter((file) => file.type.startsWith('image/'))
+  if (files.length === 0) return
+  addReferenceFiles(files)
+}
+
+function addReferenceFiles(files: File[]) {
+  const available = Math.max(0, 4 - referenceImages.value.length)
+  const accepted = files
+    .filter((file) => ['image/png', 'image/jpeg', 'image/webp'].includes(file.type))
+    .slice(0, available)
+  for (const file of accepted) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      referenceImages.value.push({
+        id: nextReferenceImageId++,
+        name: file.name || `reference-${nextReferenceImageId}`,
+        file,
+        preview: String(reader.result || ''),
+      })
+    }
+    reader.readAsDataURL(file)
+  }
+}
+
+function removeReferenceImage(id: number) {
+  referenceImages.value = referenceImages.value.filter((item) => item.id !== id)
+}
+
+async function useImageAsReference(image: GeneratedImage) {
+  try {
+    const response = await fetch(image.src)
+    const blob = await response.blob()
+    const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'
+    const file = new File([blob], `reference-${image.id}.${extension}`, { type: blob.type || 'image/png' })
+    addReferenceFiles([file])
+  } catch (error) {
+    console.error('Failed to use image as reference:', error)
+    errorMessage.value = t('playground.fileReadFailed')
+  }
 }
 
 async function readImageResponse(response: Response): Promise<any> {
@@ -1535,6 +1653,581 @@ watch(mode, () => {
   .playground-mode-switch {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+.image-studio {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.image-studio__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.image-studio__title h1 {
+  margin: 0;
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: rgb(15 23 42);
+}
+
+:global(.dark .playground-shell .image-studio__title h1) {
+  color: rgb(248 250 252);
+}
+
+.image-studio__title p {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: rgb(100 116 139);
+}
+
+.image-studio__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.image-view-tabs {
+  display: inline-flex;
+  gap: 0.2rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.8);
+  padding: 0.2rem;
+}
+
+:global(.dark .playground-shell .image-view-tabs) {
+  border-color: rgb(55 65 81 / 0.65);
+  background: rgb(15 23 42 / 0.6);
+}
+
+.image-view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.82rem;
+  color: rgb(71 85 105);
+}
+
+:global(.dark .playground-shell .image-view-tab) {
+  color: rgb(203 213 225);
+}
+
+.image-view-tab.active {
+  background: rgb(15 23 42);
+  color: white;
+}
+
+:global(.dark .playground-shell .image-view-tab.active) {
+  background: rgb(241 245 249);
+  color: rgb(15 23 42);
+}
+
+.image-studio__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.toolbar-field {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.72);
+  padding: 0.35rem 0.5rem;
+}
+
+:global(.dark .playground-shell .toolbar-field) {
+  border-color: rgb(55 65 81 / 0.55);
+  background: rgb(15 23 42 / 0.5);
+}
+
+.toolbar-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: rgb(100 116 139);
+}
+
+.toolbar-field small {
+  color: rgb(20 184 166);
+}
+
+.toolbar-field select,
+.toolbar-field input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: rgb(15 23 42);
+  font-size: 0.82rem;
+  outline: none;
+}
+
+:global(.dark .playground-shell .toolbar-field select),
+:global(.dark .playground-shell .toolbar-field input) {
+  color: rgb(241 245 249);
+}
+
+.toolbar-field--key {
+  flex: 0 1 300px;
+}
+
+.toolbar-field--model {
+  flex: 0 1 360px;
+}
+
+.toolbar-error {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: rgb(220 38 38);
+}
+
+.image-studio__canvas {
+  min-height: 0;
+  overflow: auto;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(248 250 252 / 0.92));
+}
+
+:global(.dark .playground-shell .image-studio__canvas) {
+  border-color: rgb(39 39 42);
+  background: linear-gradient(180deg, rgb(24 24 27 / 0.88), rgb(9 9 11 / 0.82));
+}
+
+.studio-empty {
+  min-height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.45rem;
+  color: rgb(100 116 139);
+  text-align: center;
+  padding: 4rem 1rem;
+}
+
+.studio-empty__icon {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252);
+  color: rgb(148 163 184);
+}
+
+:global(.dark .playground-shell .studio-empty__icon) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27);
+}
+
+.studio-empty p {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(51 65 85);
+}
+
+:global(.dark .playground-shell .studio-empty p) {
+  color: rgb(228 228 231);
+}
+
+.studio-empty span {
+  font-size: 0.82rem;
+}
+
+.studio-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.7rem;
+  padding: 0.8rem;
+}
+
+.studio-card {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(241 245 249);
+  cursor: pointer;
+}
+
+:global(.dark .playground-shell .studio-card) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27);
+}
+
+.studio-card.active {
+  border-color: rgb(249 115 22);
+  box-shadow: 0 0 0 2px rgb(249 115 22 / 0.18);
+}
+
+.studio-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.25s ease;
+}
+
+.studio-card:hover img {
+  transform: scale(1.025);
+}
+
+.studio-card__overlay {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.5rem;
+  background: linear-gradient(180deg, transparent, rgb(15 23 42 / 0.76));
+  padding: 2.2rem 0.55rem 0.55rem;
+  color: white;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.studio-card:hover .studio-card__overlay,
+.studio-card.active .studio-card__overlay {
+  opacity: 1;
+}
+
+.studio-card__overlay > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.72rem;
+}
+
+.studio-card__overlay > div {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.studio-card__index {
+  position: absolute;
+  top: 0.45rem;
+  left: 0.45rem;
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.88);
+  color: rgb(51 65 85);
+  font-size: 0.72rem;
+}
+
+.icon-button,
+.generate-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.9);
+  color: rgb(51 65 85);
+  transition: all 0.18s ease;
+}
+
+:global(.dark .playground-shell .icon-button),
+:global(.dark .playground-shell .generate-button) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27 / 0.9);
+  color: rgb(228 228 231);
+}
+
+.icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.icon-button:hover,
+.generate-button:hover {
+  border-color: rgb(148 163 184);
+}
+
+.icon-button:disabled,
+.generate-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.icon-button--light {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(255 255 255 / 0.16);
+  color: white;
+}
+
+.studio-agent-thread {
+  display: grid;
+  gap: 1.2rem;
+  padding: 1rem;
+}
+
+.studio-turn {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.studio-turn__prompt {
+  justify-self: end;
+  max-width: min(42rem, 86%);
+  border-radius: 0.5rem;
+  background: rgb(15 23 42);
+  color: white;
+  padding: 0.7rem 0.9rem;
+}
+
+:global(.dark .playground-shell .studio-turn__prompt) {
+  background: rgb(241 245 249);
+  color: rgb(15 23 42);
+}
+
+.studio-turn__prompt span {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.7rem;
+  opacity: 0.68;
+}
+
+.studio-turn__prompt p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.studio-turn__results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 260px));
+  gap: 0.6rem;
+}
+
+.studio-turn__results button {
+  overflow: hidden;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(241 245 249);
+}
+
+:global(.dark .playground-shell .studio-turn__results button) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27);
+}
+
+.studio-turn__results img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.image-composer {
+  justify-self: center;
+  width: min(100%, 960px);
+  display: grid;
+  gap: 0.55rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(255 255 255 / 0.96);
+  padding: 0.75rem;
+  box-shadow: 0 18px 50px rgb(15 23 42 / 0.14);
+}
+
+:global(.dark .playground-shell .image-composer) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27 / 0.96);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 0.36);
+}
+
+.image-composer__prompt {
+  width: 100%;
+  min-height: 3.4rem;
+  resize: none;
+  border: 0;
+  background: transparent;
+  color: rgb(15 23 42);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  outline: none;
+}
+
+:global(.dark .playground-shell .image-composer__prompt) {
+  color: rgb(244 244 245);
+}
+
+.image-composer__controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  border-top: 1px solid rgb(241 245 249);
+  padding-top: 0.55rem;
+}
+
+:global(.dark .playground-shell .image-composer__controls) {
+  border-top-color: rgb(39 39 42);
+}
+
+.image-composer__controls label {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 5.4rem;
+}
+
+.image-composer__controls label > span {
+  font-size: 0.68rem;
+  color: rgb(100 116 139);
+}
+
+.image-composer__controls select,
+.image-composer__controls input {
+  height: 2rem;
+  min-width: 5rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252);
+  padding: 0 0.45rem;
+  color: rgb(30 41 59);
+  font-size: 0.78rem;
+}
+
+:global(.dark .playground-shell .image-composer__controls select),
+:global(.dark .playground-shell .image-composer__controls input) {
+  border-color: rgb(63 63 70);
+  background: rgb(9 9 11);
+  color: rgb(244 244 245);
+}
+
+.image-composer__spacer {
+  flex: 1 1 auto;
+}
+
+.generate-button {
+  min-height: 2.25rem;
+  padding: 0 1rem;
+  border-color: transparent;
+  background: rgb(15 23 42);
+  color: white;
+  font-weight: 600;
+}
+
+.image-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.image-reference-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 12rem;
+  border-radius: 0.4rem;
+  border: 1px solid rgb(226 232 240);
+  background: rgb(248 250 252);
+  padding: 0.25rem 0.4rem;
+}
+
+:global(.dark .playground-shell .image-reference-chip) {
+  border-color: rgb(63 63 70);
+  background: rgb(9 9 11);
+}
+
+.image-reference-chip img {
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 0.3rem;
+  object-fit: cover;
+}
+
+.image-reference-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+
+.image-reference-chip button {
+  display: grid;
+  place-items: center;
+  color: rgb(100 116 139);
+}
+
+.mini-switch {
+  position: relative;
+  width: 2.4rem;
+  height: 1.25rem;
+  border-radius: 9999px;
+  background: rgb(203 213 225);
+  transition: background 0.18s ease;
+}
+
+.mini-switch span {
+  position: absolute;
+  top: 0.15rem;
+  left: 0.15rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 9999px;
+  background: white;
+  transition: transform 0.18s ease;
+}
+
+.mini-switch.active {
+  background: rgb(249 115 22);
+}
+
+.mini-switch.active span {
+  transform: translateX(1.15rem);
+}
+
+@media (max-width: 900px) {
+  .image-studio {
+    height: auto;
+    min-height: 34rem;
+  }
+
+  .image-studio__header,
+  .image-studio__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar-field--key,
+  .toolbar-field--model {
+    flex: 1 1 auto;
+  }
+
+  .studio-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
 }
 </style>

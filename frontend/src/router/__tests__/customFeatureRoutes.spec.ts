@@ -44,6 +44,6 @@ describe('custom feature routes', () => {
     expectPathOrder(paths, ['/redeem', '/lottery', '/affiliate'])
     expectPathOrder(paths, ['/available-channels', '/manual', '/manual/:platform', '/models', '/profile'])
     expectPathOrder(paths, ['/admin/announcements', '/admin/lottery', '/admin/proxies'])
-    expectPathOrder(paths, ['/admin/settings', '/admin/upstream-monitor', '/admin/backups'])
+    expectPathOrder(paths, ['/admin/settings', '/admin/upstream-monitor', '/admin/risk-control'])
   })
 })
