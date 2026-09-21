@@ -720,19 +720,26 @@ async function generateImage() {
   if (!canGenerateImage.value || !selectedImageKey.value) return
 
   const prompt = imagePrompt.value.trim()
+  const useGeminiNative = isGeminiImageModelOption(imageModel.value)
   errorMessage.value = ''
   generatingImage.value = true
   try {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${selectedImageKey.value.key}`,
     }
-    const requestBody = hasReferenceImage.value
-      ? buildImageEditFormData(prompt)
-      : JSON.stringify(buildImagePayload(prompt))
-    if (!hasReferenceImage.value) {
+    let requestUrl = `${apiBaseUrl.value}${hasReferenceImage.value ? '/images/edits' : '/images/generations'}`
+    let requestBody: string | FormData
+    if (useGeminiNative) {
       headers['Content-Type'] = 'application/json'
+      requestBody = JSON.stringify(buildGeminiImagePayload(prompt))
+      requestUrl = buildGeminiImageEndpoint(imageModel.value, asyncImage.value)
+    } else if (hasReferenceImage.value) {
+      requestBody = buildImageEditFormData(prompt)
+    } else {
+      headers['Content-Type'] = 'application/json'
+      requestBody = JSON.stringify(buildImagePayload(prompt))
     }
-    const response = await fetch(`${apiBaseUrl.value}${hasReferenceImage.value ? '/images/edits' : '/images/generations'}`, {
+    const response = await fetch(requestUrl, {
       method: 'POST',
       headers,
       body: requestBody,
@@ -748,15 +755,17 @@ async function generateImage() {
     const nextImages = data
       .map((item: any, index: number) => {
         const b64 = String(item?.b64_json || item?.result || '')
+        const mimeType = String(item?.mime_type || item?.mimeType || 'image/png')
         const src = b64
-          ? `data:image/png;base64,${b64}`
+          ? `data:${mimeType};base64,${b64}`
           : String(item?.url || item?.download_url || '')
         if (!src) return null
+        const outputFormat = String(item?.output_format || mimeType.split('/')[1] || imageFormat.value).toUpperCase()
         return {
           id: nextImageId++,
           title: item?.revised_prompt ? String(item.revised_prompt) : `${t('playground.result')} ${index + 1}`,
           src,
-          meta: [item?.output_format, imageSize.value, imageQuality.value, item?.model ? String(item.model) : imageModel.value].filter(Boolean).join(' · '),
+          meta: [outputFormat, imageSize.value, imageQuality.value, item?.model ? String(item.model) : imageModel.value].filter(Boolean).join(' · '),
         }
       })
       .filter((item: GeneratedImage | null): item is GeneratedImage => Boolean(item))
@@ -810,6 +819,73 @@ function buildImageEditFormData(prompt: string) {
     formData.append('image[]', reference.file, reference.name)
   }
   return formData
+}
+
+function isGeminiImageModelOption(name: string): boolean {
+  const normalized = name.trim().toLowerCase()
+  return normalized.includes('gemini') && isImageModelOption(normalized)
+}
+
+function buildGeminiImageEndpoint(model: string, stream: boolean): string {
+  const normalizedModel = model.trim().replace(/^models\//i, '')
+  const apiRoot = apiBaseUrl.value.replace(/\/+$/, '')
+  const root = apiRoot.endsWith('/v1') ? apiRoot.slice(0, -3) : apiRoot
+  const platform = selectedImageKey.value?.group?.platform
+  const prefix = platform === 'antigravity' ? '/antigravity/v1beta' : '/v1beta'
+  const action = stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
+  return `${root}${prefix}/models/${encodeURIComponent(normalizedModel)}:${action}`
+}
+
+function buildGeminiImagePayload(prompt: string) {
+  const parts: Record<string, unknown>[] = referenceImages.value.map((reference) => {
+    const inlineData = parseImageDataUrl(reference.preview)
+    return inlineData
+      ? { inlineData }
+      : { text: `Reference image: ${reference.name}` }
+  })
+  parts.push({ text: prompt })
+
+  const generationConfig: Record<string, unknown> = {
+    responseModalities: ['TEXT', 'IMAGE'],
+  }
+  const aspectRatio = geminiAspectRatioForSize(imageSize.value)
+  if (aspectRatio) {
+    generationConfig.imageConfig = { aspectRatio }
+  }
+
+  return {
+    contents: [
+      {
+        role: 'user',
+        parts,
+      },
+    ],
+    generationConfig,
+  }
+}
+
+function parseImageDataUrl(dataUrl: string): { mimeType: string; data: string } | null {
+  const match = /^data:([^;,]+);base64,(.+)$/i.exec(dataUrl)
+  if (!match) return null
+  return {
+    mimeType: match[1],
+    data: match[2],
+  }
+}
+
+function geminiAspectRatioForSize(size: string): string {
+  switch (size.trim()) {
+    case '1024x1024':
+      return '1:1'
+    case '1536x1024':
+      return '3:2'
+    case '1024x1536':
+      return '2:3'
+    case '1792x1024':
+      return '16:9'
+    default:
+      return ''
+  }
 }
 
 function onReferenceFilesSelected(event: Event) {
@@ -893,10 +969,30 @@ function extractImageItems(payload: any): any[] {
   if (Array.isArray(payload.data)) {
     return payload.data.flatMap((item: any) => extractImageItems(item))
   }
+  if (Array.isArray(payload.candidates)) {
+    return payload.candidates.flatMap((candidate: any) => {
+      const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : []
+      const text = parts.find((part: any) => typeof part?.text === 'string' && part.text.trim())?.text
+      return parts
+        .filter((part: any) => part?.inlineData?.data)
+        .map((part: any) => ({
+          b64_json: String(part.inlineData.data),
+          mime_type: String(part.inlineData.mimeType || 'image/png'),
+          output_format: formatFromMimeType(String(part.inlineData.mimeType || 'image/png')),
+          revised_prompt: text,
+        }))
+    })
+  }
+  if (payload.response?.candidates) return extractImageItems(payload.response)
   if (Array.isArray(payload.response?.output)) return payload.response.output
   if (Array.isArray(payload.output)) return payload.output
   if (payload.b64_json || payload.result || payload.url) return [payload]
   return []
+}
+
+function formatFromMimeType(mimeType: string): string {
+  const subtype = mimeType.toLowerCase().split('/')[1] || 'png'
+  return subtype === 'jpeg' ? 'jpg' : subtype
 }
 
 async function scrollToBottom() {

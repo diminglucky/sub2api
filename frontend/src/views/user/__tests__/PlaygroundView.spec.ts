@@ -186,4 +186,65 @@ describe('PlaygroundView model loading', () => {
     expect((requestInit.body as FormData).getAll('image[]')).toHaveLength(1)
     expect((requestInit.headers as Record<string, string>)['Content-Type']).toBeUndefined()
   })
+
+  it('sends Gemini image models through the native generateContent endpoint', async () => {
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'Gemini',
+          key: 'sk-local',
+          status: 'active',
+          group_id: 2,
+          group: { platform: 'gemini' },
+        },
+      ],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/models')) {
+        return {
+          ok: true,
+          json: async () => ({
+            object: 'list',
+            data: [{ id: 'gemini-2.5-flash-image' }],
+          }),
+          headers: new Headers({ 'content-type': 'application/json' }),
+        } as Response
+      }
+      if (url.includes('/v1beta/models/gemini-2.5-flash-image:streamGenerateContent')) {
+        return {
+          ok: true,
+          text: async () => 'data: {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"image/png","data":"aGVsbG8="}}]}}]}\n\n',
+          headers: new Headers({ 'content-type': 'text/event-stream' }),
+        } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountPlayground()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('gemini-2.5-flash-image')
+    await wrapper.get('form.image-composer').trigger('submit')
+    await flushPromises()
+
+    const generationCall = fetchMock.mock.calls.find(([url]) =>
+      String(url).includes('/v1beta/models/gemini-2.5-flash-image:streamGenerateContent'),
+    )
+    expect(generationCall).toBeTruthy()
+
+    const requestInit = generationCall?.[1] as RequestInit
+    expect(requestInit.headers).toMatchObject({
+      Authorization: 'Bearer sk-local',
+      'Content-Type': 'application/json',
+    })
+    const body = JSON.parse(String(requestInit.body))
+    expect(body.generationConfig.responseModalities).toEqual(['TEXT', 'IMAGE'])
+    expect(body.generationConfig.imageConfig.aspectRatio).toBe('1:1')
+    expect(wrapper.find('.studio-card').exists()).toBe(true)
+  })
 })
