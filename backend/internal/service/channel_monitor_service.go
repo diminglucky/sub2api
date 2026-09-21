@@ -955,8 +955,11 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 	if p.JitterSeconds != nil {
 		existing.JitterSeconds = *p.JitterSeconds
 	}
-	if err := validateJitter(existing.JitterSeconds, existing.IntervalSeconds); err != nil {
-		return err
+	if p.IntervalSeconds != nil || p.JitterSeconds != nil {
+		// interval 与 jitter 任一变化都需要重新校验组合约束（interval - jitter >= 下限）。
+		if err := validateJitter(existing.JitterSeconds, existing.IntervalSeconds); err != nil {
+			return err
+		}
 	}
 	return applyMonitorAdvancedUpdate(existing, p, providerChanged)
 }

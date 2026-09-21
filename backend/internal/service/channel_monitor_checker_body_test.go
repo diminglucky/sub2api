@@ -14,27 +14,12 @@ import (
 	"time"
 )
 
-type monitorRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f monitorRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
-// swapMonitorHTTPClient 临时替换 monitorHTTPClient 为内存 fake client，
-// 避免单测在受限 CI/沙盒环境里监听本地端口。
-func swapMonitorHTTPClient(t *testing.T, handler http.Handler) {
+// swapMonitorHTTPClient 临时替换 monitorHTTPClient 为不带 SSRF 校验的普通 client，
+// 让 httptest (127.0.0.1) 能连通。测试结束后恢复。
+func swapMonitorHTTPClient(t *testing.T) {
 	t.Helper()
 	orig := monitorHTTPClient
-	monitorHTTPClient = &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: monitorRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, req)
-			resp := recorder.Result()
-			resp.Request = req
-			return resp, nil
-		}),
-	}
+	monitorHTTPClient = &http.Client{Timeout: 5 * time.Second}
 	t.Cleanup(func() { monitorHTTPClient = orig })
 }
 
@@ -68,8 +53,10 @@ func (h *captureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func setupFakeAnthropic(t *testing.T, handler *captureHandler) string {
 	t.Helper()
-	swapMonitorHTTPClient(t, handler)
-	return "https://monitor-test.local"
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 type openAICaptureHandler struct {
@@ -128,8 +115,10 @@ func (h *openAICaptureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 func setupFakeOpenAI(t *testing.T, handler *openAICaptureHandler) string {
 	t.Helper()
-	swapMonitorHTTPClient(t, handler)
-	return "https://monitor-test.local"
+	swapMonitorHTTPClient(t)
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return srv.URL
 }
 
 func answerFromOpenAIRequest(body map[string]any) string {

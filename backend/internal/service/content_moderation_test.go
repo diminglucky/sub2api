@@ -21,59 +21,6 @@ type contentModerationTestSettingRepo struct {
 	values map[string]string
 }
 
-type contentModerationRoundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f contentModerationRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-
-var (
-	contentModerationTestTransportMu        sync.Mutex
-	contentModerationTestHandlers           = map[string]http.Handler{}
-	contentModerationTestPreviousTransport  http.RoundTripper
-	contentModerationTestTransportInstalled bool
-)
-
-func newContentModerationTestServer(t *testing.T, handler http.Handler) string {
-	t.Helper()
-
-	host := fmt.Sprintf("content-moderation-test-%d.local", time.Now().UnixNano())
-	contentModerationTestTransportMu.Lock()
-	if !contentModerationTestTransportInstalled {
-		contentModerationTestPreviousTransport = http.DefaultTransport
-		http.DefaultTransport = contentModerationRoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			contentModerationTestTransportMu.Lock()
-			handler := contentModerationTestHandlers[req.URL.Host]
-			fallback := contentModerationTestPreviousTransport
-			contentModerationTestTransportMu.Unlock()
-
-			if handler == nil {
-				return fallback.RoundTrip(req)
-			}
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, req)
-			resp := recorder.Result()
-			resp.Request = req
-			return resp, nil
-		})
-		contentModerationTestTransportInstalled = true
-	}
-	contentModerationTestHandlers[host] = handler
-	contentModerationTestTransportMu.Unlock()
-
-	t.Cleanup(func() {
-		contentModerationTestTransportMu.Lock()
-		delete(contentModerationTestHandlers, host)
-		if len(contentModerationTestHandlers) == 0 && contentModerationTestTransportInstalled {
-			http.DefaultTransport = contentModerationTestPreviousTransport
-			contentModerationTestPreviousTransport = nil
-			contentModerationTestTransportInstalled = false
-		}
-		contentModerationTestTransportMu.Unlock()
-	})
-	return "https://" + host
-}
-
 func (r *contentModerationTestSettingRepo) Get(ctx context.Context, key string) (*Setting, error) {
 	if value, ok := r.values[key]; ok {
 		return &Setting{Key: key, Value: value}, nil
@@ -512,15 +459,16 @@ func TestMatchBlockedKeyword_CaseInsensitiveSubstring(t *testing.T) {
 
 func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T) {
 	upstreamCalled := false
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{}}})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockedKeywords = []string{"secret-token"}
 	rawCfg, err := json.Marshal(cfg)
@@ -562,15 +510,16 @@ func TestContentModerationCheck_PreBlockKeywordHitSkipsUpstreamCall(t *testing.T
 
 func TestContentModerationCheck_KeywordsIgnoredInObserveMode(t *testing.T) {
 	upstreamHits := 0
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamHits++
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.1}}}})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModeObserve
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockedKeywords = []string{"secret-token"}
 	rawCfg, err := json.Marshal(cfg)
@@ -606,15 +555,16 @@ func TestContentModerationCheck_KeywordsIgnoredInObserveMode(t *testing.T) {
 
 func TestContentModerationCheck_KeywordOnlyStrategySkipsAPIOnMiss(t *testing.T) {
 	upstreamCalled := false
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.99}}}})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockedKeywords = []string{"never-matches"}
 	cfg.KeywordBlockingMode = ContentModerationKeywordModeKeywordOnly
@@ -652,15 +602,16 @@ func TestContentModerationCheck_KeywordOnlyStrategySkipsAPIOnMiss(t *testing.T) 
 
 func TestContentModerationCheck_APIOnlyStrategyIgnoresKeywordList(t *testing.T) {
 	upstreamCalled := false
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{Results: []moderationAPIResult{{CategoryScores: map[string]float64{"sexual": 0.1}}}})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockedKeywords = []string{"secret-token"}
 	cfg.KeywordBlockingMode = ContentModerationKeywordModeAPIOnly
@@ -1061,7 +1012,7 @@ func TestExtractContentModerationInput_OpenAIResponsesCodexPayloadUsesLastUserMe
 
 func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *testing.T) {
 	var moderationRequest moderationAPIRequest
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/moderations", r.URL.Path)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&moderationRequest))
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
@@ -1070,11 +1021,12 @@ func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *t
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.RecordNonHits = true
 	rawCfg, err := json.Marshal(cfg)
@@ -1124,7 +1076,7 @@ func TestContentModerationCheck_OpenAIResponsesRecordsNonHitForCodexPayload(t *t
 
 func TestContentModerationCheck_PreBlockBlocksCodexResponsesLatestUserInput(t *testing.T) {
 	var moderationRequest moderationAPIRequest
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v1/moderations", r.URL.Path)
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&moderationRequest))
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
@@ -1133,11 +1085,12 @@ func TestContentModerationCheck_PreBlockBlocksCodexResponsesLatestUserInput(t *t
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockStatus = http.StatusUnavailableForLegalReasons
 	cfg.BlockMessage = "内容审计测试阻断"
@@ -1192,7 +1145,7 @@ func TestContentModerationCheck_PreBlockBlocksCodexResponsesLatestUserInput(t *t
 
 func TestContentModerationStatusTracksPreBlockSyncMetrics(t *testing.T) {
 	var requestCount int
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		score := 0.01
 		if requestCount == 1 {
@@ -1205,11 +1158,12 @@ func TestContentModerationStatusTracksPreBlockSyncMetrics(t *testing.T) {
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	rawCfg, err := json.Marshal(cfg)
 	require.NoError(t, err)
@@ -1248,18 +1202,19 @@ func TestContentModerationStatusTracksPreBlockSyncMetrics(t *testing.T) {
 }
 
 func TestContentModerationStatusTracksPreBlockAPIKeyLoad(t *testing.T) {
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
 			Results: []moderationAPIResult{{
 				CategoryScores: map[string]float64{"sexual": 0.01},
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-one", "sk-two"}
 	rawCfg, err := json.Marshal(cfg)
 	require.NoError(t, err)
@@ -1359,14 +1314,15 @@ func TestBuildContentModerationTestAuditResult_UsesConfiguredThresholdsOnly(t *t
 
 func TestContentModerationCallModeration_400DoesNotFreezeAPIKey(t *testing.T) {
 	requestCount := 0
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":"Number of images (5) exceeds maximum of 1","type":"invalid_request_error","param":"input","code":"too_many_images"}}`))
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.RetryCount = 5
 	svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil, nil)
@@ -1398,13 +1354,14 @@ func TestContentModerationCallModeration_FreezesByHTTPStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.statusCode)
 				_, _ = w.Write([]byte(`{"error":{"message":"upstream error"}}`))
 			}))
+			defer server.Close()
 
 			cfg := defaultContentModerationConfig()
-			cfg.BaseURL = server
+			cfg.BaseURL = server.URL
 			cfg.APIKeys = []string{"sk-test"}
 			cfg.RetryCount = 0
 			svc := NewContentModerationService(nil, nil, nil, nil, nil, nil, nil, nil)
@@ -1425,10 +1382,11 @@ func TestContentModerationCallModeration_FreezesByHTTPStatus(t *testing.T) {
 }
 
 func TestContentModerationTestAPIKeys_400DoesNotFreezeAPIKey(t *testing.T) {
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":"invalid moderation request"}}`))
 	}))
+	defer server.Close()
 
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{}},
@@ -1442,7 +1400,7 @@ func TestContentModerationTestAPIKeys_400DoesNotFreezeAPIKey(t *testing.T) {
 	)
 	result, err := svc.TestAPIKeys(context.Background(), TestContentModerationAPIKeysInput{
 		APIKeys: []string{"sk-test"},
-		BaseURL: server,
+		BaseURL: server.URL,
 		Prompt:  "hello",
 	})
 
@@ -1511,18 +1469,19 @@ func TestContentModerationCheck_PreHashUsesRedisHashCache(t *testing.T) {
 }
 
 func TestContentModerationCheck_HashBlockLogsDoNotIncreaseNextViolationCount(t *testing.T) {
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
 			Results: []moderationAPIResult{{
 				CategoryScores: map[string]float64{"sexual": 0.9},
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.AutoBanEnabled = false
 	rawCfg, err := json.Marshal(cfg)
@@ -1658,7 +1617,7 @@ func newContentModerationFlaggedLog(userID int64) *ContentModerationLog {
 
 func TestContentModerationCheck_PreBlockFlaggedWritesRedisHashCache(t *testing.T) {
 	requestCount := 0
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestCount++
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
 			Results: []moderationAPIResult{{
@@ -1666,12 +1625,13 @@ func TestContentModerationCheck_PreBlockFlaggedWritesRedisHashCache(t *testing.T
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModePreBlock
 	cfg.PreHashCheckEnabled = true
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	cfg.BlockStatus = http.StatusConflict
 	cfg.BlockMessage = "命中风险输入"
@@ -1775,18 +1735,19 @@ func TestContentModerationClearFlaggedInputHashesAndStatusCount(t *testing.T) {
 }
 
 func TestContentModerationCheck_AsyncFlaggedWritesRedisHashCache(t *testing.T) {
-	server := newContentModerationTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(moderationAPIResponse{
 			Results: []moderationAPIResult{{
 				CategoryScores: map[string]float64{"sexual": 0.9},
 			}},
 		})
 	}))
+	defer server.Close()
 
 	cfg := defaultContentModerationConfig()
 	cfg.Enabled = true
 	cfg.Mode = ContentModerationModeObserve
-	cfg.BaseURL = server
+	cfg.BaseURL = server.URL
 	cfg.APIKeys = []string{"sk-test"}
 	rawCfg, err := json.Marshal(cfg)
 	require.NoError(t, err)
@@ -1821,7 +1782,7 @@ func TestBuildContentModerationAccountDisabledEmailBody_ContainsBanDetails(t *te
 	userID := int64(1001)
 	cfg := defaultContentModerationConfig()
 	cfg.BanThreshold = 10
-	body := buildContentModerationAccountDisabledEmailBody("SuperAI <Admin>", &ContentModerationLog{
+	body := buildContentModerationAccountDisabledEmailBody("Sub2API <Admin>", &ContentModerationLog{
 		UserID:          &userID,
 		UserEmail:       "user@example.com",
 		GroupName:       "vip_2",
@@ -1835,7 +1796,7 @@ func TestBuildContentModerationAccountDisabledEmailBody_ContainsBanDetails(t *te
 	require.Contains(t, body, "账户当前处于封禁状态，所有 API 请求将被拒绝")
 	require.Contains(t, body, "10 次（阈值 10）")
 	require.Contains(t, body, "sexual / 0.926")
-	require.Contains(t, body, "SuperAI &lt;Admin&gt;")
+	require.Contains(t, body, "Sub2API &lt;Admin&gt;")
 }
 
 func TestContentModerationUnbanUser_ActivatesUserAndInvalidatesAuthCache(t *testing.T) {

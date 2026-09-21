@@ -95,7 +95,6 @@ type APIKeyAuthGroupSnapshot struct {
 	// Only anthropic groups use these fields; others may leave them empty.
 	ModelRouting        map[string][]int64 `json:"model_routing,omitempty"`
 	ModelRoutingEnabled bool               `json:"model_routing_enabled"`
-	ModelsListConfig    GroupModelsListConfig `json:"models_list_config,omitempty"`
 	MCPXMLInject        bool               `json:"mcp_xml_inject"`
 
 	// 支持的模型系列（仅 antigravity 平台使用）

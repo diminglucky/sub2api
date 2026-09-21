@@ -66,29 +66,34 @@ type userAvailableGroup struct {
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode       string                   `json:"billing_mode"`
-	InputPrice        *float64                 `json:"input_price"`
-	OutputPrice       *float64                 `json:"output_price"`
-	CacheWritePrice   *float64                 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64                 `json:"cache_write_1h_price"`
-	CacheReadPrice    *float64                 `json:"cache_read_price"`
-	ImageInputPrice   *float64                 `json:"image_input_price"`
-	ImageOutputPrice  *float64                 `json:"image_output_price"`
-	PerRequestPrice   *float64                 `json:"per_request_price"`
-	Intervals         []userPricingIntervalDTO `json:"intervals"`
+	BillingMode                  string                   `json:"billing_mode"`
+	InputPrice                   *float64                 `json:"input_price"`
+	OutputPrice                  *float64                 `json:"output_price"`
+	CacheWritePrice              *float64                 `json:"cache_write_price"`
+	CacheWrite1hPrice            *float64                 `json:"cache_write_1h_price"`
+	CacheReadPrice               *float64                 `json:"cache_read_price"`
+	MaxReasoningEffortMultiplier *float64                 `json:"max_reasoning_effort_multiplier,omitempty"`
+	ImageInputPrice              *float64                 `json:"image_input_price"`
+	ImageOutputPrice             *float64                 `json:"image_output_price"`
+	PerRequestPrice              *float64                 `json:"per_request_price"`
+	Intervals                    []userPricingIntervalDTO `json:"intervals"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
 type userPricingIntervalDTO struct {
-	MinTokens         int      `json:"min_tokens"`
-	MaxTokens         *int     `json:"max_tokens"`
-	TierLabel         string   `json:"tier_label,omitempty"`
-	InputPrice        *float64 `json:"input_price"`
-	OutputPrice       *float64 `json:"output_price"`
-	CacheWritePrice   *float64 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64 `json:"cache_write_1h_price"`
-	CacheReadPrice    *float64 `json:"cache_read_price"`
-	PerRequestPrice   *float64 `json:"per_request_price"`
+	MinTokens            int      `json:"min_tokens"`
+	MaxTokens            *int     `json:"max_tokens"`
+	TierLabel            string   `json:"tier_label,omitempty"`
+	InputPrice           *float64 `json:"input_price"`
+	OutputPrice          *float64 `json:"output_price"`
+	CacheWritePrice      *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice    *float64 `json:"cache_write_1h_price"`
+	CacheReadPrice       *float64 `json:"cache_read_price"`
+	InputMultiplier      *float64 `json:"input_multiplier"`
+	OutputMultiplier     *float64 `json:"output_multiplier"`
+	CacheWriteMultiplier *float64 `json:"cache_write_multiplier"`
+	CacheReadMultiplier  *float64 `json:"cache_read_multiplier"`
+	PerRequestPrice      *float64 `json:"per_request_price"`
 }
 
 // userSupportedModel 用户可见的支持模型条目。
@@ -120,23 +125,19 @@ type userAvailableChannel struct {
 // List 列出当前用户可见的「可用渠道」。
 // GET /api/v1/channels/available
 func (h *AvailableChannelHandler) List(c *gin.Context) {
-	h.list(c, false)
+	h.list(c, true)
 }
 
 // ListModels 列出当前用户可见的模型来源数据。
 // GET /api/v1/models/available
 //
-// 模型广场是用户核心入口，不受「可用渠道」菜单开关影响；权限过滤仍与
-// List 完全一致，只暴露当前用户可访问分组对应的平台和模型。
+// 模型广场是用户核心入口，不受「可用渠道」菜单开关影响；权限过滤与 List 一致。
 func (h *AvailableChannelHandler) ListModels(c *gin.Context) {
 	h.list(c, false)
 }
 
 // ListPublicModels 列出未登录用户可见的公开模型来源数据。
 // GET /api/v1/public/models/available
-//
-// 公开页只展示非专属分组下的活跃渠道模型和公开倍率价格，不依赖用户身份，
-// 也不暴露任何专属分组、内部渠道字段或账号信息。
 func (h *AvailableChannelHandler) ListPublicModels(c *gin.Context) {
 	channels, err := h.channelService.ListAvailable(c.Request.Context())
 	if err != nil {
@@ -218,6 +219,28 @@ func (h *AvailableChannelHandler) list(c *gin.Context, requireFeature bool) {
 	}
 
 	response.Success(c, out)
+}
+
+func filterPublicGroups(groups []service.AvailableGroupRef) []userAvailableGroup {
+	visible := make([]userAvailableGroup, 0, len(groups))
+	for _, g := range groups {
+		if g.IsExclusive {
+			continue
+		}
+		visible = append(visible, userAvailableGroup{
+			ID:                 g.ID,
+			Name:               g.Name,
+			Platform:           g.Platform,
+			SubscriptionType:   g.SubscriptionType,
+			RateMultiplier:     g.RateMultiplier,
+			PeakRateEnabled:    g.PeakRateEnabled,
+			PeakStart:          g.PeakStart,
+			PeakEnd:            g.PeakEnd,
+			PeakRateMultiplier: g.PeakRateMultiplier,
+			IsExclusive:        false,
+		})
+	}
+	return visible
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
@@ -310,24 +333,6 @@ func filterUserVisibleGroups(
 	return visible
 }
 
-func filterPublicGroups(groups []service.AvailableGroupRef) []userAvailableGroup {
-	visible := make([]userAvailableGroup, 0, len(groups))
-	for _, g := range groups {
-		if g.IsExclusive {
-			continue
-		}
-		visible = append(visible, userAvailableGroup{
-			ID:               g.ID,
-			Name:             g.Name,
-			Platform:         g.Platform,
-			SubscriptionType: g.SubscriptionType,
-			RateMultiplier:   g.RateMultiplier,
-			IsExclusive:      g.IsExclusive,
-		})
-	}
-	return visible
-}
-
 // toUserSupportedModels 将 service 层支持模型转换为用户 DTO（字段白名单）。
 // 仅保留平台在 allowedPlatforms 中的条目，防止跨平台模型信息泄漏。
 // allowedPlatforms 为 nil 时不做平台过滤（保留全部，供测试或明确无过滤场景使用）。
@@ -360,15 +365,19 @@ func toUserPricingIntervals(src []service.PricingInterval) []userPricingInterval
 	intervals := make([]userPricingIntervalDTO, 0, len(src))
 	for _, iv := range src {
 		intervals = append(intervals, userPricingIntervalDTO{
-			MinTokens:         iv.MinTokens,
-			MaxTokens:         iv.MaxTokens,
-			TierLabel:         iv.TierLabel,
-			InputPrice:        iv.InputPrice,
-			OutputPrice:       iv.OutputPrice,
-			CacheWritePrice:   iv.CacheWritePrice,
-			CacheWrite1hPrice: iv.CacheWrite1hPrice,
-			CacheReadPrice:    iv.CacheReadPrice,
-			PerRequestPrice:   iv.PerRequestPrice,
+			MinTokens:            iv.MinTokens,
+			MaxTokens:            iv.MaxTokens,
+			TierLabel:            iv.TierLabel,
+			InputPrice:           iv.InputPrice,
+			OutputPrice:          iv.OutputPrice,
+			CacheWritePrice:      iv.CacheWritePrice,
+			CacheWrite1hPrice:    iv.CacheWrite1hPrice,
+			CacheReadPrice:       iv.CacheReadPrice,
+			InputMultiplier:      iv.InputMultiplier,
+			OutputMultiplier:     iv.OutputMultiplier,
+			CacheWriteMultiplier: iv.CacheWriteMultiplier,
+			CacheReadMultiplier:  iv.CacheReadMultiplier,
+			PerRequestPrice:      iv.PerRequestPrice,
 		})
 	}
 	return intervals
@@ -389,15 +398,16 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		billingMode = string(service.BillingModeToken)
 	}
 	return &userSupportedModelPricing{
-		BillingMode:       billingMode,
-		InputPrice:        p.InputPrice,
-		OutputPrice:       p.OutputPrice,
-		CacheWritePrice:   p.CacheWritePrice,
-		CacheWrite1hPrice: p.CacheWrite1hPrice,
-		CacheReadPrice:    p.CacheReadPrice,
-		ImageInputPrice:   p.ImageInputPrice,
-		ImageOutputPrice:  p.ImageOutputPrice,
-		PerRequestPrice:   p.PerRequestPrice,
-		Intervals:         intervals,
+		BillingMode:                  billingMode,
+		InputPrice:                   p.InputPrice,
+		OutputPrice:                  p.OutputPrice,
+		CacheWritePrice:              p.CacheWritePrice,
+		CacheWrite1hPrice:            p.CacheWrite1hPrice,
+		CacheReadPrice:               p.CacheReadPrice,
+		MaxReasoningEffortMultiplier: p.MaxReasoningEffortMultiplier,
+		ImageInputPrice:              p.ImageInputPrice,
+		ImageOutputPrice:             p.ImageOutputPrice,
+		PerRequestPrice:              p.PerRequestPrice,
+		Intervals:                    intervals,
 	}
 }

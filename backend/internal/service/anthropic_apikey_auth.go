@@ -48,11 +48,7 @@ func isOllamaCloudAnthropicAuthBaseURL(baseURL string) bool {
 // 可挂在多个平台分组下），即使 extra 缺失或显式 x_api_key 也强制 Bearer；
 // 其它上游保持历史 extra/default 行为。baseURL 为该请求实际选用的 Anthropic
 // 上游 base（GetBaseURL / GetAnthropicProtocolBaseURL 等），默认官方端点时传空。
-func setAnthropicAPIKeyAuthHeader(header http.Header, account *Account, token string, baseURLs ...string) {
-	baseURL := ""
-	if len(baseURLs) > 0 {
-		baseURL = baseURLs[0]
-	}
+func setAnthropicAPIKeyAuthHeader(header http.Header, account *Account, token, baseURL string) {
 	if account.Type == AccountTypeAPIKey && isOllamaCloudAnthropicAuthBaseURL(baseURL) {
 		header.Set("Authorization", "Bearer "+token)
 		return

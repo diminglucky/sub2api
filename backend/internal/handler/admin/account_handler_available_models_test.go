@@ -179,15 +179,8 @@ func TestAccountHandlerGetAvailableModels_OpenAIOAuthUsesExplicitModelMapping(t 
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
-	ids := make([]string, 0, len(resp.Data))
-	for _, m := range resp.Data {
-		ids = append(ids, m.ID)
-	}
-	require.Len(t, ids, 6)
-	for _, model := range []string{"gpt-5", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra"} {
-		require.Contains(t, ids, model)
-	}
-	require.Contains(t, ids, "gpt-5.6-"+"luna")
+	require.Len(t, resp.Data, 1)
+	require.Equal(t, "gpt-5", resp.Data[0].ID)
 }
 
 func TestAccountHandlerGetAvailableModels_OpenAIOAuthPassthroughFallsBackToDefaults(t *testing.T) {
