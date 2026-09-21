@@ -733,6 +733,60 @@ func TestResolveOpenAIMessagesDispatchMappedModel(t *testing.T) {
 	})
 }
 
+func TestOpenAIGatewayMessagesDispatchGateAllowsGrokGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("openai_group_without_dispatch_flag_is_rejected", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4101)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5101,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6101},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformOpenAI,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6101, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusForbidden, rec.Code)
+		require.Equal(t, "permission_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.Contains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+
+	t.Run("grok_group_without_dispatch_flag_reaches_gateway_dependencies", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"grok-4.3","messages":[{"role":"user","content":"hi"}]}`))
+		groupID := int64(4102)
+		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+			ID:      5102,
+			GroupID: &groupID,
+			User:    &service.User{ID: 6102},
+			Group: &service.Group{
+				ID:                    groupID,
+				Platform:              service.PlatformGrok,
+				AllowMessagesDispatch: false,
+			},
+		})
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 6102, Concurrency: 1})
+
+		h := &OpenAIGatewayHandler{}
+		h.Messages(c)
+
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+		require.Equal(t, "api_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
+		require.NotContains(t, rec.Body.String(), "This group does not allow /v1/messages dispatch")
+	})
+}
+
 func TestOpenAIModelMappedBody(t *testing.T) {
 	body := []byte(`{"model":"alias","input":"hello"}`)
 	calls := 0
@@ -1476,7 +1530,7 @@ func TestOpenAIResponsesWebSocket_PassthroughTracksModelPerTurn(t *testing.T) {
 		"each turn must be billed with its own channel-mapped model")
 }
 
-func TestOpenAIResponsesWebSocket_UnchangedChannelTargetOutsideAccountMappingKeysRemainsValid(t *testing.T) {
+func TestOpenAIResponsesWebSocket_ChannelMappedTargetSelectsAccountWithoutRequestedAlias(t *testing.T) {
 	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 		firstPayload:  `{"type":"response.create","model":"public-alias","stream":false}`,
 		secondPayload: `{"type":"response.create","stream":false}`,
@@ -1484,7 +1538,7 @@ func TestOpenAIResponsesWebSocket_UnchangedChannelTargetOutsideAccountMappingKey
 			"public-alias": "gpt-5.6-sol",
 		},
 		accountModelMapping: map[string]any{
-			"public-alias": "gpt-5.6-terra",
+			"gpt-5.6-sol": "gpt-5.6-sol",
 		},
 	})
 
@@ -1654,6 +1708,40 @@ func TestOpenAIAccountScheduleModelUsesActualOrSharedResolver(t *testing.T) {
 
 	setOpsSelectedAccount(c, account.ID, account.Platform)
 	require.Equal(t, "attempt-actual", openAIAccountScheduleModel(c, account, "public", true, nil))
+}
+
+func TestOpenAIChannelForwardModelForScheduler(t *testing.T) {
+	tests := []struct {
+		name      string
+		mapping   service.ChannelMappingResult
+		requested string
+		want      string
+	}{
+		{
+			name:      "mapped model is used for capability filtering",
+			mapping:   service.ChannelMappingResult{Mapped: true, MappedModel: "  gpt-forward  "},
+			requested: "client-alias",
+			want:      "gpt-forward",
+		},
+		{
+			name:      "unmapped request preserves client model",
+			mapping:   service.ChannelMappingResult{MappedModel: "client-model"},
+			requested: "client-model",
+			want:      "client-model",
+		},
+		{
+			name:      "empty mapped model safely preserves client model",
+			mapping:   service.ChannelMappingResult{Mapped: true, MappedModel: "  "},
+			requested: "client-model",
+			want:      "client-model",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIChannelForwardModel(tt.mapping, tt.requested))
+		})
+	}
 }
 
 func TestShouldReportOpenAIWSProxyAccountFailure(t *testing.T) {
@@ -1828,7 +1916,10 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
-	firstPayload              string
+	firstPayload string
+	// midPayload 在首个 turn 完成后发送（如 session.update），上游桩会为它
+	// 回一个 response.completed，客户端按普通事件读取。
+	midPayload                string
 	secondPayload             string
 	userAgent                 *string
 	ingressMode               string
@@ -1836,6 +1927,12 @@ type openAIResponsesWSUsageLogCase struct {
 	billingModelSource        string
 	accountModelMapping       map[string]any
 	afterFirstUpstreamRequest func(channelSvc *service.ChannelService) error
+	// group 覆盖 apiKey.Group（分组级模型白名单测试用）；nil 保持原有无分组行为。
+	group *service.Group
+	// firstFrameCloseExpected：首帧即被拒（连接被 1008 关闭），不期待任何响应帧。
+	firstFrameCloseExpected bool
+	// secondTurnCloseExpected：第二个 turn 被拒（连接被 1008 关闭）。
+	secondTurnCloseExpected bool
 }
 
 type openAIResponsesWSUsageLogResult struct {
@@ -2755,8 +2852,11 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	gin.SetMode(gin.TestMode)
 
 	turnCount := 1
+	if strings.TrimSpace(tc.midPayload) != "" {
+		turnCount++
+	}
 	if strings.TrimSpace(tc.secondPayload) != "" {
-		turnCount = 2
+		turnCount++
 	}
 	upstreamPayloadCh := make(chan []byte, turnCount)
 	upstreamErrCh := make(chan error, 1)
@@ -2860,7 +2960,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				BillingModelSource: tc.billingModelSource,
 			}},
 			groupPlatforms: map[int64]string{groupID: service.PlatformOpenAI},
-		}, nil, nil, nil)
+		}, nil, nil, nil, nil)
 	}
 
 	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -2909,6 +3009,9 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		GroupID: &groupID,
 		User:    &service.User{ID: 1701, Status: service.StatusActive},
 	}
+	if tc.group != nil {
+		apiKey.Group = tc.group
+	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
@@ -2940,6 +3043,19 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	cancelWrite()
 	require.NoError(t, err)
 
+	if tc.firstFrameCloseExpected {
+		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+		_, _, readErr := clientConn.Read(readCtx)
+		cancelRead()
+		require.Error(t, readErr, "first frame should have been rejected with a close")
+		var closeErr coderws.CloseError
+		require.ErrorAs(t, readErr, &closeErr)
+		require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+		require.Contains(t, closeErr.Reason, "not available for this group")
+		_ = clientConn.CloseNow()
+		return openAIResponsesWSUsageLogResult{}
+	}
+
 	clientEvents := make([][]byte, 0, turnCount)
 	readCompleted := func() {
 		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
@@ -2950,11 +3066,30 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		clientEvents = append(clientEvents, append([]byte(nil), event...))
 	}
 	readCompleted()
-	if turnCount == 2 {
+	if tc.midPayload != "" {
+		writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
+		err = clientConn.Write(writeCtx, coderws.MessageText, []byte(tc.midPayload))
+		cancelWrite()
+		require.NoError(t, err)
+		readCompleted()
+	}
+	if strings.TrimSpace(tc.secondPayload) != "" && (turnCount >= 2) {
 		writeCtx, cancelWrite = context.WithTimeout(context.Background(), 3*time.Second)
 		err = clientConn.Write(writeCtx, coderws.MessageText, []byte(tc.secondPayload))
 		cancelWrite()
 		require.NoError(t, err)
+		if tc.secondTurnCloseExpected {
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, _, readErr := clientConn.Read(readCtx)
+			cancelRead()
+			require.Error(t, readErr, "second turn should have been rejected with a close")
+			var closeErr coderws.CloseError
+			require.ErrorAs(t, readErr, &closeErr)
+			require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
+			require.Contains(t, closeErr.Reason, "not available for this group")
+			_ = clientConn.CloseNow()
+			return openAIResponsesWSUsageLogResult{}
+		}
 		readCompleted()
 	}
 	_ = clientConn.Close(coderws.StatusNormalClosure, "done")
@@ -3028,18 +3163,6 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		require.False(t, reported)
 	})
 
-	t.Run("cyber policy after write", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(w)
-		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
-		before := c.Writer.Size()
-		_, _ = c.Writer.WriteString(`{"error":{"code":"cyber_policy","message":"blocked"}}`)
-
-		reported := openAIForwardErrorAlreadyCommunicated(c, before, errors.New("openai cyber_policy: blocked"))
-
-		require.True(t, reported)
-	})
-
 	t.Run("generic error after write still needs fallback", func(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
@@ -3050,5 +3173,29 @@ data: {"type":"response.failed","error":{"message":"This content was flagged"}}
 		reported := openAIForwardErrorAlreadyCommunicated(c, before, errors.New("stream read error: unexpected EOF"))
 
 		require.False(t, reported)
+	})
+
+	// H-2: cyber_policy 命中且响应已写出时，即便 err 前缀不在白名单（非流式 400 cyber
+	// 返回 "openai cyber_policy:"、透传账号返回 "upstream error:"），也须判定已透传，避免
+	// ensureForwardErrorResponse 在已写出的完整响应尾部追加 SSE 污染响应体。
+	t.Run("cyber policy hit after write is already communicated", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked", UpstreamStatus: 400})
+		before := c.Writer.Size()
+		_, _ = c.Writer.WriteString(`{"error":{"code":"cyber_policy","message":"blocked"}}`)
+
+		require.True(t, openAIForwardErrorAlreadyCommunicated(c, before, errors.New("openai cyber_policy: blocked")))
+	})
+
+	// Size 守卫优先于 cyber 短路：cyber 命中但未写出任何响应时仍需补写错误。
+	t.Run("cyber policy without write still needs fallback", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, EndpointResponses, nil)
+		service.MarkOpsCyberPolicy(c, service.CyberPolicyMark{Message: "blocked", UpstreamStatus: 400})
+
+		require.False(t, openAIForwardErrorAlreadyCommunicated(c, c.Writer.Size(), errors.New("openai cyber_policy: blocked")))
 	})
 }

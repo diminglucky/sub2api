@@ -24,33 +24,25 @@
             />
           </div>
           <EndpointPopover
-            :api-base-url="apiEndpointUrl"
+            v-if="publicSettings?.api_base_url || (publicSettings?.custom_endpoints?.length ?? 0) > 0"
+            :api-base-url="publicSettings?.api_base_url || ''"
             :custom-endpoints="publicSettings?.custom_endpoints || []"
           />
-
-          <div
-            v-if="exclusiveGroups.length > 0"
-            class="rounded-lg border border-purple-200 bg-purple-50/70 px-4 py-3 dark:border-purple-900/50 dark:bg-purple-950/20"
-            data-test="exclusive-groups-panel"
-          >
-            <div class="flex flex-col gap-2 md:flex-row md:items-center">
-              <div class="flex shrink-0 items-center gap-2 text-sm font-semibold text-purple-700 dark:text-purple-300">
-                <Icon name="shield" size="sm" />
-                <span>{{ t('keys.exclusiveGroupsTitle') }}</span>
-              </div>
-              <div class="flex flex-1 flex-wrap gap-2">
-                <GroupBadge
-                  v-for="group in exclusiveGroups"
-                  :key="group.id"
-                  :name="group.name"
-                  :platform="group.platform"
-                  :subscription-type="group.subscription_type"
-                  :rate-multiplier="group.rate_multiplier"
-                  :user-rate-multiplier="userGroupRates[group.id] ?? null"
-                  always-show-rate
-                />
-              </div>
-            </div>
+          <div v-if="selectedIds.length" class="flex flex-wrap items-center gap-3 text-sm">
+            <span class="text-gray-600 dark:text-gray-300">
+              {{ t('keys.bulkEdit.selectedCount', { count: selectedIds.length }) }}
+            </span>
+            <button
+              class="btn btn-primary btn-sm"
+              :disabled="loading"
+              data-test="bulk-edit-keys"
+              @click="showBulkEditModal = true"
+            >
+              {{ t('keys.bulkEdit.title') }}
+            </button>
+            <button class="btn btn-secondary btn-sm" @click="selectedIds = []">
+              {{ t('keys.bulkEdit.clearSelection') }}
+            </button>
           </div>
         </div>
       </template>
@@ -109,6 +101,11 @@
           :columns="columns"
           :data="apiKeys"
           :loading="loading"
+          selectable
+          row-key="id"
+          :selected-keys="selectedIds"
+          :selection-label="(key: ApiKey) => t('keys.bulkEdit.selectKey', { name: key.name })"
+          @update:selected-keys="handleSelectionChange"
           :server-side-sort="true"
           default-sort-key="created_at"
           default-sort-order="desc"
@@ -216,13 +213,13 @@
               <div class="flex items-center gap-1.5">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('keys.today') }}:</span>
                 <span class="font-medium text-gray-900 dark:text-white">
-                  ¥{{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
+                  ${{ (usageStats[row.id]?.today_actual_cost ?? 0).toFixed(4) }}
                 </span>
               </div>
               <div class="mt-0.5 flex items-center gap-1.5">
                 <span class="text-gray-500 dark:text-gray-400">{{ t('keys.total') }}:</span>
                 <span class="font-medium text-gray-900 dark:text-white">
-                  ¥{{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
+                  ${{ (usageStats[row.id]?.total_actual_cost ?? 0).toFixed(4) }}
                 </span>
               </div>
               <!-- Quota progress (if quota is set) -->
@@ -235,7 +232,7 @@
                     row.quota_used >= row.quota * 0.8 ? 'text-yellow-500' :
                     'text-gray-900 dark:text-white'
                   ]">
-                    ¥{{ row.quota_used?.toFixed(2) || '0.00' }} / ¥{{ row.quota?.toFixed(2) }}
+                    ${{ row.quota_used?.toFixed(2) || '0.00' }} / ${{ row.quota?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -265,7 +262,7 @@
                     row.usage_5h >= row.rate_limit_5h * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ¥{{ row.usage_5h?.toFixed(2) || '0.00' }}/¥{{ row.rate_limit_5h?.toFixed(2) }}
+                    ${{ row.usage_5h?.toFixed(2) || '0.00' }}/${{ row.rate_limit_5h?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -293,7 +290,7 @@
                     row.usage_1d >= row.rate_limit_1d * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ¥{{ row.usage_1d?.toFixed(2) || '0.00' }}/¥{{ row.rate_limit_1d?.toFixed(2) }}
+                    ${{ row.usage_1d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_1d?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -321,7 +318,7 @@
                     row.usage_7d >= row.rate_limit_7d * 0.8 ? 'text-yellow-500' :
                     'text-gray-700 dark:text-gray-300'
                   ]">
-                    ¥{{ row.usage_7d?.toFixed(2) || '0.00' }}/¥{{ row.rate_limit_7d?.toFixed(2) }}
+                    ${{ row.usage_7d?.toFixed(2) || '0.00' }}/${{ row.rate_limit_7d?.toFixed(2) }}
                   </span>
                 </div>
                 <div class="h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
@@ -488,12 +485,64 @@
           />
         </div>
 
+        <fieldset v-if="!showEditModal" data-tour="key-form-provider">
+          <legend class="input-label">{{ t('keys.providerLabel') }}</legend>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <label
+              v-for="provider in createProviderOptions"
+              :key="provider.value"
+              class="relative min-w-0"
+              :class="provider.count === 0 ? 'cursor-not-allowed' : 'cursor-pointer'"
+            >
+              <input
+                type="radio"
+                name="key-provider"
+                :value="provider.value"
+                :checked="createProvider === provider.value"
+                :disabled="provider.count === 0"
+                class="peer sr-only"
+                @change="selectCreateProvider(provider.value)"
+              />
+              <span
+                class="flex h-full flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-3 text-center transition-colors peer-checked:border-primary-500 peer-checked:bg-primary-50/60 peer-checked:ring-1 peer-checked:ring-primary-500 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary-500 peer-disabled:opacity-40 dark:border-dark-600 dark:bg-dark-800 dark:peer-checked:border-primary-500 dark:peer-checked:bg-primary-500/10"
+                :class="provider.count > 0 && 'hover:border-primary-300 dark:hover:border-primary-700'"
+              >
+                <span class="flex h-8 items-center justify-center gap-1.5" aria-hidden="true">
+                  <span
+                    v-for="platform in KEY_GROUP_PROVIDER_ICONS[provider.value]"
+                    :key="platform"
+                    class="flex h-8 w-8 items-center justify-center rounded-lg"
+                    :class="platformBadgeLightClass(platform)"
+                  >
+                    <PlatformIcon :platform="platform" size="lg" />
+                  </span>
+                </span>
+                <span class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ provider.label }}</span>
+              </span>
+              <span
+                v-if="createProvider === provider.value"
+                class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-white"
+                aria-hidden="true"
+              >
+                <Icon name="check" size="xs" :stroke-width="3" />
+              </span>
+            </label>
+          </div>
+          <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-gray-400" aria-live="polite">
+            {{ groups.length === 0 ? t('common.noGroupsAvailable') : t(`keys.providerHints.${createProvider}`) }}
+          </p>
+        </fieldset>
+
         <div>
-          <label class="input-label">{{ t('keys.groupLabel') }}</label>
+          <label class="input-label" for="key-form-group">{{ t('keys.groupLabel') }}</label>
           <Select
+            :key="showEditModal ? 'edit' : createProvider"
+            id="key-form-group"
+            :aria-label="t('keys.groupLabel')"
             v-model="formData.group_id"
-            :options="groupOptions"
+            :options="formGroupOptions"
             :placeholder="t('keys.selectGroup')"
+            :empty-text="t('common.noGroupsAvailable')"
             :searchable="true"
             :search-placeholder="t('keys.searchGroup')"
             data-tour="key-form-group"
@@ -646,7 +695,7 @@
           <div class="space-y-4">
             <div>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                 <input
                   v-model.number="formData.quota"
                   type="number"
@@ -665,11 +714,11 @@
               <div class="flex items-center gap-2">
                 <div class="flex-1 rounded-lg bg-gray-100 px-3 py-2 dark:bg-dark-700">
                   <span class="font-medium text-gray-900 dark:text-white">
-                    ¥{{ selectedKey.quota_used?.toFixed(4) || '0.0000' }}
+                    ${{ selectedKey.quota_used?.toFixed(4) || '0.0000' }}
                   </span>
                   <span class="mx-2 text-gray-400">/</span>
                   <span class="text-gray-500 dark:text-gray-400">
-                    ¥{{ selectedKey.quota?.toFixed(2) || '0.00' }}
+                    ${{ selectedKey.quota?.toFixed(2) || '0.00' }}
                   </span>
                 </div>
                 <button
@@ -712,7 +761,7 @@
             <div>
               <label class="input-label">{{ t('keys.rateLimit5h') }}</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                 <input
                   v-model.number="formData.rate_limit_5h"
                   type="number"
@@ -732,11 +781,11 @@
                       selectedKey.usage_5h >= selectedKey.rate_limit_5h * 0.8 ? 'text-yellow-500' :
                       'text-gray-900 dark:text-white'
                     ]">
-                      ¥{{ selectedKey.usage_5h?.toFixed(4) || '0.0000' }}
+                      ${{ selectedKey.usage_5h?.toFixed(4) || '0.0000' }}
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ¥{{ selectedKey.rate_limit_5h?.toFixed(2) || '0.00' }}
+                      ${{ selectedKey.rate_limit_5h?.toFixed(2) || '0.00' }}
                     </span>
                   </div>
                 </div>
@@ -758,7 +807,7 @@
             <div>
               <label class="input-label">{{ t('keys.rateLimit1d') }}</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                 <input
                   v-model.number="formData.rate_limit_1d"
                   type="number"
@@ -778,11 +827,11 @@
                       selectedKey.usage_1d >= selectedKey.rate_limit_1d * 0.8 ? 'text-yellow-500' :
                       'text-gray-900 dark:text-white'
                     ]">
-                      ¥{{ selectedKey.usage_1d?.toFixed(4) || '0.0000' }}
+                      ${{ selectedKey.usage_1d?.toFixed(4) || '0.0000' }}
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ¥{{ selectedKey.rate_limit_1d?.toFixed(2) || '0.00' }}
+                      ${{ selectedKey.rate_limit_1d?.toFixed(2) || '0.00' }}
                     </span>
                   </div>
                 </div>
@@ -804,7 +853,7 @@
             <div>
               <label class="input-label">{{ t('keys.rateLimit7d') }}</label>
               <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
                 <input
                   v-model.number="formData.rate_limit_7d"
                   type="number"
@@ -824,11 +873,11 @@
                       selectedKey.usage_7d >= selectedKey.rate_limit_7d * 0.8 ? 'text-yellow-500' :
                       'text-gray-900 dark:text-white'
                     ]">
-                      ¥{{ selectedKey.usage_7d?.toFixed(4) || '0.0000' }}
+                      ${{ selectedKey.usage_7d?.toFixed(4) || '0.0000' }}
                     </span>
                     <span class="mx-2 text-gray-400">/</span>
                     <span class="text-gray-500 dark:text-gray-400">
-                      ¥{{ selectedKey.rate_limit_7d?.toFixed(2) || '0.00' }}
+                      ${{ selectedKey.rate_limit_7d?.toFixed(2) || '0.00' }}
                     </span>
                   </div>
                 </div>
@@ -976,6 +1025,14 @@
       </template>
     </BaseDialog>
 
+    <BulkEditKeysModal
+      :show="showBulkEditModal"
+      :selected-keys="selectedApiKeys"
+      :groups="groups"
+      @close="showBulkEditModal = false"
+      @updated="handleBulkUpdated"
+    />
+
     <!-- Delete Confirmation Dialog -->
     <ConfirmDialog
       :show="showDeleteDialog"
@@ -1016,7 +1073,7 @@
     <UseKeyModal
       :show="showUseKeyModal"
       :api-key="selectedKey?.key || ''"
-      :base-url="apiEndpointUrl"
+      :base-url="publicSettings?.api_base_url || ''"
       :platform="selectedKey?.group?.platform || null"
       :allow-messages-dispatch="selectedKey?.group?.allow_messages_dispatch || false"
       @close="closeUseKeyModal"
@@ -1141,7 +1198,7 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, reactive, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
+	import { ref, reactive, computed, watch, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
 	import { useOnboardingStore } from '@/stores/onboarding'
@@ -1152,6 +1209,7 @@ const { t } = useI18n()
 import { keysAPI, authAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
+import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 	import DataTable from '@/components/common/DataTable.vue'
 	import Pagination from '@/components/common/Pagination.vue'
 	import BaseDialog from '@/components/common/BaseDialog.vue'
@@ -1169,7 +1227,9 @@ import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
 import { maskApiKey } from '@/utils/maskApiKey'
-import { resolvePublicApiEndpoint } from '@/utils/apiEndpoint'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
+import { platformBadgeLightClass } from '@/utils/platformColors'
+import { KEY_GROUP_PROVIDERS, KEY_GROUP_PROVIDER_ICONS, getKeyGroupProvider, type KeyGroupProvider } from '@/utils/keyGroupProviders'
 import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
@@ -1295,6 +1355,21 @@ const columns = computed<Column[]>(() =>
 )
 
 const apiKeys = ref<ApiKey[]>([])
+const selectedIds = ref<number[]>([])
+const showBulkEditModal = ref(false)
+const selectedApiKeys = computed(() => apiKeys.value.filter((key) => selectedIds.value.includes(key.id)))
+
+const handleSelectionChange = (ids: Array<string | number>) => {
+  const visibleIds = new Set(apiKeys.value.map((key) => key.id))
+  selectedIds.value = [...new Set(ids.map(Number))].filter((id) => visibleIds.has(id))
+}
+
+const handleBulkUpdated = (succeededIds: number[]) => {
+  const succeeded = new Set(succeededIds)
+  selectedIds.value = selectedIds.value.filter((id) => !succeeded.has(id))
+  loadApiKeys()
+}
+
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
@@ -1337,11 +1412,6 @@ const columnDropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
 const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
-
-const apiEndpointUrl = computed(() => {
-  const configured = publicSettings.value?.api_base_url?.trim()
-  return resolvePublicApiEndpoint(configured)
-})
 
 // Get the currently selected key for group change
 const selectedKeyForGroup = computed(() => {
@@ -1411,7 +1481,7 @@ const shouldSubmitEditStatus = (key: ApiKey, status: 'active' | 'inactive') => {
 const groupFilterOptions = computed(() => [
   { value: '', label: t('keys.allGroups') },
   { value: 0, label: t('keys.noGroup') },
-  ...sortedGroups.value.map((g) => ({ value: g.id, label: g.name }))
+  ...groups.value.map((g) => ({ value: g.id, label: g.name }))
 ])
 
 const statusFilterOptions = computed(() => [
@@ -1423,6 +1493,7 @@ const statusFilterOptions = computed(() => [
 ])
 
 const onFilterChange = () => {
+  selectedIds.value = []
   pagination.value.page = 1
   loadApiKeys()
 }
@@ -1437,47 +1508,9 @@ const onStatusFilterChange = (value: string | number | boolean | null) => {
   onFilterChange()
 }
 
-const platformSortRank: Record<string, number> = {
-  openai: 0,
-  gpt: 0,
-  zhipu: 1,
-  glm: 1,
-  anthropic: 2,
-  claude: 2,
-  gemini: 3,
-  antigravity: 4
-}
-
-function groupPlatformRank(group: Pick<Group, 'platform'>): number {
-  const platform = String(group.platform || '').trim().toLowerCase()
-  return platformSortRank[platform] ?? 99
-}
-
-function effectiveGroupRate(group: Pick<Group, 'id' | 'rate_multiplier'>): number {
-  const userRate = userGroupRates.value[group.id]
-  return typeof userRate === 'number' ? userRate : group.rate_multiplier
-}
-
-const sortedGroups = computed(() => {
-  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
-  return [...groups.value].sort((a, b) => {
-    const platformDiff = groupPlatformRank(a) - groupPlatformRank(b)
-    if (platformDiff !== 0) return platformDiff
-
-    const rateDiff = effectiveGroupRate(a) - effectiveGroupRate(b)
-    if (rateDiff !== 0) return rateDiff
-
-    return collator.compare(a.name, b.name)
-  })
-})
-
-const exclusiveGroups = computed(() =>
-  sortedGroups.value.filter((group) => group.is_exclusive && group.subscription_type === 'standard')
-)
-
 // Convert groups to Select options format with rate multiplier and subscription type
 const groupOptions = computed(() =>
-  sortedGroups.value.map((group) => ({
+  groups.value.map((group) => ({
     value: group.id,
     label: group.name,
     description: group.description,
@@ -1491,6 +1524,35 @@ const groupOptions = computed(() =>
     platform: group.platform
   }))
 )
+
+const createProvider = ref<KeyGroupProvider>('anthropic')
+const createProviderOptions = computed(() => KEY_GROUP_PROVIDERS.map((value) => ({
+  value,
+  label: t(`keys.providers.${value}`),
+  count: groups.value.filter((group) => getKeyGroupProvider(group.platform) === value).length
+})))
+
+const formGroupOptions = computed(() => showEditModal.value
+  ? groupOptions.value
+  : groupOptions.value.filter((group) => getKeyGroupProvider(group.platform) === createProvider.value)
+)
+
+const selectCreateProvider = (provider: KeyGroupProvider) => {
+  if (createProvider.value === provider) return
+  createProvider.value = provider
+  formData.value.group_id = null
+}
+
+// Also handles groups arriving after the create dialog has already opened.
+watch([showCreateModal, createProviderOptions], ([isOpen, providers], [wasOpen]) => {
+  if (!isOpen) return
+  if (!wasOpen || !providers.some((provider) => provider.value === createProvider.value && provider.count > 0)) {
+    selectCreateProvider(providers.find((provider) => provider.count > 0)?.value ?? 'anthropic')
+  }
+  if (!formGroupOptions.value.some((group) => group.value === formData.value.group_id)) {
+    formData.value.group_id = null
+  }
+})
 
 // Group dropdown search
 const groupSearchQuery = ref('')
@@ -1545,6 +1607,7 @@ const loadApiKeys = async () => {
     })
     if (signal.aborted) return
     apiKeys.value = response.items
+    handleSelectionChange(selectedIds.value)
     pagination.value.total = response.total
     pagination.value.pages = response.pages
 
@@ -1608,17 +1671,20 @@ const closeUseKeyModal = () => {
 }
 
 const handlePageChange = (page: number) => {
+  selectedIds.value = []
   pagination.value.page = page
   loadApiKeys()
 }
 
 const handlePageSizeChange = (pageSize: number) => {
+  selectedIds.value = []
   pagination.value.page_size = pageSize
   pagination.value.page = 1
   loadApiKeys()
 }
 
 const handleSort = (key: string, order: 'asc' | 'desc') => {
+  selectedIds.value = []
   sortState.value.sort_by = key
   sortState.value.sort_order = order
   pagination.value.page = 1
@@ -1891,14 +1957,18 @@ const setExpirationDays = (days: number) => {
 
 // Reset quota used for an API key
 const resetQuotaUsed = async () => {
-  if (!selectedKey.value) return
+  const key = selectedKey.value
+  if (!key) return
   showResetQuotaDialog.value = false
   try {
-    await keysAPI.update(selectedKey.value.id, { reset_quota: true })
+    const updatedKey = await keysAPI.update(key.id, { reset_quota: true })
     appStore.showSuccess(t('keys.quotaResetSuccess'))
-    // Update local state
-    if (selectedKey.value) {
-      selectedKey.value.quota_used = 0
+    key.quota_used = updatedKey.quota_used
+    if (key.status !== updatedKey.status) {
+      key.status = updatedKey.status
+      if (selectedKey.value?.id === key.id) {
+        formData.value.status = updatedKey.status === 'active' ? 'active' : 'inactive'
+      }
     }
   } catch (error: any) {
     const errorMsg = error.response?.data?.detail || t('keys.failedToResetQuota')
@@ -1952,12 +2022,12 @@ const importToCcswitch = (row: ApiKey) => {
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
-  const baseUrl = apiEndpointUrl.value || window.location.origin
+  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
   const usageScript = `({
     request: {
-      url: "{{baseUrl}}/usage",
+      url: "{{baseUrl}}/v1/usage",
       method: "GET",
       headers: { "Authorization": "Bearer {{apiKey}}" }
     },
@@ -1971,7 +2041,7 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
       };
     }
   })`
-  const providerName = (publicSettings.value?.site_name || 'SuperAI').trim() || 'SuperAI'
+  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
   const deeplink = buildCcSwitchImportDeeplink({
     baseUrl,
     platform,

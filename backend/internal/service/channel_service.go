@@ -147,7 +147,14 @@ const (
 	channelCacheTTL       = 10 * time.Minute
 	channelErrorTTL       = 5 * time.Second // DB 错误时的短缓存
 	channelCacheDBTimeout = 10 * time.Second
+	channelCacheNotifyTTL = 3 * time.Second
 )
+
+// ChannelCachePubSub broadcasts channel cache invalidations between instances.
+type ChannelCachePubSub interface {
+	NotifyUpdate(ctx context.Context) error
+	SubscribeUpdates(ctx context.Context, handler func())
+}
 
 // ChannelService 渠道管理服务
 type ChannelService struct {
@@ -155,6 +162,7 @@ type ChannelService struct {
 	groupRepo            GroupRepository
 	authCacheInvalidator APIKeyAuthCacheInvalidator
 	pricingService       *PricingService // 用于「可用渠道」展示时回落到全局定价；可为 nil（测试场景）
+	cachePubSub          ChannelCachePubSub
 
 	cache   atomic.Value // *channelCache
 	cacheSF singleflight.Group
@@ -163,13 +171,15 @@ type ChannelService struct {
 // NewChannelService 创建渠道服务实例。
 // pricingService 仅供 ListAvailable 在渠道未配置定价时回落到全局 LiteLLM 数据；
 // 计费热路径走独立的 ModelPricingResolver，与此参数无关。可传 nil。
-func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService) *ChannelService {
+func NewChannelService(repo ChannelRepository, groupRepo GroupRepository, authCacheInvalidator APIKeyAuthCacheInvalidator, pricingService *PricingService, cachePubSub ChannelCachePubSub) *ChannelService {
 	s := &ChannelService{
 		repo:                 repo,
 		groupRepo:            groupRepo,
 		authCacheInvalidator: authCacheInvalidator,
 		pricingService:       pricingService,
+		cachePubSub:          cachePubSub,
 	}
+	s.subscribeCacheUpdates(context.Background())
 	return s
 }
 
@@ -357,7 +367,7 @@ func isPlatformPricingMatch(groupPlatform, pricingPlatform string) bool {
 // fallback used before a request target has been resolved.
 func matchingPlatforms(groupPlatform string) []string {
 	if groupPlatform == PlatformComposite {
-		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek}
+		return []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo}
 	}
 	return []string{groupPlatform}
 }
@@ -383,13 +393,41 @@ func (s *ChannelService) InvalidateCache() {
 }
 
 func (s *ChannelService) invalidateCache() {
-	s.cache.Store((*channelCache)(nil))
-	s.cacheSF.Forget("channel_cache")
+	s.clearCache()
 
 	// 主动重建缓存，确保 CRUD 后立即生效
 	if _, err := s.buildCache(context.Background()); err != nil {
 		slog.Warn("failed to rebuild channel cache after invalidation", "error", err)
 	}
+
+	s.notifyCacheUpdate()
+}
+
+// clearCache clears only the in-process snapshot. Keeping this separate from
+// invalidateCache prevents notifications received from Redis from being
+// published again in a loop.
+func (s *ChannelService) clearCache() {
+	s.cache.Store((*channelCache)(nil))
+	s.cacheSF.Forget("channel_cache")
+}
+
+func (s *ChannelService) notifyCacheUpdate() {
+	if s.cachePubSub == nil {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), channelCacheNotifyTTL)
+	defer cancel()
+	if err := s.cachePubSub.NotifyUpdate(ctx); err != nil {
+		slog.Warn("failed to publish channel cache invalidation", "error", err)
+	}
+}
+
+func (s *ChannelService) subscribeCacheUpdates(ctx context.Context) {
+	if s.cachePubSub == nil {
+		return
+	}
+	s.cachePubSub.SubscribeUpdates(ctx, s.clearCache)
 }
 
 // matchWildcard 在通配符定价中查找匹配项（最先匹配到优先）
@@ -937,80 +975,6 @@ func (s *ChannelService) checkGroupConflicts(ctx context.Context, channelID int6
 		return ErrGroupAlreadyInChannel
 	}
 	return nil
-}
-
-// BindNewGroupToCopiedGroupsChannel makes a newly-created pricing group usable
-// through the same channel as its source groups. Account bindings alone are
-// insufficient: channel pricing, model mapping, and the public model page all
-// derive their data from channel_groups.
-//
-// A group can belong to only one channel. Sources from different channels are
-// rejected instead of silently choosing one and exposing an incorrect price.
-func (s *ChannelService) BindNewGroupToCopiedGroupsChannel(ctx context.Context, groupID int64, sourceGroupIDs []int64) error {
-	if groupID <= 0 || len(sourceGroupIDs) == 0 {
-		return nil
-	}
-
-	channelID, err := s.copiedGroupsChannelID(ctx, sourceGroupIDs)
-	if err != nil {
-		return err
-	}
-
-	// Source groups without a channel have no channel pricing to inherit.
-	if channelID == 0 {
-		return nil
-	}
-
-	groupIDs, err := s.repo.GetGroupIDs(ctx, channelID)
-	if err != nil {
-		return fmt.Errorf("get source channel groups: %w", err)
-	}
-	for _, existingGroupID := range groupIDs {
-		if existingGroupID == groupID {
-			return nil
-		}
-	}
-	groupIDs = append(groupIDs, groupID)
-
-	if err := s.repo.SetGroupIDs(ctx, channelID, groupIDs); err != nil {
-		return fmt.Errorf("bind new group to source channel: %w", err)
-	}
-	s.invalidateCache()
-	return nil
-}
-
-// ValidateCopiedGroupsChannel checks the source channel constraint before a
-// new group is persisted. A group can belong to only one channel.
-func (s *ChannelService) ValidateCopiedGroupsChannel(ctx context.Context, sourceGroupIDs []int64) error {
-	_, err := s.copiedGroupsChannelID(ctx, sourceGroupIDs)
-	return err
-}
-
-func (s *ChannelService) copiedGroupsChannelID(ctx context.Context, sourceGroupIDs []int64) (int64, error) {
-	var channelID int64
-	seen := make(map[int64]struct{}, len(sourceGroupIDs))
-	for _, sourceGroupID := range sourceGroupIDs {
-		if sourceGroupID <= 0 {
-			continue
-		}
-		if _, ok := seen[sourceGroupID]; ok {
-			continue
-		}
-		seen[sourceGroupID] = struct{}{}
-
-		sourceChannelID, err := s.repo.GetChannelIDByGroupID(ctx, sourceGroupID)
-		if err != nil {
-			return 0, fmt.Errorf("get channel for source group %d: %w", sourceGroupID, err)
-		}
-		if sourceChannelID == 0 {
-			continue
-		}
-		if channelID != 0 && channelID != sourceChannelID {
-			return 0, fmt.Errorf("source groups belong to different channels")
-		}
-		channelID = sourceChannelID
-	}
-	return channelID, nil
 }
 
 // getOldGroupIDs 获取渠道更新前的关联分组 ID（用于失效 auth 缓存）。

@@ -36,7 +36,7 @@ func (ChannelMonitor) Fields() []ent.Field {
 			MaxLen(100),
 		field.Enum("provider").
 			Values("openai", "anthropic", "gemini", "grok",
-				"antigravity", "kimi", "zhipu", "deepseek"),
+				"antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"),
 		// check_mode: 'probe' | 'quota' | 'quota_probe'
 		//   probe       - LLM 探活（默认，原有行为）
 		//   quota       - 仅查关联账号的用量/余额（零 LLM 成本；endpoint/api_key 可空）
@@ -82,7 +82,7 @@ func (ChannelMonitor) Fields() []ent.Field {
 		field.Int("jitter_seconds").
 			Default(0).
 			Range(0, 3600).
-			Comment("每次调度在 interval 基础上 +/- [0, jitter] 的均匀随机偏移（秒）；0 表示固定间隔。service 层另保证 interval - jitter >= 15"),
+			Comment("每次调度在 interval 基础上 ± [0, jitter] 的均匀随机偏移（秒）；0 表示固定间隔。service 层另保证 interval - jitter >= 15"),
 		field.Time("last_checked_at").
 			Optional().
 			Nillable(),

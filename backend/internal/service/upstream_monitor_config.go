@@ -3064,7 +3064,7 @@ func ensureUpstreamGroupOptionsFromMappings(cfg *UpstreamMonitorConfig, source *
 		existing[option.Key] = struct{}{}
 	}
 	for _, mapping := range cfg.GroupMappings {
-		if !stringSliceContains(mapping.SourceIDs, source.ID) {
+		if !upstreamMonitorStringSliceContains(mapping.SourceIDs, source.ID) {
 			continue
 		}
 		name := strings.TrimSpace(mapping.UpstreamGroup)
@@ -3117,7 +3117,7 @@ func applyUpstreamGroupMultipliers(cfg *UpstreamMonitorConfig, sourceID string, 
 	}
 	for i := range cfg.GroupMappings {
 		mapping := &cfg.GroupMappings[i]
-		if !stringSliceContains(mapping.SourceIDs, sourceID) {
+		if !upstreamMonitorStringSliceContains(mapping.SourceIDs, sourceID) {
 			continue
 		}
 		optionKey := strings.TrimSpace(mapping.UpstreamGroupKey)
@@ -3148,7 +3148,7 @@ func applyUpstreamGroupMultipliers(cfg *UpstreamMonitorConfig, sourceID string, 
 	}
 }
 
-func stringSliceContains(values []string, target string) bool {
+func upstreamMonitorStringSliceContains(values []string, target string) bool {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return false

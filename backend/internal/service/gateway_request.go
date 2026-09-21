@@ -566,15 +566,17 @@ func StripEmptyTextBlocks(body []byte) []byte {
 	return out
 }
 
-// FilterThinkingBlocks removes thinking blocks from request body.
-// Returns filtered body or original body if filtering fails (fail-safe).
+// FilterThinkingBlocks removes thinking blocks from request body
+// Returns filtered body or original body if filtering fails (fail-safe)
 // This prevents 400 errors from invalid thinking block signatures.
 //
-// mappedModel is the actual upstream model ID after account model mapping.
-// Only Anthropic-strict upstreams are filtered; passback-required and unknown
-// upstreams preserve thinking blocks because filtering breaks their contract.
+// mappedModel 是「实际发给上游的模型 ID」(after account model mapping)，用于按
+// 协议族分流。仅 anthropic-strict 走原过滤逻辑；passback-required 与 unknown
+// 一律保留全部 thinking block，避免误伤第三方兼容上游
+// (DeepSeek `/anthropic`、Kimi `/coding`、GLM、Moonshot 等)，详见
+// .pensieve/short-term/knowledge/thinking-block-filter-third-party-upstream-inversion/。
 //
-// 策略：
+// 策略 (anthropic-strict only)：
 //   - 当 thinking.type 不是 "enabled"/"adaptive"：移除所有 thinking 相关块
 //   - 当 thinking.type 是 "enabled"/"adaptive"：仅移除缺失/无效 signature 的 thinking 块（避免 400）
 //     (blocks with missing/empty/dummy signatures that would cause 400 errors)
@@ -599,7 +601,13 @@ func FilterThinkingBlocks(body []byte, mappedModel string) []byte {
 //   - Convert `thinking` blocks to `text` blocks (preserve the thinking content).
 //   - Remove `redacted_thinking` blocks (cannot be converted to text).
 //   - Ensure no message ends up with empty content.
+//
+// mappedModel 用于按协议族分流：仅 anthropic-strict 执行上述变形；
+// passback-required (DeepSeek/Kimi/GLM 等) 与 unknown 一律返回原 body，
+// 因为这类上游的契约就是「thinking block 原样回传」（或我们不了解），
+// retry 任何变形都不会修好 400，反而破坏契约。详见 thinking_protocol.go。
 func FilterThinkingBlocksForRetry(body []byte, mappedModel string) []byte {
+	// 仅 anthropic-strict 走整流；passback-required 与 unknown 都返回原 body。
 	if !ShouldApplyRetryFilters(mappedModel) {
 		return body
 	}
@@ -904,12 +912,28 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //     FullClaudeCodeMimicryBetas 覆盖客户端 beta（该列表不含 fallback beta），
 //     若不 strip，body 字段与 header 不对称 → 所有模型 400
 //
+// thinking.block_binding 场景：
+//   - Claude Fable 5.1 的会话前缀绑定控制受
+//     `thinking-binding-controls-2026-08-01` beta 保护
+//   - 缺 token 时上游拒收：
+//     "thinking.adaptive.block_binding: Extra inputs are not permitted"
+//
+// message-level output_config 场景：
+//   - pi-ai（Harness 使用的 Anthropic provider）会为 opus5 生成形如
+//     `{"role":"system","content":[],"output_config":{"effort":"high"}}` 的控制消息，
+//     并请求 `mid-conversation-output-config-2026-07-01` beta
+//   - 该 output_config 是 **message 级**字段，只有该 beta 保护；顶层 output_config/effort
+//     不受它约束
+//   - OAuth mimic 用 FullClaudeCodeMimicryBetas 覆盖客户端 beta；固定列表漏该 beta 时
+//     body 字段与 header 不对称 → 上游报 "output_config: Extra inputs are not permitted"
+//   - 缺 token 时净化消息级 output_config（详见 stripAnthropicMessageOutputConfigUnlessBeta）
+//
 // 本函数按最终发送的 anthropic-beta header 决定是否保留 body 中的上述字段：
 // 缺对应 beta token → strip；客户端 header 已带对应 beta → 保留（不过度删除）。
 // 这将限制完全建立在 "能力维度" 上，与 model 名 / token type / mimicry 子路径无关。
 //
-// 调用约束：必须在请求体最终定稿之前调用，否则后续的 header / body
-// 对齐会失效，上游可能以 third-party 拒收。
+// 调用约束：必须在 CCH 签名之前调用，否则签名 hash 与最终 body
+// 不一致，上游会以 third-party 拒收。
 //
 // 返回 (sanitized, changed)：changed 表示是否发生实际删除，供调用方决定
 // 是否重用原 body 引用。
@@ -927,6 +951,13 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 		body, changed = b, true
 	}
 
+	// thinking.block_binding：需要 thinking-binding-controls beta。
+	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
+		body, "thinking.block_binding", anthropicBetaHeader, claude.BetaThinkingBindingControls,
+	); deleted {
+		body, changed = b, true
+	}
+
 	// fallbacks：server-side refusal fallback，仅接受 server-side-fallback beta。
 	if b, deleted := stripAnthropicBodyFieldUnlessBeta(
 		body, "fallbacks", anthropicBetaHeader, claude.BetaServerSideFallback,
@@ -940,6 +971,12 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 		body, "fallback_credit_token", anthropicBetaHeader,
 		claude.BetaServerSideFallback, claude.BetaFallbackCredit, claude.BetaFallbackCreditLegacy,
 	); deleted {
+		body, changed = b, true
+	}
+
+	// messages[].output_config：mid-conversation-output-config beta 专属字段。
+	// 顶层 output_config / effort 不受该 beta 约束，本分支只净化消息内字段。
+	if b, deleted := stripAnthropicMessageOutputConfigUnlessBeta(body, anthropicBetaHeader); deleted {
 		body, changed = b, true
 	}
 
@@ -985,6 +1022,106 @@ func anthropicBetaTokensContains(header, token string) bool {
 	return false
 }
 
+// stripAnthropicMessageOutputConfigUnlessBeta 在 anthropic-beta header 缺
+// mid-conversation-output-config beta 时，净化 **messages[].output_config**：
+//   - 仅为携带 message-level output_config 的消息剥该字段；
+//   - 若该消息 role=system 且 content 无正文（缺失 / null / 空 string / 空 array /
+//     仅空 text 块），整条删除（pi-ai 为 opus5 生成的空 system 控制消息即此形态）；
+//   - system 有正文则保留正文与其余字段；user/assistant 只剥字段，绝不整条删除；
+//   - 无任何消息携带该字段时返回原 body（字节 no-op）。
+//
+// header 含该 beta 时完全保留。顶层 output_config / effort 不属于该 beta 保护范围，
+// 本函数不做任何处理。多条删除用「稳健重建」实现，保留其余字段与消息先后顺序。
+func stripAnthropicMessageOutputConfigUnlessBeta(body []byte, anthropicBetaHeader string) ([]byte, bool) {
+	if anthropicBetaTokensContains(anthropicBetaHeader, claude.BetaMidConversationOutputConfig) {
+		return body, false
+	}
+	// 快速路径：body 中不含 output_config 字面量时无需解析。
+	if !bytes.Contains(body, []byte("output_config")) {
+		return body, false
+	}
+	msgsRes := gjson.GetBytes(body, "messages")
+	if !msgsRes.Exists() || !msgsRes.IsArray() {
+		return body, false
+	}
+
+	hasMessageOutputConfig := false
+	for _, msg := range msgsRes.Array() {
+		if msg.Get("output_config").Exists() {
+			hasMessageOutputConfig = true
+			break
+		}
+	}
+	if !hasMessageOutputConfig {
+		return body, false
+	}
+
+	var messages []json.RawMessage
+	if err := json.Unmarshal([]byte(msgsRes.Raw), &messages); err != nil {
+		// gjson 的 IsArray 只做形态判断、不保证 JSON 完整合法；此分支保守返回原 body。
+		return body, false
+	}
+
+	changed := false
+	rebuilt := make([]json.RawMessage, 0, len(messages))
+	for _, msg := range messages {
+		if !gjson.GetBytes(msg, "output_config").Exists() {
+			rebuilt = append(rebuilt, msg)
+			continue
+		}
+		changed = true
+
+		// 空正文的 system 控制消息整条删除；其余消息只剥字段。
+		if gjson.GetBytes(msg, "role").String() == "system" &&
+			!anthropicMessageContentHasBody(gjson.GetBytes(msg, "content")) {
+			continue
+		}
+		stripped, err := sjson.DeleteBytes(msg, "output_config")
+		if err != nil {
+			// 不应发生：字段存在且 msg 是合法 JSON。保守整条保留，不产出半成品。
+			rebuilt = append(rebuilt, msg)
+			continue
+		}
+		rebuilt = append(rebuilt, json.RawMessage(stripped))
+	}
+	if !changed {
+		return body, false
+	}
+
+	rebuiltBytes, err := json.Marshal(rebuilt)
+	if err != nil {
+		return body, false
+	}
+	out, err := sjson.SetRawBytes(body, "messages", rebuiltBytes)
+	if err != nil {
+		return body, false
+	}
+	return out, true
+}
+
+// anthropicMessageContentHasBody 判断单条消息的 content 是否携带正文。
+// 返回 false 表示「无正文」：content 缺失 / null / 空 string / 空 array /
+// 仅由空 text 块构成。未知或非 text 内容块（image / tool_use / tool_result 等）
+// 一律视为有正文，避免把未来新增内容块误判为空而连带删除整条 system 消息。
+func anthropicMessageContentHasBody(content gjson.Result) bool {
+	switch {
+	case !content.Exists():
+		return false
+	case content.Type == gjson.String:
+		return content.String() != ""
+	case content.IsArray():
+		var blocks []any
+		if err := json.Unmarshal([]byte(content.Raw), &blocks); err != nil {
+			return true // 无法解析时保守视为有正文
+		}
+		cleaned, _ := stripEmptyTextBlocksFromSlice(blocks)
+		return len(cleaned) > 0
+	default:
+		// null 视为无正文；object / number / bool 等非标准形态保守保留。
+		return content.Type != gjson.Null
+	}
+}
+
 // FilterSignatureSensitiveBlocksForRetry is a stronger retry filter for cases where upstream errors indicate
 // signature/thought_signature validation issues involving tool blocks.
 //
@@ -994,6 +1131,9 @@ func anthropicBetaTokensContains(header, token string) bool {
 //
 // Use this only when needed: converting tool blocks to text changes model behaviour and can increase the
 // risk of prompt injection (tool output becomes plain conversation text).
+//
+// mappedModel 同 FilterThinkingBlocksForRetry：仅 anthropic-strict 执行变形；
+// passback-required 与 unknown 都返回原 body，避免在不熟悉的上游上盲目变形。
 func FilterSignatureSensitiveBlocksForRetry(body []byte, mappedModel string) []byte {
 	if !ShouldApplyRetryFilters(mappedModel) {
 		return body
@@ -1293,14 +1433,36 @@ func NormalizeClaudeOutputEffort(raw string) *string {
 	}
 }
 
-// DefaultEffortForThinkingEnabled returns a default usage-log effort for
-// thinking-enabled Chinese Anthropic-compatible models that do not expose an
-// explicit effort tier. DeepSeek is excluded because it has native
-// reasoning_effort support.
+// DefaultEffortForThinkingEnabled 给"开启了 thinking 但协议层没有 effort 档位概念"
+// 的国产模型族返回一个默认 effort 字符串（"high"），用于 usage_log.reasoning_effort
+// 字段，避免该字段长期为 NULL 导致用量分析无法区分 thinking 开/关。
+//
+// 适用范围（按 ResolveThinkingProtocol 的 PassbackRequired 集合做白名单过滤）：
+//   - Kimi (kimi-* / moonshot-*)
+//   - GLM (glm-*)
+//   - MiniMax (minimax-m*)
+//   - Qwen thinking 变体 (qwen[1-4]?-*-thinking)
+//
+// **排除 DeepSeek**：DeepSeek 原生支持 reasoning_effort: high/max，客户端可显式指定，
+// 网关不应注入默认值覆盖客户端意图（即便客户端没发，DeepSeek 上游自己会用 high default
+// ——但那是上游行为，不是我们的语义注入）。
+//
+// 适用场景由调用方守卫：仅当 (1) ResolveThinkingProtocol == PassbackRequired
+// (2) 已确认 thinking 启用（Anthropic: parsed.ThinkingEnabled；OpenAI: 见
+// OpenAIBodyHasThinkingEnabled) (3) 已有 effort 解析返回 nil 三者同时成立时调用。
+//
+// 返回值固定指向 "high"。理由：Kimi/GLM/MiniMax 启用 thinking 都是"深度推理模式"，
+// 等同 Claude/OpenAI 的 high 档位语义；用 high 比 medium/normal 更贴近实际行为，
+// 也与 DeepSeek thinking-enabled 的默认 effort 一致。
+//
+// 未来兼容性：如果这些厂商后续加入真实 effort 档位（如 Kimi 跟进 DeepSeek 的
+// reasoning_effort: high/max），客户端开始显式发 effort 值时，调用方的守卫条件 (3)
+// 会因 extractor 返回非 nil 而不触发本函数，自动让出。
 func DefaultEffortForThinkingEnabled(mappedModel string) *string {
 	if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired {
 		return nil
 	}
+	// DeepSeek 在 PassbackRequired 集合里但有原生 effort 支持，排除。
 	if strings.HasPrefix(strings.ToLower(mappedModel), "deepseek-") {
 		return nil
 	}
@@ -1308,11 +1470,24 @@ func DefaultEffortForThinkingEnabled(mappedModel string) *string {
 	return &effort
 }
 
+// OpenAIBodyHasThinkingEnabled 检测 OpenAI 协议的请求体里是否启用了 thinking。
+//
+// 国产 OpenAI-兼容上游（GLM via thinkingFormat=zai / Kimi 等）在请求体里用
+// `thinking: {type: "enabled"}` 或 `thinking: {type: "adaptive"}` 表达启用。
+// 仅 "enabled" / "adaptive" 视为开启；"disabled" 或缺省 → 视为关闭。
+//
+// 配合 DefaultEffortForThinkingEnabled 使用：OpenAI 路径上 reasoning_effort 解析为空
+// 但本函数返回 true 时，给 usage_log 填默认 effort。
 func OpenAIBodyHasThinkingEnabled(body []byte) bool {
 	thinkingType := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "thinking.type").String()))
 	return thinkingType == "enabled" || thinkingType == "adaptive"
 }
 
+// ApplyThinkingEnabledFallback 补丁已解析出的 effort，仅在 effort 为 nil 且
+// 检测到 body 里 thinking 启用 + mappedModel 属于国产 passback-required 上游时，
+// 返回 DefaultEffortForThinkingEnabled 的默认值（"high"）。不覆盖已解析出的值。
+//
+// 适用于 OpenAI 网关的多条路径调用方（避免重复的 if-nil 表达式）。
 func ApplyThinkingEnabledFallback(effort *string, body []byte, mappedModel string) *string {
 	if effort != nil {
 		return effort
@@ -1342,6 +1517,9 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	}
 
 	mapped := normalizeGLMOpenAIReasoningEffort(raw)
+	if isGLM53Model(mappedModel) && mapped == "high" && normalizeEffortToken(raw) == "low" {
+		mapped = "low"
+	}
 	if mapped == "" || mapped == raw {
 		return body, false
 	}
@@ -1353,12 +1531,20 @@ func NormalizeGLMOpenAIReasoningEffort(body []byte, mappedModel string) ([]byte,
 	return modified, true
 }
 
-func normalizeGLMOpenAIReasoningEffort(raw string) string {
+func normalizeEffortToken(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
+	return strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
+}
+
+func isGLM53Model(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), "glm-5.3")
+}
+
+func normalizeGLMOpenAIReasoningEffort(raw string) string {
+	value := normalizeEffortToken(raw)
 	if value == "" {
 		return ""
 	}
-	value = strings.NewReplacer("-", "", "_", "", " ", "").Replace(value)
 
 	switch value {
 	case "low", "medium", "high":
@@ -1368,6 +1554,42 @@ func normalizeGLMOpenAIReasoningEffort(raw string) string {
 	default:
 		return ""
 	}
+}
+
+// NormalizeGLM53AnthropicThinking maps explicit client thinking effort onto the
+// GLM-5.3 Anthropic-compatible scale. Requests without an effort or thinking
+// preference are left unchanged so the upstream default remains in effect.
+func NormalizeGLM53AnthropicThinking(body []byte, mappedModel string) ([]byte, bool) {
+	if !isGLM53Model(mappedModel) {
+		return body, false
+	}
+
+	raw := gjson.GetBytes(body, "output_config.effort").String()
+	if strings.TrimSpace(raw) == "" {
+		raw = gjson.GetBytes(body, "thinking.type").String()
+	}
+
+	var effort string
+	switch normalizeEffortToken(raw) {
+	case "disabled", "off", "none", "minimal", "low":
+		effort = "low"
+	case "enabled", "adaptive", "medium", "high":
+		effort = "high"
+	case "xhigh", "max", "ultra":
+		effort = "max"
+	default:
+		return body, false
+	}
+
+	modified, err := sjson.SetBytes(body, "thinking.type", "enabled")
+	if err != nil {
+		return body, false
+	}
+	modified, err = sjson.SetBytes(modified, "output_config.effort", effort)
+	if err != nil {
+		return body, false
+	}
+	return modified, true
 }
 
 // =========================
@@ -1457,15 +1679,29 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 	return modified, changed
 }
 
-// NormalizeChineseLLMThinking rewrites vendor-specific Anthropic-compatible
-// thinking settings. MiniMax M-series accepts "adaptive" / "disabled" and may
-// reject the Anthropic SDK default "enabled".
+// NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
+// LLM providers that use Anthropic-compatible endpoints but have different accepted
+// values for `thinking.type`. Currently scoped to:
+//   - MiniMax M-series (`MiniMax-m*`, covering M2.x / M3 / M3.x): official docs accept
+//     only `thinking.type` of "adaptive" or "disabled"; "enabled" is not a valid value
+//     and may be rejected/ignored. Pi-ai and other Anthropic-SDK clients default to
+//     "enabled" (Anthropic-original) and never auto-rewrite for non-Anthropic models.
+//
+// Non-MiniMax models (Kimi/GLM/DeepSeek) currently accept "enabled" as-is, so this
+// function is intentionally a no-op for them. New Chinese LLM quirks should be
+// added here as separate case branches.
+//
+// Returns (modified body, true) if a rewrite was applied, or (original body, false)
+// if no rewrite was needed. Caller should be on the Anthropic forward path AFTER
+// FilterThinkingBlocks and BEFORE building the upstream request, only for
+// passback-required models (ResolveThinkingProtocol == PassbackRequired).
 func NormalizeChineseLLMThinking(body []byte, mappedModel string) ([]byte, bool) {
 	modelLower := strings.ToLower(mappedModel)
 	if !strings.HasPrefix(modelLower, "minimax-m") {
 		return body, false
 	}
-	if gjson.GetBytes(body, "thinking.type").String() != "enabled" {
+	thinkingType := gjson.GetBytes(body, "thinking.type").String()
+	if thinkingType != "enabled" {
 		return body, false
 	}
 	modified, err := sjson.SetBytes(body, "thinking.type", "adaptive")

@@ -157,6 +157,10 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("normalize Grok chat reasoning effort: %w", err)
 		}
+		upstreamBody, err = sanitizeGrokUnsupportedFields(upstreamBody)
+		if err != nil {
+			return nil, fmt.Errorf("sanitize Grok unsupported fields: %w", err)
+		}
 	}
 	upstreamBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamBody)
 
@@ -171,6 +175,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletions(
 	// 5. Build and send upstream request via the shared CC pipeline
 	targetURL, err := s.rawChatCompletionsURL(account)
 	if err != nil {
+		return nil, err
+	}
+	upstreamBody, err = normalizeStrictChatDeveloperRoles(account, targetURL, upstreamBody)
+	if err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
 	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
@@ -343,6 +352,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		line = applyOllamaCloudRawChatCompletionsSSELine(account, line)
 		line = stripEmptyChatToolCallIdentityFromSSELine(line)
 
+		line = s.replaceModelInSSELine(line, upstreamModel, originalModel)
 		writeLine(line)
 		if line == "" {
 			if !clientDisconnected && clientOutputStarted {
@@ -512,6 +522,7 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
 	respBody = applyOllamaCloudRawChatCompletionsResponse(account, respBody)
+	respBody = s.replaceModelInResponseBody(respBody, upstreamModel, originalModel)
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
