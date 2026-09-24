@@ -23,6 +23,7 @@ export { passkeyAPI, type PasskeyCredentialSummary } from './passkey'
 export { default as announcementsAPI } from './announcements'
 export { channelMonitorUserAPI } from './channelMonitor'
 export { lotteryAPI } from './lottery'
+export { imageStudioGalleryAPI, type ImageStudioGalleryEntry } from './imageStudio'
 
 // Admin APIs
 export { adminAPI } from './admin'

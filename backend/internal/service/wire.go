@@ -874,6 +874,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
+	NewImageStudioGalleryService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,

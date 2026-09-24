@@ -166,6 +166,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
+		skipBalanceCheck := isModelDiscoveryRequest(c.Request.Method, c.Request.URL.Path)
 		// Async image task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
@@ -260,7 +261,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+				if !skipBalanceCheck && apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}
@@ -338,6 +339,19 @@ func isAsyncImageTaskRead(method, path string) bool {
 		return false
 	}
 	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
+}
+
+// isModelDiscoveryRequest reports whether a request only reads model metadata.
+// Model discovery must not require a positive balance: clients need the list to
+// choose a model before they can make a billable generation request.
+func isModelDiscoveryRequest(method, path string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	normalized := strings.TrimRight(strings.TrimSpace(path), "/")
+	return normalized == "/models" ||
+		strings.HasSuffix(normalized, "/models") ||
+		strings.Contains(normalized, "/models/")
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

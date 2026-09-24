@@ -80,3 +80,9 @@ describe('AppSidebar subscription feature flag', () => {
     expect(componentSource).toMatch(/path: '\/purchase'[^\n]*label: purchaseNavLabel\.value/)
   })
 })
+
+describe('AppSidebar image studio entry', () => {
+  it('adds Image Studio to the user navigation', () => {
+    expect(componentSource).toMatch(/path: '\/image-studio'[^\n]*label: t\('nav\.imageStudio'\)/)
+  })
+})

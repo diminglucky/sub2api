@@ -165,6 +165,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 			return
 		}
 
+		skipBalanceCheck := isModelDiscoveryRequest(c.Request.Method, c.Request.URL.Path)
 		isSubscriptionType := apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
 		if isSubscriptionType && subscriptionService != nil {
 			subscription, err := subscriptionService.GetActiveSubscription(
@@ -200,7 +201,7 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 			c.Set(string(ContextKeySubscription), subscription)
 		} else {
-			if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+			if !skipBalanceCheck && apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
 				abortWithGoogleError(c, 403, "Insufficient account balance")
 				return
 			}

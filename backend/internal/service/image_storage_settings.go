@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -30,11 +31,12 @@ type ImageStorageSettings struct {
 	Enabled       bool `json:"enabled"`
 	ReuseBackupS3 bool `json:"reuse_backup_s3"`
 
-	Bucket           string `json:"bucket"` // 留空且复用备份时，沿用备份桶
-	Prefix           string `json:"prefix"`
-	PublicBaseURL    string `json:"public_base_url"`
-	PresignExpiry    int    `json:"presign_expiry_hours"`
-	MaxDownloadBytes int64  `json:"max_download_bytes"`
+	Bucket               string `json:"bucket"` // 留空且复用备份时，沿用备份桶
+	Prefix               string `json:"prefix"`
+	PublicBaseURL        string `json:"public_base_url"`
+	PresignExpiry        int    `json:"presign_expiry_hours"`
+	GalleryRetentionDays int    `json:"gallery_retention_days"`
+	MaxDownloadBytes     int64  `json:"max_download_bytes"`
 
 	// 以下仅在 ReuseBackupS3 为假时使用
 	Endpoint        string `json:"endpoint"`
@@ -58,10 +60,11 @@ type ImageStorageSettingService struct {
 	// 保证升级前已用配置文件开启该功能的部署不被打断。
 	fallback config.ImageStorageConfig
 
-	mu       sync.Mutex
-	resolved bool
-	uploader *ImageResultUploader
-	enabled  bool
+	mu               sync.Mutex
+	resolved         bool
+	uploader         *ImageResultUploader
+	enabled          bool
+	galleryRetention time.Duration
 }
 
 func NewImageStorageSettingService(
@@ -87,6 +90,20 @@ func (s *ImageStorageSettingService) Resolver() ImageStorageResolver {
 	}
 }
 
+// SaveImage stores an image using the currently effective image storage
+// configuration. It is used by user-facing gallery uploads.
+func (s *ImageStorageSettingService) SaveImage(ctx context.Context, key, contentType string, data []byte) (string, error) {
+	uploader, enabled := s.resolve()
+	if !enabled || uploader == nil || uploader.storage == nil {
+		return "", ErrImageStorageIncomplete
+	}
+	key = uploader.prefix + strings.TrimLeft(strings.TrimSpace(key), "/")
+	if storage, ok := uploader.storage.(ImageStorageWithExpiry); ok {
+		return storage.SaveWithExpiry(ctx, key, contentType, data, s.GalleryRetention())
+	}
+	return uploader.storage.Save(ctx, key, contentType, data)
+}
+
 func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	if s == nil {
 		return nil, false
@@ -100,6 +117,7 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	ctx := context.Background()
 	s.resolved = true
 	s.uploader, s.enabled = nil, false
+	s.galleryRetention = ImageStudioGalleryTTL
 
 	cfg, err := s.effectiveConfig(ctx)
 	if err != nil {
@@ -122,7 +140,23 @@ func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	}
 	s.uploader = NewImageResultUploader(storage, cfg.Prefix, cfg.MaxDownloadByte, nil)
 	s.enabled = true
+	if cfg.GalleryRetentionDays > 0 {
+		s.galleryRetention = time.Duration(cfg.GalleryRetentionDays) * 24 * time.Hour
+	}
 	return s.uploader, true
+}
+
+func (s *ImageStorageSettingService) GalleryRetention() time.Duration {
+	if s == nil {
+		return ImageStudioGalleryTTL
+	}
+	_, _ = s.resolve()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.galleryRetention > 0 {
+		return s.galleryRetention
+	}
+	return ImageStudioGalleryTTL
 }
 
 // Invalidate 丢弃缓存，使下一次请求按最新设置重新解析。
@@ -134,6 +168,7 @@ func (s *ImageStorageSettingService) Invalidate() {
 	s.resolved = false
 	s.uploader = nil
 	s.enabled = false
+	s.galleryRetention = ImageStudioGalleryTTL
 	s.mu.Unlock()
 }
 
@@ -239,17 +274,18 @@ func (s *ImageStorageSettingService) effectiveConfig(ctx context.Context) (*conf
 
 func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, in *ImageStorageSettings) (*config.ImageStorageConfig, error) {
 	cfg := &config.ImageStorageConfig{
-		Enabled:         in.Enabled,
-		Bucket:          in.Bucket,
-		Prefix:          in.Prefix,
-		PublicBaseURL:   in.PublicBaseURL,
-		PresignExpiry:   in.PresignExpiry,
-		MaxDownloadByte: in.MaxDownloadBytes,
-		Endpoint:        in.Endpoint,
-		Region:          in.Region,
-		AccessKeyID:     in.AccessKeyID,
-		SecretAccessKey: in.SecretAccessKey,
-		ForcePathStyle:  in.ForcePathStyle,
+		Enabled:              in.Enabled,
+		Bucket:               in.Bucket,
+		Prefix:               in.Prefix,
+		PublicBaseURL:        in.PublicBaseURL,
+		PresignExpiry:        in.PresignExpiry,
+		GalleryRetentionDays: in.GalleryRetentionDays,
+		MaxDownloadByte:      in.MaxDownloadBytes,
+		Endpoint:             in.Endpoint,
+		Region:               in.Region,
+		AccessKeyID:          in.AccessKeyID,
+		SecretAccessKey:      in.SecretAccessKey,
+		ForcePathStyle:       in.ForcePathStyle,
 	}
 
 	if in.ReuseBackupS3 {
@@ -306,17 +342,18 @@ func (s *ImageStorageSettingService) load(ctx context.Context) (*ImageStorageSet
 
 func settingsFromConfig(cfg config.ImageStorageConfig) *ImageStorageSettings {
 	return &ImageStorageSettings{
-		Enabled:          cfg.Enabled,
-		Bucket:           cfg.Bucket,
-		Prefix:           cfg.Prefix,
-		PublicBaseURL:    cfg.PublicBaseURL,
-		PresignExpiry:    cfg.PresignExpiry,
-		MaxDownloadBytes: cfg.MaxDownloadByte,
-		Endpoint:         cfg.Endpoint,
-		Region:           cfg.Region,
-		AccessKeyID:      cfg.AccessKeyID,
-		SecretAccessKey:  cfg.SecretAccessKey,
-		ForcePathStyle:   cfg.ForcePathStyle,
+		Enabled:              cfg.Enabled,
+		Bucket:               cfg.Bucket,
+		Prefix:               cfg.Prefix,
+		PublicBaseURL:        cfg.PublicBaseURL,
+		PresignExpiry:        cfg.PresignExpiry,
+		GalleryRetentionDays: cfg.GalleryRetentionDays,
+		MaxDownloadBytes:     cfg.MaxDownloadByte,
+		Endpoint:             cfg.Endpoint,
+		Region:               cfg.Region,
+		AccessKeyID:          cfg.AccessKeyID,
+		SecretAccessKey:      cfg.SecretAccessKey,
+		ForcePathStyle:       cfg.ForcePathStyle,
 	}
 }
 
@@ -340,6 +377,12 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	}
 	if in.PresignExpiry <= 0 {
 		in.PresignExpiry = 24
+	}
+	if in.GalleryRetentionDays <= 0 {
+		in.GalleryRetentionDays = 7
+	}
+	if in.GalleryRetentionDays > 365 {
+		in.GalleryRetentionDays = 365
 	}
 	if in.MaxDownloadBytes <= 0 {
 		in.MaxDownloadBytes = defaultImageMaxDownloadBytes

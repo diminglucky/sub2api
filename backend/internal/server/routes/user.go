@@ -99,6 +99,12 @@ func RegisterUserRoutes(
 		// 与渠道接口使用相同的认证和用户可见分组过滤逻辑。
 		authenticated.GET("/models/available", h.AvailableChannel.ListModels)
 
+		imageStudio := authenticated.Group("/image-studio")
+		{
+			imageStudio.GET("/gallery", h.ImageStudioGallery.List)
+			imageStudio.POST("/gallery", h.ImageStudioGallery.Save)
+		}
+
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）
 		usage := authenticated.Group("/usage")
 		usage.Use(panelRateLimiter.Heavy())

@@ -52,6 +52,11 @@ func NewS3ImageStorage(ctx context.Context, cfg *config.ImageStorageConfig) (*S3
 
 // Save 上传图片字节，返回可访问 URL：配了 public_base_url 则返回公开直链，否则返回 presigned 临时链接。
 func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data []byte) (string, error) {
+	return s.SaveWithExpiry(ctx, key, contentType, data, s.presignExpiry)
+}
+
+// SaveWithExpiry is Save with an explicit presigned URL lifetime.
+func (s *S3ImageStorage) SaveWithExpiry(ctx context.Context, key, contentType string, data []byte, expiry time.Duration) (string, error) {
 	finish := servertiming.ObserveDependency(ctx, "s3")
 	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      &s.bucket,
@@ -68,11 +73,14 @@ func (s *S3ImageStorage) Save(ctx context.Context, key, contentType string, data
 		return s.publicBaseURL + "/" + strings.TrimLeft(key, "/"), nil
 	}
 
+	if expiry <= 0 {
+		expiry = s.presignExpiry
+	}
 	presignClient := s3.NewPresignClient(s.client)
 	result, err := presignClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,
-	}, s3.WithPresignExpires(s.presignExpiry))
+	}, s3.WithPresignExpires(expiry))
 	if err != nil {
 		return "", fmt.Errorf("presign url: %w", err)
 	}
