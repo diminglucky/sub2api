@@ -17,8 +17,8 @@ function expectPathOrder(paths: string[], orderedPaths: string[]) {
 }
 
 describe('custom feature routes', () => {
-  it('keeps public custom routes registered', () => {
-    expect(publicCustomFeatureRoutes.map((route) => route.path)).toEqual(['/public-models'])
+  it('does not keep the retired public models route registered', () => {
+    expect(publicCustomFeatureRoutes).toEqual([])
   })
 
   it('keeps user custom routes registered at stable insertion points', () => {
@@ -39,7 +39,7 @@ describe('custom feature routes', () => {
   it('mounts custom routes in the main router at stable positions', () => {
     const paths = routes.map((route) => route.path)
 
-    expectPathOrder(paths, ['/key-usage', '/public-models', '/legal/:documentId'])
+    expectPathOrder(paths, ['/key-usage', '/legal/:documentId'])
     expectPathOrder(paths, ['/keys', '/playground', '/usage'])
     expectPathOrder(paths, ['/redeem', '/lottery', '/affiliate'])
     expectPathOrder(paths, ['/available-channels', '/manual', '/manual/:platform', '/models', '/profile'])

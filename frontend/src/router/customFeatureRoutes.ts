@@ -1,17 +1,6 @@
 import type { RouteRecordRaw } from 'vue-router'
 
-export const publicCustomFeatureRoutes: RouteRecordRaw[] = [
-  {
-    path: '/public-models',
-    name: 'PublicModels',
-    component: () => import('@/views/public/PublicModelsView.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'Models',
-      titleKey: 'models.title'
-    }
-  }
-]
+export const publicCustomFeatureRoutes: RouteRecordRaw[] = []
 
 export const userCustomFeatureRoutesAfterKeys: RouteRecordRaw[] = [
   {
