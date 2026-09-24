@@ -829,13 +829,21 @@ describe('PaymentView subscription feature flag', () => {
     return wrapper
       .findAll('button')
       .map((button) => button.text())
-      .filter((text) => text === 'payment.tabTopUp' || text === 'payment.tabSubscribe')
+      .filter((text) =>
+        text === 'payment.tabTopUp' ||
+        text === 'payment.tabRechargeCard' ||
+        text === 'payment.tabSubscribe',
+      )
   }
 
   it('keeps the top-up / subscribe switcher when subscription_enabled is absent (opt-out default)', async () => {
     const wrapper = await mountSubscriptionPlanList(2)
 
-    expect(tabLabels(wrapper)).toEqual(['payment.tabTopUp', 'payment.tabSubscribe'])
+    expect(tabLabels(wrapper)).toEqual([
+      'payment.tabTopUp',
+      'payment.tabRechargeCard',
+      'payment.tabSubscribe',
+    ])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(2)
   })
 
@@ -843,7 +851,7 @@ describe('PaymentView subscription feature flag', () => {
     appStoreState.setPublicSettings({ subscription_enabled: false })
     const wrapper = await mountSubscriptionPlanList(2)
 
-    expect(tabLabels(wrapper)).toEqual([])
+    expect(tabLabels(wrapper)).toEqual(['payment.tabTopUp', 'payment.tabRechargeCard'])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(0)
     expect(wrapper.text()).toContain('payment.rechargeAccount')
   })
@@ -867,7 +875,7 @@ describe('PaymentView subscription feature flag', () => {
     appStoreState.setPublicSettings({ subscription_enabled: false })
     await flushPromises()
 
-    expect(tabLabels(wrapper)).toEqual([])
+    expect(tabLabels(wrapper)).toEqual(['payment.tabTopUp', 'payment.tabRechargeCard'])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(0)
     expect(wrapper.text()).toContain('payment.rechargeAccount')
     wrapper.unmount()
