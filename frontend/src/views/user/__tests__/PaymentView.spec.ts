@@ -399,6 +399,7 @@ describe('PaymentView recharge rate preview', () => {
       },
     })
     await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'payment.tabTopUp')!.trigger('click')
     wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 10)
     await flushPromises()
 
@@ -578,6 +579,7 @@ describe('PaymentView payment recovery', () => {
     await flushPromises()
     await wrapper.find('[data-test="payment-done"]').trigger('click')
     await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'payment.tabTopUp')!.trigger('click')
 
     expect(wrapper.find('[data-test="method-selector"]').text()).toBe('ldc')
   })
@@ -853,7 +855,7 @@ describe('PaymentView subscription feature flag', () => {
 
     expect(tabLabels(wrapper)).toEqual(['payment.tabRechargeCard', 'payment.tabTopUp'])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(0)
-    expect(wrapper.text()).toContain('payment.rechargeAccount')
+    expect(wrapper.text()).toContain('payment.buyRechargeCard')
   })
 
   it('shows an unavailable notice instead of a doomed top-up form when balance recharge is disabled too', async () => {

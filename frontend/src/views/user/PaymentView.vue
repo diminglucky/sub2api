@@ -491,7 +491,7 @@ const loading = ref(true)
 const submitting = ref(false)
 const errorMessage = ref('')
 const errorHintMessage = ref('')
-const activeTab = ref<'recharge' | 'rechargeCard' | 'subscription'>('recharge')
+const activeTab = ref<'recharge' | 'rechargeCard' | 'subscription'>('rechargeCard')
 const amount = ref<number | null>(null)
 const selectedRechargePackageId = ref('')
 const selectedMethod = ref('')
@@ -711,7 +711,7 @@ const tabs = computed(() => {
 watch(tabs, (available) => {
   if (available.some((tab) => tab.key === activeTab.value)) return
   const leavingSubscription = activeTab.value === 'subscription'
-  activeTab.value = available[0]?.key ?? 'recharge'
+  activeTab.value = available[0]?.key ?? 'rechargeCard'
   if (leavingSubscription) selectedPlan.value = null
 })
 
