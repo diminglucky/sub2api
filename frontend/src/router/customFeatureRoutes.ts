@@ -14,6 +14,16 @@ export const userCustomFeatureRoutesAfterKeys: RouteRecordRaw[] = [
       titleKey: 'playground.title',
       descriptionKey: 'playground.description'
     }
+  },
+  {
+    path: '/image-studio',
+    name: 'ImageStudio',
+    component: () => import('@/features/image-studio/ImageStudioView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Image Studio'
+    }
   }
 ]
 

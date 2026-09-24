@@ -22,7 +22,10 @@ describe('custom feature routes', () => {
   })
 
   it('keeps user custom routes registered at stable insertion points', () => {
-    expect(userCustomFeatureRoutesAfterKeys.map((route) => route.path)).toEqual(['/playground'])
+    expect(userCustomFeatureRoutesAfterKeys.map((route) => route.path)).toEqual([
+      '/playground',
+      '/image-studio',
+    ])
     expect(userCustomFeatureRoutesAfterRedeem.map((route) => route.path)).toEqual(['/lottery'])
     expect(userCustomFeatureRoutesAfterAvailableChannels.map((route) => route.path)).toEqual([
       '/manual',
@@ -40,7 +43,7 @@ describe('custom feature routes', () => {
     const paths = routes.map((route) => route.path)
 
     expectPathOrder(paths, ['/key-usage', '/legal/:documentId'])
-    expectPathOrder(paths, ['/keys', '/playground', '/usage'])
+    expectPathOrder(paths, ['/keys', '/playground', '/image-studio', '/usage'])
     expectPathOrder(paths, ['/redeem', '/lottery', '/affiliate'])
     expectPathOrder(paths, ['/available-channels', '/manual', '/manual/:platform', '/models', '/profile'])
     expectPathOrder(paths, ['/admin/announcements', '/admin/lottery', '/admin/proxies'])
