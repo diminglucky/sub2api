@@ -5,6 +5,7 @@ export default {
   },
   // Home Page
   home: {
+    seoDescription: 'SuperAI is an AI API gateway and aggregation service compatible with OpenAI, GPT, Claude, DeepSeek and other leading models.',
     viewOnGithub: 'View on GitHub',
     viewDocs: 'View Documentation',
     docs: 'Docs',

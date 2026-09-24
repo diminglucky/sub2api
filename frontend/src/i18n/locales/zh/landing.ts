@@ -5,6 +5,7 @@ export default {
   },
   // Home Page
   home: {
+    seoDescription: 'SuperAI 提供兼容 OpenAI、GPT、Claude、DeepSeek 等模型的 AI API 中转与聚合服务，支持 OpenAI 兼容接口、模型价格对比和灵活计费。',
     viewOnGithub: '在 GitHub 上查看',
     viewDocs: '查看文档',
     docs: '文档',

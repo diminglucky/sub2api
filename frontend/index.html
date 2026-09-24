@@ -5,9 +5,78 @@
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SuperAI - AI API Gateway</title>
+    <meta
+      name="description"
+      content="SuperAI 提供兼容 OpenAI、GPT、Claude、DeepSeek 等模型的 AI API 中转与聚合服务，支持 OpenAI 兼容接口、模型价格对比和灵活计费。"
+    />
+    <meta
+      name="keywords"
+      content="SuperAI,AI API 中转站,API 中转站,GPT API,OpenAI API,Claude API,DeepSeek API,AI API 聚合平台,OpenAI 兼容接口"
+    />
+    <meta name="robots" content="index,follow" />
+    <meta name="application-name" content="SuperAI" />
+    <meta name="theme-color" content="#14b8a6" />
+    <link rel="canonical" href="https://superai.dihappy.cfd/" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SuperAI" />
+    <meta property="og:title" content="SuperAI - GPT、OpenAI、Claude、DeepSeek API 中转站" />
+    <meta
+      property="og:description"
+      content="兼容 OpenAI 接口的 AI API 聚合平台，查看 GPT、Claude、DeepSeek 等模型和价格。"
+    />
+    <meta property="og:url" content="https://superai.dihappy.cfd/" />
+    <meta property="og:image" content="https://superai.dihappy.cfd/logo.svg" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="SuperAI - GPT、OpenAI、Claude、DeepSeek API 中转站" />
+    <meta
+      name="twitter:description"
+      content="兼容 OpenAI 接口的 AI API 聚合平台，查看 GPT、Claude、DeepSeek 等模型和价格。"
+    />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "name": "SuperAI",
+            "url": "https://superai.dihappy.cfd/",
+            "logo": "https://superai.dihappy.cfd/logo.svg"
+          },
+          {
+            "@type": "WebSite",
+            "name": "SuperAI",
+            "url": "https://superai.dihappy.cfd/",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://superai.dihappy.cfd/model-plaza?search={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          },
+          {
+            "@type": "Service",
+            "name": "SuperAI AI API 中转与聚合服务",
+            "serviceType": "OpenAI-compatible API gateway",
+            "provider": {
+              "@type": "Organization",
+              "name": "SuperAI"
+            },
+            "areaServed": "CN",
+            "description": "兼容 OpenAI 接口，可接入 GPT、Claude、Gemini、DeepSeek 等模型。"
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="app"></div>
+    <noscript>
+      <main>
+        <h1>SuperAI AI API 中转站</h1>
+        <p>兼容 OpenAI 接口，可接入 GPT、Claude、DeepSeek 等模型，并提供模型价格对比。</p>
+        <p><a href="/home">首页</a> · <a href="/model-plaza">模型广场与价格</a></p>
+      </main>
+    </noscript>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

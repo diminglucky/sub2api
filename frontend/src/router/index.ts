@@ -44,7 +44,19 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/views/HomeView.vue'),
     meta: {
       requiresAuth: false,
-      title: 'Home'
+      title: 'Home',
+      descriptionKey: 'home.seoDescription',
+      seoKeywords: [
+        'SuperAI',
+        'AI API 中转站',
+        'API 中转站',
+        'GPT API',
+        'OpenAI API',
+        'Claude API',
+        'DeepSeek API',
+        'AI API 聚合平台',
+        'OpenAI 兼容接口'
+      ]
     }
   },
   {
@@ -191,7 +203,17 @@ export const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: false,
       title: 'Model Plaza',
-      titleKey: 'modelPlaza.title'
+      titleKey: 'modelPlaza.title',
+      descriptionKey: 'modelPlaza.seoDescription',
+      seoKeywords: [
+        'SuperAI 模型广场',
+        'AI API 价格',
+        'GPT API 价格',
+        'OpenAI API 中转',
+        'Claude API 中转',
+        'DeepSeek API 中转',
+        'API 中转站价格对比'
+      ]
     }
   },
 

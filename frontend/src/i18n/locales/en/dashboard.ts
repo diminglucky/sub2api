@@ -640,6 +640,7 @@ export default {
   // Model Plaza (public group/model pricing showcase)
   modelPlaza: {
     title: 'Model Plaza',
+    seoDescription: 'Browse available GPT, OpenAI, Claude and DeepSeek models, groups, rates and pricing on SuperAI Model Plaza.',
     description: 'Browse available models and pricing by group',
     loading: 'Loading...',
     empty: 'No groups to display',

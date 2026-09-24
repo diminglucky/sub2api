@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+Allow: /home
+Allow: /model-plaza
+Allow: /key-usage
+Allow: /legal/
+Disallow: /admin/
+Disallow: /dashboard
+Disallow: /image-studio
+Disallow: /keys
+Disallow: /orders
+Disallow: /profile
+Disallow: /purchase
+Disallow: /redeem
+Disallow: /setup
+Disallow: /api/
+Sitemap: https://superai.dihappy.cfd/sitemap.xml

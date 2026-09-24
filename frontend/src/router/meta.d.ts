@@ -70,5 +70,10 @@ declare module 'vue-router' {
      * i18n key for the page description
      */
     descriptionKey?: string
+
+    /**
+     * Additional public search keywords for this route.
+     */
+    seoKeywords?: string[]
   }
 }
