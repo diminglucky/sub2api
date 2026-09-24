@@ -698,10 +698,10 @@ const rechargeCardProducts = computed(() =>
 
 const tabs = computed(() => {
   const result: { key: 'recharge' | 'rechargeCard' | 'subscription'; label: string }[] = []
-  if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   if (!checkout.value.balance_disabled || rechargeCardProducts.value.length > 0) {
     result.push({ key: 'rechargeCard', label: t('payment.tabRechargeCard') })
   }
+  if (!checkout.value.balance_disabled) result.push({ key: 'recharge', label: t('payment.tabTopUp') })
   if (subscriptionEnabled.value) result.push({ key: 'subscription', label: t('payment.tabSubscribe') })
   return result
 })

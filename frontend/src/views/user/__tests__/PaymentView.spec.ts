@@ -840,8 +840,8 @@ describe('PaymentView subscription feature flag', () => {
     const wrapper = await mountSubscriptionPlanList(2)
 
     expect(tabLabels(wrapper)).toEqual([
-      'payment.tabTopUp',
       'payment.tabRechargeCard',
+      'payment.tabTopUp',
       'payment.tabSubscribe',
     ])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(2)
@@ -851,7 +851,7 @@ describe('PaymentView subscription feature flag', () => {
     appStoreState.setPublicSettings({ subscription_enabled: false })
     const wrapper = await mountSubscriptionPlanList(2)
 
-    expect(tabLabels(wrapper)).toEqual(['payment.tabTopUp', 'payment.tabRechargeCard'])
+    expect(tabLabels(wrapper)).toEqual(['payment.tabRechargeCard', 'payment.tabTopUp'])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(0)
     expect(wrapper.text()).toContain('payment.rechargeAccount')
   })
@@ -875,9 +875,9 @@ describe('PaymentView subscription feature flag', () => {
     appStoreState.setPublicSettings({ subscription_enabled: false })
     await flushPromises()
 
-    expect(tabLabels(wrapper)).toEqual(['payment.tabTopUp', 'payment.tabRechargeCard'])
+    expect(tabLabels(wrapper)).toEqual(['payment.tabRechargeCard', 'payment.tabTopUp'])
     expect(wrapper.findAllComponents(SubscriptionPlanCard)).toHaveLength(0)
-    expect(wrapper.text()).toContain('payment.rechargeAccount')
+    expect(wrapper.text()).toContain('payment.buyRechargeCard')
     wrapper.unmount()
   })
 
