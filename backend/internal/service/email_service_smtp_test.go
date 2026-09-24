@@ -57,6 +57,7 @@ type fakeSMTPServer struct {
 	listener          net.Listener
 	tlsConfig         *tls.Config
 	advertiseStartTLS bool
+	advertiseAuth     bool
 
 	mu       sync.Mutex
 	commands []string
@@ -65,6 +66,11 @@ type fakeSMTPServer struct {
 }
 
 func startFakeSMTPServer(t *testing.T, implicitTLS, advertiseStartTLS bool) (*fakeSMTPServer, int) {
+	t.Helper()
+	return startFakeSMTPServerWithAuth(t, implicitTLS, advertiseStartTLS, true)
+}
+
+func startFakeSMTPServerWithAuth(t *testing.T, implicitTLS, advertiseStartTLS, advertiseAuth bool) (*fakeSMTPServer, int) {
 	t.Helper()
 	cert, pool := newSMTPTestCert(t)
 	prevPool := smtpTestRootCAs
@@ -79,6 +85,7 @@ func startFakeSMTPServer(t *testing.T, implicitTLS, advertiseStartTLS bool) (*fa
 		listener:          listener,
 		tlsConfig:         &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12},
 		advertiseStartTLS: advertiseStartTLS,
+		advertiseAuth:     advertiseAuth,
 	}
 	if implicitTLS {
 		srv.listener = tls.NewListener(listener, srv.tlsConfig)
@@ -150,12 +157,18 @@ func (srv *fakeSMTPServer) serve(conn net.Conn, allowStartTLS bool) {
 		upper := strings.ToUpper(cmd)
 		switch {
 		case strings.HasPrefix(upper, "EHLO"), strings.HasPrefix(upper, "HELO"):
-			ok := writeLine("250-fake.test")
+			lines := []string{"250-fake.test"}
 			if allowStartTLS {
-				ok = ok && writeLine("250-STARTTLS")
+				lines = append(lines, "250-STARTTLS")
 			}
-			if !(ok && writeLine("250-AUTH PLAIN LOGIN") && writeLine("250 8BITMIME")) {
-				return
+			if srv.advertiseAuth {
+				lines = append(lines, "250-AUTH PLAIN LOGIN")
+			}
+			lines = append(lines, "250 8BITMIME")
+			for _, line := range lines {
+				if !writeLine(line) {
+					return
+				}
 			}
 		case upper == "STARTTLS" && allowStartTLS:
 			if !writeLine("220 2.0.0 ready to start TLS") {
@@ -227,8 +240,15 @@ func (srv *fakeSMTPServer) serveCommands(reader *bufio.Reader, writer *bufio.Wri
 		upper := strings.ToUpper(cmd)
 		switch {
 		case strings.HasPrefix(upper, "EHLO"), strings.HasPrefix(upper, "HELO"):
-			if !(writeLine("250-fake.test") && writeLine("250-AUTH PLAIN LOGIN") && writeLine("250 8BITMIME")) {
-				return
+			lines := []string{"250-fake.test"}
+			if srv.advertiseAuth {
+				lines = append(lines, "250-AUTH PLAIN LOGIN")
+			}
+			lines = append(lines, "250 8BITMIME")
+			for _, line := range lines {
+				if !writeLine(line) {
+					return
+				}
 			}
 		case strings.HasPrefix(upper, "AUTH"):
 			if !writeLine("235 2.7.0 authentication successful") {
@@ -348,6 +368,36 @@ func TestSMTPConnectionPlainWhenNoStartTLS(t *testing.T) {
 	}
 	if srv.sawCommand("STARTTLS") {
 		t.Fatal("did not expect STARTTLS command when server does not advertise it")
+	}
+}
+
+// 本地 MTA（例如 127.0.0.1:25 的 Postfix）通常不提供 SASL：
+// 未配置用户名时必须跳过 AUTH，直接走 MAIL/RCPT/DATA。
+func TestSMTPConnectionSkipsAuthWithoutCredentials(t *testing.T) {
+	srv, port := startFakeSMTPServerWithAuth(t, false, false, false)
+	svc := &EmailService{}
+	config := &SMTPConfig{
+		Host:     "127.0.0.1",
+		Port:     port,
+		Username: "",
+		Password: "",
+		From:     "noreply@example.com",
+		FromName: "Test",
+		UseTLS:   false,
+	}
+
+	if err := svc.TestSMTPConnectionWithConfig(config); err != nil {
+		t.Fatalf("expected unauthenticated test connection to succeed, got: %v", err)
+	}
+	if srv.sawCommand("AUTH") {
+		t.Fatal("expected no AUTH command when credentials are not configured")
+	}
+
+	if err := svc.SendEmailWithConfig(config, "rcpt@example.com", "subject", "<p>body</p>"); err != nil {
+		t.Fatalf("expected unauthenticated send to succeed, got: %v", err)
+	}
+	if !srv.sawCommand("DATA") {
+		t.Fatal("expected send path to reach DATA without authentication")
 	}
 }
 

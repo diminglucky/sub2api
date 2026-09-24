@@ -204,8 +204,7 @@ func (s *EmailService) SendEmailWithConfig(config *SMTPConfig, to, subject, body
 	}
 	defer func() { _ = client.Close() }()
 
-	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
-	if err = client.Auth(auth); err != nil {
+	if err = smtpAuthOrSkip(client, config); err != nil {
 		return fmt.Errorf("smtp auth: %w", err)
 	}
 	if err = client.Mail(message.envelopeFrom); err != nil {
@@ -304,6 +303,16 @@ func newSMTPClient(conn net.Conn, host string) (*smtp.Client, error) {
 		return nil, fmt.Errorf("new smtp client: %w", err)
 	}
 	return client, nil
+}
+
+// smtpAuthOrSkip 仅在配置了用户名时执行 SMTP AUTH。
+// 未配置用户名时跳过认证，使应用可以把邮件投递给本机中继
+// （例如 127.0.0.1:25 的 Postfix），这类本地 MTA 通常不提供 SASL。
+func smtpAuthOrSkip(client *smtp.Client, config *SMTPConfig) error {
+	if strings.TrimSpace(config.Username) == "" {
+		return nil
+	}
+	return client.Auth(smtp.PlainAuth("", config.Username, config.Password, config.Host))
 }
 
 // GenerateVerifyCode 生成6位数字验证码
@@ -464,8 +473,7 @@ func (s *EmailService) TestSMTPConnectionWithConfig(config *SMTPConfig) error {
 	}
 	defer func() { _ = client.Close() }()
 
-	auth := smtp.PlainAuth("", config.Username, config.Password, config.Host)
-	if err := client.Auth(auth); err != nil {
+	if err := smtpAuthOrSkip(client, config); err != nil {
 		return fmt.Errorf("smtp authentication failed: %w", err)
 	}
 
