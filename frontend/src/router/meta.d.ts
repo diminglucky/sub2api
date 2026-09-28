@@ -75,5 +75,10 @@ declare module 'vue-router' {
      * Additional public search keywords for this route.
      */
     seoKeywords?: string[]
+
+    /**
+     * Whether the route component should remain mounted when navigating away.
+     */
+    keepAlive?: boolean
   }
 }

@@ -52,15 +52,20 @@
             :key="image.id"
             class="group overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
           >
-            <button type="button" class="block aspect-square w-full overflow-hidden" @click="previewImage = image.src">
-              <img :src="image.src" :alt="image.title" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+            <button type="button" class="relative block aspect-square w-full overflow-hidden" :disabled="image.pending" @click="!image.pending && (previewImage = image.src)">
+              <div v-if="image.pending" class="image-pending-card">
+                <span class="image-generation-spinner" aria-hidden="true"></span>
+                <strong>正在生成</strong>
+                <small>请稍候，完成后将在此显示</small>
+              </div>
+              <img v-else :src="image.src" :alt="image.title" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
             </button>
             <div class="flex items-center justify-between gap-2 px-3 py-2">
               <div class="min-w-0">
                 <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ image.title }}</p>
                 <p class="truncate text-xs text-gray-400">{{ image.meta }}</p>
               </div>
-              <div class="flex shrink-0 gap-1">
+              <div v-if="!image.pending" class="flex shrink-0 gap-1">
                 <button type="button" class="mini-action" title="设为参考图" @click="useImageAsReference(image)">
                   <Icon name="paperclip" size="sm" />
                 </button>
@@ -179,6 +184,15 @@
     </div>
 
     <Teleport to="body">
+      <div v-if="generating" class="image-generation-overlay" role="status" aria-live="polite">
+        <div class="image-generation-overlay__card">
+          <span class="image-generation-spinner" aria-hidden="true"></span>
+          <div>
+            <p>正在生成图片</p>
+            <span>可以切换到其他页面，任务会继续进行。</span>
+          </div>
+        </div>
+      </div>
       <div v-if="previewImage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" @click="previewImage = ''">
         <img :src="previewImage" alt="图片预览" class="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
       </div>
@@ -346,6 +360,7 @@ interface GeneratedImage {
   title: string
   src: string
   meta: string
+  pending?: boolean
 }
 
 interface ReferenceItem {
@@ -393,11 +408,14 @@ const format = ref('png')
 const background = ref('auto')
 const count = ref(1)
 const generating = ref(false)
+const activeGenerations = ref(0)
 const errorMessage = ref('')
 const images = ref<GeneratedImage[]>([])
 const references = ref<ReferenceItem[]>([])
 const previewImage = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
+
+const PENDING_STORAGE_KEY = 'sub2api:image-studio:pending'
 
 const size = computed(() => formatSize(appliedSize))
 const draftSizeValue = computed(() => formatSize(draftSize))
@@ -458,7 +476,7 @@ const modelSelectPlaceholder = computed(() => {
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const apiKeyOptions = computed(() => activeKeys.value.map((key) => ({ value: String(key.id), label: key.name })))
 const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
-const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value?.key && imageModel.value.trim() && prompt.value.trim() && !generating.value))
+const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value?.key && imageModel.value.trim() && prompt.value.trim()))
 const hasReferences = computed(() => references.value.length > 0)
 
 let nextImageId = 1
@@ -558,6 +576,7 @@ function parseSize(value: string) {
 
 async function loadData() {
   errorMessage.value = ''
+  restorePendingImages()
   try {
     const [keyResponse, settings] = await Promise.all([
       keysAPI.list(1, 100, { status: 'active' }),
@@ -577,7 +596,17 @@ async function loadData() {
 async function loadGallery() {
   try {
     const entries = await imageStudioGalleryAPI.list()
-    images.value = entries.map(galleryEntryToImage)
+    const pending = images.value.filter((item) => item.pending)
+    const seen = new Set<string>()
+    const gallery = entries
+      .map(galleryEntryToImage)
+      .filter((item) => {
+        const key = String(item.id || item.src)
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+    images.value = [...pending, ...gallery]
   } catch {
     // Gallery storage is optional; generation remains available without it.
   }
@@ -589,6 +618,35 @@ function galleryEntryToImage(entry: ImageStudioGalleryEntry, index: number): Gen
     title: `历史图片 ${index + 1}`,
     src: entry.url,
     meta: [entry.format?.toUpperCase(), entry.size, entry.model, '7 天内有效'].filter(Boolean).join(' · '),
+  }
+}
+
+function restorePendingImages() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(PENDING_STORAGE_KEY) || '[]')
+    if (!Array.isArray(stored)) return
+    const restored = stored
+      .filter((item): item is GeneratedImage => item && item.pending && item.id != null)
+      .map((item) => ({
+        id: item.id,
+        title: '正在生成',
+        src: '',
+        meta: item.meta || '图片生成中',
+        pending: true,
+      }))
+    if (restored.length) images.value = restored
+  } catch {
+    // Ignore malformed browser storage and continue with an empty gallery.
+  }
+}
+
+function persistPendingImages() {
+  try {
+    const pending = images.value.filter((item) => item.pending)
+    if (pending.length) localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify(pending))
+    else localStorage.removeItem(PENDING_STORAGE_KEY)
+  } catch {
+    // Browser storage is optional.
   }
 }
 
@@ -738,6 +796,17 @@ function isGeminiModel(name: string) {
 async function generate() {
   if (!canGenerate.value || !selectedKey.value) return
   generating.value = true
+  activeGenerations.value += 1
+  const requestId = nextImageId++
+  const pendingImage: GeneratedImage = {
+    id: requestId,
+    title: '正在生成',
+    src: '',
+    meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
+    pending: true,
+  }
+  images.value.unshift(pendingImage)
+  persistPendingImages()
   errorMessage.value = ''
   const currentPrompt = prompt.value.trim()
   try {
@@ -770,7 +839,7 @@ async function generate() {
     }
     const items = extractImages(payload)
     if (!items.length) throw new Error('上游没有返回图片')
-    images.value = items.map((item: any, index: number) => {
+    const generated = items.map((item: any, index: number) => {
       const mime = String(item.mimeType || item.mime_type || 'image/png')
       const b64 = String(item.b64_json || item.data || '')
       return {
@@ -780,11 +849,18 @@ async function generate() {
         meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
       }
     }).filter((item: GeneratedImage) => item.src)
-    await persistGeneratedImages(images.value, currentPrompt, imageModel.value)
+    const pendingIndex = images.value.findIndex((item) => item.id === requestId)
+    if (pendingIndex >= 0) images.value.splice(pendingIndex, 1, ...generated)
+    persistPendingImages()
+    await persistGeneratedImages(generated, currentPrompt, imageModel.value)
   } catch (error) {
+    const pendingIndex = images.value.findIndex((item) => item.id === requestId)
+    if (pendingIndex >= 0) images.value.splice(pendingIndex, 1)
+    persistPendingImages()
     errorMessage.value = errorMessageFrom(error, '生成失败')
   } finally {
-    generating.value = false
+    activeGenerations.value -= 1
+    generating.value = activeGenerations.value > 0
   }
 }
 
@@ -1406,6 +1482,76 @@ onMounted(loadData)
 .primary-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.image-generation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1.5rem;
+  pointer-events: none;
+}
+
+.image-pending-card {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  background: linear-gradient(135deg, rgb(241 245 249), rgb(226 232 240));
+  color: rgb(51 65 85);
+}
+
+.image-pending-card small { color: rgb(100 116 139); }
+
+.image-generation-overlay__card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.9rem;
+  background: rgb(255 255 255 / 0.96);
+  padding: 0.8rem 1rem;
+  box-shadow: 0 16px 34px rgb(15 23 42 / 0.16);
+}
+
+.image-generation-overlay__card p {
+  margin: 0;
+  color: rgb(15 23 42);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.image-generation-overlay__card span:not(.image-generation-spinner) {
+  color: rgb(100 116 139);
+  font-size: 0.78rem;
+}
+
+.image-generation-spinner {
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: 0 0 auto;
+  border: 3px solid rgb(13 148 136 / 0.2);
+  border-top-color: rgb(13 148 136);
+  border-radius: 999px;
+  animation: image-generation-spin 0.8s linear infinite;
+}
+
+@keyframes image-generation-spin {
+  to { transform: rotate(360deg); }
+}
+
+:global(.dark .image-generation-overlay__card) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27 / 0.96);
+}
+
+:global(.dark .image-generation-overlay__card p) {
+  color: rgb(244 244 245);
 }
 
 :global(.dark .toolbar-field),

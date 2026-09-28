@@ -488,6 +488,7 @@ const baseSettingsResponse = {
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
   payment_recharge_fee_rate: 0,
+  payment_recharge_card_products: [],
   payment_load_balance_strategy: "round-robin",
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
@@ -1099,6 +1100,36 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_source");
     expect(payload).not.toHaveProperty("payment_visible_method_alipay_enabled");
     expect(payload).not.toHaveProperty("payment_visible_method_wxpay_enabled");
+  });
+
+  it("adds and removes the final recharge card product, then persists the empty list", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      payment_recharge_card_products: [
+        { name: "Starter", amount: 10, price: 10, url: "https://example.com/starter", enabled: true, sort_order: 1 },
+      ],
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    expect(wrapper.text()).toContain("Starter");
+
+    const addButton = wrapper
+      .findAll("button")
+      .find((node) => node.text().includes("admin.settings.payment.addRechargeCardProduct"));
+    await addButton?.trigger("click");
+    expect(wrapper.findAll('[data-testid="remove-recharge-card-product"]')).toHaveLength(2);
+
+    await wrapper.findAll('[data-testid="remove-recharge-card-product"]')[1].trigger("click");
+    await wrapper.find('[data-testid="remove-recharge-card-product"]').trigger("click");
+    expect(wrapper.text()).toContain("admin.settings.payment.noRechargeCardProducts");
+
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      payment_recharge_card_products: [],
+    }));
   });
 
   it("submits the admin recharge affiliate rebate setting", async () => {

@@ -8508,6 +8508,7 @@
                           <button
                             type="button"
                             class="btn btn-secondary text-red-600 hover:text-red-700 dark:text-red-400"
+                            data-testid="remove-recharge-card-product"
                             @click="removeRechargeCardProduct(index)"
                           >
                             {{ t("common.delete") }}
@@ -10941,7 +10942,16 @@ function addRechargeCardProduct(): void {
 }
 
 function removeRechargeCardProduct(index: number): void {
-  form.payment_recharge_card_products.splice(index, 1);
+  if (index < 0 || index >= form.payment_recharge_card_products.length) return;
+  form.payment_recharge_card_products = form.payment_recharge_card_products.filter(
+    (_, itemIndex) => itemIndex !== index,
+  );
+  appStore.showSuccess(
+    localText(
+      "卡券已移除，请点击页面底部的“保存设置”使修改生效。",
+      "Card product removed. Click Save Settings at the bottom to apply the change.",
+    ),
+  );
 }
 
 function normalizeRechargeCardProductsForSave(): RechargeCardProduct[] | null {

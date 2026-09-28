@@ -165,7 +165,20 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <RouterView v-slot="{ Component, route: currentRoute }">
+    <KeepAlive>
+      <component
+        v-if="currentRoute.meta.keepAlive"
+        :is="Component"
+        :key="currentRoute.name"
+      />
+    </KeepAlive>
+    <component
+      v-if="!currentRoute.meta.keepAlive"
+      :is="Component"
+      :key="currentRoute.name"
+    />
+  </RouterView>
   <Toast />
   <AnnouncementPopup />
   <AdminComplianceDialog />

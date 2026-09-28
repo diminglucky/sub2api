@@ -294,6 +294,57 @@ describe('ImageStudioView gallery', () => {
       format: 'png',
     }))
   })
+
+  it('shows and persists a pending image while generation is in flight', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    let resolveGeneration!: (response: Response) => void
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [] }) } as Response
+      }
+      if (url.endsWith('/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return await new Promise<Response>((resolve) => { resolveGeneration = resolve })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在生成')
+    expect(localStorage.getItem('sub2api:image-studio:pending')).toContain('"pending":true')
+
+    resolveGeneration({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] }),
+    } as Response)
+    await flushPromises()
+
+    expect(localStorage.getItem('sub2api:image-studio:pending')).toBeNull()
+    expect(wrapper.text()).toContain('生成结果 1')
+  })
+
+  it('restores pending image placeholders from browser storage on entry', async () => {
+    localStorage.setItem('sub2api:image-studio:pending', JSON.stringify([
+      { id: 55, title: '正在生成', src: '', meta: 'PNG · 1024x1024 · gpt-image-1', pending: true },
+    ]))
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正在生成')
+    expect(wrapper.text()).toContain('历史图片 0')
+  })
 })
 
 describe('ImageStudioView composer selects', () => {

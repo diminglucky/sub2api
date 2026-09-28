@@ -22,7 +22,8 @@ export const userCustomFeatureRoutesAfterKeys: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Image Studio'
+      title: 'Image Studio',
+      keepAlive: true,
     }
   }
 ]
