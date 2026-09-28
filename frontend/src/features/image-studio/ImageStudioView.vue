@@ -597,6 +597,7 @@ async function loadGallery() {
   try {
     const entries = await imageStudioGalleryAPI.list()
     const pending = images.value.filter((item) => item.pending)
+    const localResults = images.value.filter((item) => !item.pending && typeof item.id === 'number')
     const seen = new Set<string>()
     const gallery = entries
       .map(galleryEntryToImage)
@@ -606,7 +607,11 @@ async function loadGallery() {
         seen.add(key)
         return true
       })
-    images.value = [...pending, ...gallery]
+    const merged = [...localResults, ...gallery].filter((item, index, all) => {
+      const key = String(item.id || item.src)
+      return all.findIndex((candidate) => String(candidate.id || candidate.src) === key) === index
+    })
+    images.value = [...pending, ...merged]
   } catch {
     // Gallery storage is optional; generation remains available without it.
   }

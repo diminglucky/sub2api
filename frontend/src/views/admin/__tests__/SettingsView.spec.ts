@@ -1103,7 +1103,7 @@ describe("admin SettingsView payment visible method controls", () => {
   });
 
   it("adds and removes the final recharge card product, then persists the empty list", async () => {
-    getSettings.mockResolvedValueOnce({
+    getSettings.mockResolvedValue({
       ...baseSettingsResponse,
       payment_recharge_card_products: [
         { name: "Starter", amount: 10, price: 10, url: "https://example.com/starter", enabled: true, sort_order: 1 },
@@ -1113,7 +1113,9 @@ describe("admin SettingsView payment visible method controls", () => {
 
     await flushPromises();
     await openPaymentTab(wrapper);
-    expect(wrapper.text()).toContain("Starter");
+    expect(wrapper.findAll("input").some((input) =>
+      (input.element as HTMLInputElement).value === "Starter",
+    )).toBe(true);
 
     const addButton = wrapper
       .findAll("button")

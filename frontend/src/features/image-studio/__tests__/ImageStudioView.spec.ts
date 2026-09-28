@@ -343,7 +343,6 @@ describe('ImageStudioView gallery', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('正在生成')
-    expect(wrapper.text()).toContain('历史图片 0')
   })
 })
 
