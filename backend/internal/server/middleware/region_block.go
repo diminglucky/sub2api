@@ -22,51 +22,31 @@ var fallbackRegionCountryHeaders = []string{
 // RegionBlock blocks page navigation requests from configured countries/regions.
 // It relies on a trusted proxy/CDN such as Cloudflare to populate country
 // headers. API routes are always allowed.
-func RegionBlock(cfg config.RegionBlockConfig) gin.HandlerFunc {
-	if !cfg.Enabled {
+// resolve 每次请求都会调用，因此后台保存的设置立即生效；实现必须是廉价读取
+// （server 包传入的是原子快照读取）。
+func RegionBlock(resolve func() config.RegionBlockConfig) gin.HandlerFunc {
+	if resolve == nil {
 		return func(c *gin.Context) {
 			c.Next()
 		}
 	}
-
-	blockedCountries := make(map[string]struct{}, len(cfg.BlockedCountries))
-	for _, country := range cfg.BlockedCountries {
-		code := strings.ToUpper(strings.TrimSpace(country))
-		if code != "" {
-			blockedCountries[code] = struct{}{}
-		}
-	}
-	if len(blockedCountries) == 0 {
-		return func(c *gin.Context) {
-			c.Next()
-		}
-	}
-
-	headerNames := cfg.HeaderNames
-	if len(headerNames) == 0 {
-		headerNames = fallbackRegionCountryHeaders
-	}
-	blockedHosts := make(map[string]struct{}, len(cfg.Hosts))
-	for _, host := range cfg.Hosts {
-		normalized := normalizeRequestHost(host)
-		if normalized != "" {
-			blockedHosts[normalized] = struct{}{}
-		}
-	}
-	supportEmail := strings.TrimSpace(cfg.SupportEmail)
-
 	return func(c *gin.Context) {
-		if !isRegionBlockPageRequest(c) || !regionBlockHostMatches(c.Request, blockedHosts) {
+		cfg := resolve()
+		if !cfg.Enabled {
+			c.Next()
+			return
+		}
+		if !isRegionBlockPageRequest(c) || !regionBlockHostMatches(c.Request, blockedHostsFor(cfg.Hosts)) {
 			c.Next()
 			return
 		}
 
-		countryCode := requestCountryCode(c.Request, headerNames)
+		countryCode := requestCountryCode(c.Request, headerNamesFor(cfg.HeaderNames))
 		if countryCode == "" {
 			c.Next()
 			return
 		}
-		if _, blocked := blockedCountries[countryCode]; !blocked {
+		if !isBlockedCountry(cfg.BlockedCountries, countryCode) {
 			c.Next()
 			return
 		}
@@ -76,10 +56,37 @@ func RegionBlock(cfg config.RegionBlockConfig) gin.HandlerFunc {
 		if c.Request.Method == http.MethodHead {
 			c.Status(http.StatusForbidden)
 		} else {
-			c.Data(http.StatusForbidden, "text/html; charset=utf-8", []byte(renderUnsupportedRegionPage(countryCode, supportEmail)))
+			c.Data(http.StatusForbidden, "text/html; charset=utf-8", []byte(renderUnsupportedRegionPage(countryCode, strings.TrimSpace(cfg.SupportEmail))))
 		}
 		c.Abort()
 	}
+}
+
+func headerNamesFor(configured []string) []string {
+	if len(configured) == 0 {
+		return fallbackRegionCountryHeaders
+	}
+	return configured
+}
+
+func blockedHostsFor(hosts []string) map[string]struct{} {
+	blockedHosts := make(map[string]struct{}, len(hosts))
+	for _, host := range hosts {
+		normalized := normalizeRequestHost(host)
+		if normalized != "" {
+			blockedHosts[normalized] = struct{}{}
+		}
+	}
+	return blockedHosts
+}
+
+func isBlockedCountry(configured []string, countryCode string) bool {
+	for _, country := range configured {
+		if strings.ToUpper(strings.TrimSpace(country)) == countryCode {
+			return true
+		}
+	}
+	return false
 }
 
 func requestCountryCode(req *http.Request, headerNames []string) string {

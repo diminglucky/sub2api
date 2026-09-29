@@ -745,6 +745,8 @@ type SecurityConfig struct {
 	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
 	ForwardedClientIPHeaders      []string                                   `mapstructure:"forwarded_client_ip_headers" json:"forwarded_client_ip_headers" yaml:"forwarded_client_ip_headers"`
 	forwardedClientIPSettingsLive *atomic.Pointer[ForwardedClientIPSettings] `mapstructure:"-" json:"-" yaml:"-"`
+	// regionBlockSettingsLive 保存后台页面写入的地区访问限制快照；为空时沿用配置文件的值。
+	regionBlockSettingsLive *atomic.Pointer[RegionBlockConfig] `mapstructure:"-" json:"-" yaml:"-"`
 }
 
 func NormalizeForwardedClientIPHeaders(headers []string) ([]string, error) {
@@ -797,6 +799,48 @@ func (c *Config) ForwardedClientIPSettings() ForwardedClientIPSettings {
 
 func (c *Config) TrustForwardedIPForAPIKeyACL() bool {
 	return c.ForwardedClientIPSettings().TrustForwardedIP
+}
+
+func cloneRegionBlockStrings(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	return append([]string(nil), values...)
+}
+
+func cloneRegionBlockConfig(cfg RegionBlockConfig) RegionBlockConfig {
+	return RegionBlockConfig{
+		Enabled:          cfg.Enabled,
+		Hosts:            cloneRegionBlockStrings(cfg.Hosts),
+		BlockedCountries: cloneRegionBlockStrings(cfg.BlockedCountries),
+		HeaderNames:      cloneRegionBlockStrings(cfg.HeaderNames),
+		SupportEmail:     strings.TrimSpace(cfg.SupportEmail),
+	}
+}
+
+// SetRegionBlockSettings 用后台保存的值覆盖地区访问限制，下一次请求即生效（无需重启）。
+func (c *Config) SetRegionBlockSettings(cfg RegionBlockConfig) {
+	if c == nil {
+		return
+	}
+	snapshot := cloneRegionBlockConfig(cfg)
+	if c.Security.regionBlockSettingsLive == nil {
+		c.Security.regionBlockSettingsLive = &atomic.Pointer[RegionBlockConfig]{}
+	}
+	c.Security.regionBlockSettingsLive.Store(&snapshot)
+}
+
+// RegionBlockSettings 返回当前生效的地区访问限制：后台保存过就用后台值，否则用配置文件的值。
+func (c *Config) RegionBlockSettings() RegionBlockConfig {
+	if c == nil {
+		return RegionBlockConfig{}
+	}
+	if live := c.Security.regionBlockSettingsLive; live != nil {
+		if snapshot := live.Load(); snapshot != nil {
+			return cloneRegionBlockConfig(*snapshot)
+		}
+	}
+	return cloneRegionBlockConfig(c.Security.RegionBlock)
 }
 
 // ForwardedClientIPTrustEnabled reports whether the legacy forwarded-header

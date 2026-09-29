@@ -289,7 +289,74 @@ func parseForwardedClientIPHeadersSetting(value string) ([]string, error) {
 }
 
 // parseSettings 解析设置到结构体
+// regionBlockFallback 返回 config.yaml 里的地区访问限制：数据库从未保存过时沿用它，
+// 保证升级前用配置文件开启该功能的部署不被打断。
+func (s *SettingService) regionBlockFallback() config.RegionBlockConfig {
+	if s == nil || s.cfg == nil {
+		return config.RegionBlockConfig{}
+	}
+	return s.cfg.Security.RegionBlock
+}
+
+// parseRegionBlockBool 解析后台写入的开关值。
+func parseRegionBlockBool(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+// parseRegionBlockStringList 解析后台写入的 JSON 数组；"[]" 表示后台主动清空。
+func parseRegionBlockStringList(raw string) []string {
+	var values []string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &values); err != nil {
+		return []string{}
+	}
+	normalized := make([]string, 0, len(values))
+	for _, value := range values {
+		if item := strings.TrimSpace(value); item != "" {
+			normalized = append(normalized, item)
+		}
+	}
+	return normalized
+}
+
+type resolvedRegionBlockSettings struct {
+	Enabled          bool
+	BlockedCountries []string
+	Hosts            []string
+	SupportEmail     string
+}
+
+// resolveRegionBlockSettings 以配置文件为兜底，用数据库里"存在"的键覆盖：
+// 键不存在表示后台从未保存过，键存在（哪怕是空串/"[]"）都表示后台的显式选择。
+func resolveRegionBlockSettings(settings map[string]string, fallback config.RegionBlockConfig) resolvedRegionBlockSettings {
+	out := resolvedRegionBlockSettings{
+		Enabled:          fallback.Enabled,
+		BlockedCountries: append([]string{}, fallback.BlockedCountries...),
+		Hosts:            append([]string{}, fallback.Hosts...),
+		SupportEmail:     strings.TrimSpace(fallback.SupportEmail),
+	}
+	if raw, ok := settings[SettingKeyRegionBlockEnabled]; ok {
+		out.Enabled = parseRegionBlockBool(raw)
+	}
+	if raw, ok := settings[SettingKeyRegionBlockBlockedCountries]; ok {
+		out.BlockedCountries = parseRegionBlockStringList(raw)
+	}
+	if raw, ok := settings[SettingKeyRegionBlockHosts]; ok {
+		out.Hosts = parseRegionBlockStringList(raw)
+	}
+	if raw, ok := settings[SettingKeyRegionBlockSupportEmail]; ok {
+		out.SupportEmail = strings.TrimSpace(raw)
+	}
+	return out
+}
+
 func (s *SettingService) parseSettings(settings map[string]string) *SystemSettings {
+	regionBlockFallback := s.regionBlockFallback()
+	regionBlock := resolveRegionBlockSettings(settings, regionBlockFallback)
 	emailVerifyEnabled := settings[SettingKeyEmailVerifyEnabled] == "true"
 	loginAgreementDocuments := parseLoginAgreementDocuments(settings[SettingKeyLoginAgreementDocuments])
 	loginAgreementUpdatedAt := strings.TrimSpace(settings[SettingKeyLoginAgreementUpdatedAt])
@@ -340,6 +407,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
+		RegionBlockEnabled:                     regionBlock.Enabled,
+		RegionBlockBlockedCountries:            regionBlock.BlockedCountries,
+		RegionBlockHosts:                       regionBlock.Hosts,
+		RegionBlockSupportEmail:                regionBlock.SupportEmail,
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:           settings[SettingKeyTurnstileSecretKey] != "",

@@ -1755,6 +1755,88 @@
             </div>
           </div>
 
+          <!-- 地区访问限制（网页） -->
+          <div class="card">
+            <div
+              class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
+            >
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.regionBlock.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.regionBlock.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.regionBlock.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.regionBlock.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.region_block_enabled" />
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.regionBlock.countries") }}
+                </label>
+                <input
+                  v-model="regionBlockCountriesInput"
+                  type="text"
+                  class="input font-mono text-sm"
+                  :placeholder="
+                    t('admin.settings.regionBlock.countriesPlaceholder')
+                  "
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.regionBlock.countriesHint") }}
+                </p>
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.regionBlock.hosts") }}
+                </label>
+                <input
+                  v-model="regionBlockHostsInput"
+                  type="text"
+                  class="input font-mono text-sm"
+                  :placeholder="t('admin.settings.regionBlock.hostsPlaceholder')"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.regionBlock.hostsHint") }}
+                </p>
+              </div>
+
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{ t("admin.settings.regionBlock.supportEmail") }}
+                </label>
+                <input
+                  v-model="form.region_block_support_email"
+                  type="email"
+                  class="input text-sm"
+                  :placeholder="
+                    t('admin.settings.regionBlock.supportEmailPlaceholder')
+                  "
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.regionBlock.supportEmailHint") }}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <!-- API Key IP ACL Settings -->
           <div class="card">
             <div
@@ -9232,6 +9314,32 @@ const testEmailAddress = ref("");
 const registrationEmailSuffixWhitelistTags = ref<string[]>([]);
 const registrationEmailSuffixWhitelistDraft = ref("");
 const forwardedClientIpHeaderDraft = ref("");
+
+// 地区访问限制的两个列表在界面上用逗号分隔的文本编辑，写回时拆成数组。
+function splitRegionBlockList(value: string): string[] {
+  return value
+    .split(/[,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const regionBlockCountriesInput = computed({
+  get: () => form.region_block_blocked_countries.join(", "),
+  set: (value: string) => {
+    form.region_block_blocked_countries = splitRegionBlockList(value).map(
+      (item) => item.toUpperCase(),
+    );
+  },
+});
+
+const regionBlockHostsInput = computed({
+  get: () => form.region_block_hosts.join(", "),
+  set: (value: string) => {
+    form.region_block_hosts = splitRegionBlockList(value).map((item) =>
+      item.toLowerCase(),
+    );
+  },
+});
 const tablePageSizeOptionsInput = ref("10, 20, 50, 100");
 
 // Admin API Key 状态
@@ -9915,6 +10023,11 @@ const form = reactive<SettingsForm>({
   smtp_from_email: "",
   smtp_from_name: "",
   smtp_use_tls: true,
+  // 地区访问限制（网页拦截）
+  region_block_enabled: false,
+  region_block_blocked_countries: [] as string[],
+  region_block_hosts: [] as string[],
+  region_block_support_email: "",
   // Cloudflare Turnstile
   turnstile_enabled: false,
   turnstile_site_key: "",
@@ -11636,6 +11749,10 @@ async function saveSettings() {
       smtp_from_email: form.smtp_from_email,
       smtp_from_name: form.smtp_from_name,
       smtp_use_tls: form.smtp_use_tls,
+      region_block_enabled: form.region_block_enabled,
+      region_block_blocked_countries: form.region_block_blocked_countries,
+      region_block_hosts: form.region_block_hosts,
+      region_block_support_email: form.region_block_support_email,
       turnstile_enabled: form.turnstile_enabled,
       turnstile_site_key: form.turnstile_site_key,
       turnstile_secret_key: form.turnstile_secret_key || undefined,

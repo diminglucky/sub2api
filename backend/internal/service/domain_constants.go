@@ -255,6 +255,12 @@ const (
 	SettingKeySMTPFromName = "smtp_from_name" // 发件人名称
 	SettingKeySMTPUseTLS   = "smtp_use_tls"   // 是否使用TLS
 
+	// 地区访问限制（后台可改；数据库为空时回落到 config.yaml 的 security.region_block）
+	SettingKeyRegionBlockEnabled          = "region_block_enabled"           // 是否启用网页地区拦截
+	SettingKeyRegionBlockBlockedCountries = "region_block_blocked_countries" // 屏蔽的国家/地区码（JSON 数组）
+	SettingKeyRegionBlockHosts            = "region_block_hosts"             // 生效域名（JSON 数组，支持 *）
+	SettingKeyRegionBlockSupportEmail     = "region_block_support_email"     // 拦截页申诉邮箱
+
 	// Cloudflare Turnstile 设置
 	SettingKeyTurnstileEnabled   = "turnstile_enabled"    // 是否启用 Turnstile 验证
 	SettingKeyTurnstileSiteKey   = "turnstile_site_key"   // Turnstile Site Key

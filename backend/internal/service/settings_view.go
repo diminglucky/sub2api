@@ -39,6 +39,12 @@ type SystemSettings struct {
 	SMTPFromName           string
 	SMTPUseTLS             bool
 
+	// 地区访问限制（后台可改，config.yaml 为兜底）
+	RegionBlockEnabled          bool
+	RegionBlockBlockedCountries []string
+	RegionBlockHosts            []string
+	RegionBlockSupportEmail     string
+
 	TurnstileEnabled                       bool
 	TurnstileSiteKey                       string
 	TurnstileSecretKey                     string

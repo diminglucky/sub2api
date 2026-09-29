@@ -98,6 +98,58 @@ func (s *SettingService) refreshCachedSettingsAfterWrite(ctx context.Context, se
 	s.refreshCachedSettings(stored)
 }
 
+// normalizeRegionBlockCountries 归一化国家/地区码：两位字母、大写、去重。
+// 校验失败时返回 400，避免把 "中国" 这类永远匹配不上的值写进库里。
+func normalizeRegionBlockCountries(values []string) ([]string, error) {
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		code := strings.ToUpper(strings.TrimSpace(value))
+		if code == "" {
+			continue
+		}
+		if !isTwoLetterCountryCode(code) {
+			return nil, infraerrors.BadRequest("INVALID_REGION_BLOCK_COUNTRY", "country codes must be two letters, for example CN")
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		normalized = append(normalized, code)
+	}
+	return normalized, nil
+}
+
+func isTwoLetterCountryCode(code string) bool {
+	if len(code) != 2 {
+		return false
+	}
+	for _, r := range code {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeRegionBlockHosts 归一化生效域名：小写、去空白、去重；保留 "*"。
+func normalizeRegionBlockHosts(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		host := strings.ToLower(strings.TrimSpace(value))
+		if host == "" {
+			continue
+		}
+		if _, ok := seen[host]; ok {
+			continue
+		}
+		seen[host] = struct{}{}
+		normalized = append(normalized, host)
+	}
+	return normalized
+}
+
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
@@ -110,6 +162,13 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		normalizedWhitelist = []string{}
 	}
 	settings.RegistrationEmailSuffixWhitelist = normalizedWhitelist
+	normalizedRegionBlockCountries, err := normalizeRegionBlockCountries(settings.RegionBlockBlockedCountries)
+	if err != nil {
+		return nil, err
+	}
+	settings.RegionBlockBlockedCountries = normalizedRegionBlockCountries
+	settings.RegionBlockHosts = normalizeRegionBlockHosts(settings.RegionBlockHosts)
+	settings.RegionBlockSupportEmail = strings.TrimSpace(settings.RegionBlockSupportEmail)
 	normalizedForwardedClientIPHeaders, err := config.NormalizeForwardedClientIPHeaders(settings.ForwardedClientIPHeaders)
 	if err != nil {
 		return nil, infraerrors.BadRequest("INVALID_FORWARDED_CLIENT_IP_HEADERS", err.Error())
@@ -203,6 +262,20 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySMTPFrom] = settings.SMTPFrom
 	updates[SettingKeySMTPFromName] = settings.SMTPFromName
 	updates[SettingKeySMTPUseTLS] = strconv.FormatBool(settings.SMTPUseTLS)
+
+	// 地区访问限制：数据库里保存的就是后台的显式选择，键存在即生效（空列表表示不限制）。
+	regionBlockCountriesJSON, err := json.Marshal(settings.RegionBlockBlockedCountries)
+	if err != nil {
+		return nil, fmt.Errorf("marshal region block countries: %w", err)
+	}
+	regionBlockHostsJSON, err := json.Marshal(settings.RegionBlockHosts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal region block hosts: %w", err)
+	}
+	updates[SettingKeyRegionBlockEnabled] = strconv.FormatBool(settings.RegionBlockEnabled)
+	updates[SettingKeyRegionBlockBlockedCountries] = string(regionBlockCountriesJSON)
+	updates[SettingKeyRegionBlockHosts] = string(regionBlockHostsJSON)
+	updates[SettingKeyRegionBlockSupportEmail] = settings.RegionBlockSupportEmail
 
 	// Cloudflare Turnstile 设置（只有非空才更新密钥）
 	updates[SettingKeyTurnstileEnabled] = strconv.FormatBool(settings.TurnstileEnabled)
@@ -796,6 +869,13 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	}
 	if s.cfg != nil {
 		s.cfg.SetForwardedClientIPSettings(settings.APIKeyACLTrustForwardedIP, settings.ForwardedClientIPHeaders)
+		s.cfg.SetRegionBlockSettings(config.RegionBlockConfig{
+			Enabled:          settings.RegionBlockEnabled,
+			Hosts:            settings.RegionBlockHosts,
+			BlockedCountries: settings.RegionBlockBlockedCountries,
+			HeaderNames:      s.cfg.Security.RegionBlock.HeaderNames,
+			SupportEmail:     settings.RegionBlockSupportEmail,
+		})
 	}
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")

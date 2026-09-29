@@ -499,6 +499,11 @@ export interface SystemSettings {
   smtp_from_email: string;
   smtp_from_name: string;
   smtp_use_tls: boolean;
+  // Region access block (web pages only; API paths are exempt)
+  region_block_enabled: boolean;
+  region_block_blocked_countries: string[];
+  region_block_hosts: string[];
+  region_block_support_email: string;
   // Cloudflare Turnstile settings
   turnstile_enabled: boolean;
   turnstile_site_key: string;
@@ -847,6 +852,10 @@ export interface UpdateSettingsRequest {
   smtp_from_email?: string;
   smtp_from_name?: string;
   smtp_use_tls?: boolean;
+  region_block_enabled?: boolean;
+  region_block_blocked_countries?: string[];
+  region_block_hosts?: string[];
+  region_block_support_email?: string;
   turnstile_enabled?: boolean;
   turnstile_site_key?: string;
   turnstile_secret_key?: string;

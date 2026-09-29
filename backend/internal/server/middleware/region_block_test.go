@@ -13,7 +13,7 @@ import (
 func newRegionBlockTestRouter(cfg config.RegionBlockConfig) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(RegionBlock(cfg))
+	r.Use(RegionBlock(func() config.RegionBlockConfig { return cfg }))
 	r.GET("/home", func(c *gin.Context) {
 		c.String(http.StatusOK, "ok")
 	})
@@ -45,6 +45,37 @@ func TestRegionBlock_BlockedCountryReturnsHTMLPage(t *testing.T) {
 	require.Contains(t, w.Body.String(), "暂不支持你所在的地区")
 	require.Contains(t, w.Body.String(), "中国大陆、中国香港、中国澳门、中国台湾暂无法使用")
 	require.Contains(t, w.Body.String(), "support@example.com")
+}
+
+// 后台保存设置后中间件必须立刻按新配置放行/拦截，而不是沿用构造时的快照。
+func TestRegionBlock_PicksUpUpdatedConfigWithoutRestart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := config.RegionBlockConfig{
+		Enabled:          true,
+		Hosts:            []string{"superai.dihappy.cfd"},
+		BlockedCountries: []string{"CN"},
+		HeaderNames:      []string{"CF-IPCountry"},
+	}
+	r := gin.New()
+	r.Use(RegionBlock(func() config.RegionBlockConfig { return cfg }))
+	r.GET("/home", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	probe := func() int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/home", nil)
+		req.Host = "superai.dihappy.cfd"
+		req.Header.Set("Accept", "text/html")
+		req.Header.Set("CF-IPCountry", "CN")
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	require.Equal(t, http.StatusForbidden, probe())
+
+	cfg.BlockedCountries = []string{"US"}
+	require.Equal(t, http.StatusOK, probe())
 }
 
 func TestRegionBlock_AllowsAPIRouteOnBlockedHostAndCountry(t *testing.T) {

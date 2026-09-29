@@ -175,6 +175,21 @@ export default {
         totpKeyNotConfigured:
           'Please configure TOTP_ENCRYPTION_KEY in environment variables first. Generate a key with: openssl rand -hex 32'
       },
+      regionBlock: {
+        title: 'Region Access Block',
+        description: 'Block web page visits from selected countries/regions. Requires a CDN/proxy such as Cloudflare to supply the country header; API paths are never blocked.',
+        enabled: 'Enable region blocking',
+        enabledHint: 'When off, every region can open the web pages.',
+        countries: 'Blocked countries/regions',
+        countriesPlaceholder: 'CN, HK, MO, TW',
+        countriesHint: 'Two-letter country codes, comma separated. Leave empty to stop blocking by region.',
+        hosts: 'Hosts to enforce on',
+        hostsPlaceholder: 'superai.dihappy.cfd',
+        hostsHint: 'Only page visits to these hosts are blocked, comma separated; use * for every host.',
+        supportEmail: 'Appeal email',
+        supportEmailPlaceholder: 'support@example.com',
+        supportEmailHint: 'Shown on the blocked page. Leave empty to hide it.',
+      },
       security: {
         passkey: 'Passkey Sign-in',
         passkeyHint: 'Allow passwordless sign-in and user-managed passkeys when the relying party configuration is valid.',

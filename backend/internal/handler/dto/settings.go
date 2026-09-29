@@ -57,6 +57,11 @@ type SystemSettings struct {
 	SMTPFrom               string `json:"smtp_from_email"`
 	SMTPFromName           string `json:"smtp_from_name"`
 	SMTPUseTLS             bool   `json:"smtp_use_tls"`
+	// 地区访问限制（网页拦截；API 路径不受影响）
+	RegionBlockEnabled          bool     `json:"region_block_enabled"`
+	RegionBlockBlockedCountries []string `json:"region_block_blocked_countries"`
+	RegionBlockHosts            []string `json:"region_block_hosts"`
+	RegionBlockSupportEmail     string   `json:"region_block_support_email"`
 
 	TurnstileEnabled                       bool     `json:"turnstile_enabled"`
 	TurnstileSiteKey                       string   `json:"turnstile_site_key"`

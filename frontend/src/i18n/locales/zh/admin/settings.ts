@@ -175,6 +175,21 @@ export default {
         totpKeyNotConfigured:
           '请先在环境变量中配置 TOTP_ENCRYPTION_KEY。使用命令 openssl rand -hex 32 生成密钥。'
       },
+      regionBlock: {
+        title: '地区访问限制',
+        description: '按访问者所在国家/地区拦截网页访问。依赖 Cloudflare 等反代注入的国家码 Header，只拦截网页，API 路径不受影响。',
+        enabled: '启用地区拦截',
+        enabledHint: '关闭后所有地区都能访问网页。',
+        countries: '屏蔽的国家/地区',
+        countriesPlaceholder: 'CN, HK, MO, TW',
+        countriesHint: '两位国家/地区码，逗号分隔；留空表示不按地区拦截。',
+        hosts: '生效域名',
+        hostsPlaceholder: 'superai.dihappy.cfd',
+        hostsHint: '只拦截这些域名的网页访问，逗号分隔；填 * 表示所有域名。',
+        supportEmail: '申诉邮箱',
+        supportEmailPlaceholder: 'support@example.com',
+        supportEmailHint: '显示在拦截页上的联系方式，留空则不显示。',
+      },
       security: {
         passkey: 'Passkey 登录',
         passkeyHint: '当依赖方配置有效时，允许无密码登录及用户自行管理 Passkey。',
