@@ -78,6 +78,38 @@ func TestRegionBlock_PicksUpUpdatedConfigWithoutRestart(t *testing.T) {
 	require.Equal(t, http.StatusOK, probe())
 }
 
+// 地区拦截只针对网页；搜索引擎需要抓取的 robots.txt / sitemap.xml 必须始终可达，
+// 否则被屏蔽地区的爬虫连站点地图都拿不到。
+func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RegionBlock(func() config.RegionBlockConfig {
+		return config.RegionBlockConfig{
+			Enabled:          true,
+			Hosts:            []string{"superai.dihappy.cfd"},
+			BlockedCountries: []string{"CN"},
+			HeaderNames:      []string{"CF-IPCountry"},
+		}
+	}))
+	r.GET("/robots.txt", func(c *gin.Context) { c.String(http.StatusOK, "User-agent: *") })
+	r.GET("/sitemap.xml", func(c *gin.Context) { c.String(http.StatusOK, "<urlset/>") })
+	r.GET("/home", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+
+	probe := func(path, accept string) int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "superai.dihappy.cfd"
+		req.Header.Set("Accept", accept)
+		req.Header.Set("CF-IPCountry", "CN")
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	require.Equal(t, http.StatusOK, probe("/robots.txt", "*/*"))
+	require.Equal(t, http.StatusOK, probe("/sitemap.xml", "*/*"))
+	require.Equal(t, http.StatusForbidden, probe("/home", "text/html"))
+}
+
 func TestRegionBlock_AllowsAPIRouteOnBlockedHostAndCountry(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,

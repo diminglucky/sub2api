@@ -117,7 +117,7 @@ func isRegionBlockPageRequest(c *gin.Context) bool {
 	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 		return false
 	}
-	if isRegionBlockAPIRoute(c.Request.URL.Path) {
+	if isRegionBlockExemptPath(c.Request.URL.Path) {
 		return false
 	}
 	accept := strings.ToLower(c.GetHeader("Accept"))
@@ -165,6 +165,20 @@ func normalizeRequestHost(host string) string {
 		host = h
 	}
 	return strings.Trim(host, "[]")
+}
+
+// isRegionBlockExemptPath 汇总不该被地区拦截的路径：API 路由，以及搜索引擎/浏览器
+// 需要直接抓取的爬虫文件与静态资源。拦截 robots.txt / sitemap.xml 会妨碍收录，
+// 与"只拦网页访问"的初衷也相悖。
+func isRegionBlockExemptPath(path string) bool {
+	if isRegionBlockAPIRoute(path) {
+		return true
+	}
+	switch path {
+	case "/robots.txt", "/sitemap.xml", "/site.webmanifest", "/favicon.ico", "/logo.svg":
+		return true
+	}
+	return strings.HasPrefix(path, "/assets/")
 }
 
 func isRegionBlockAPIRoute(path string) bool {
