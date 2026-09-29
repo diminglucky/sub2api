@@ -24,7 +24,19 @@ import (
 const (
 	// NonceHTMLPlaceholder is the placeholder for nonce in HTML script tags
 	NonceHTMLPlaceholder = "__CSP_NONCE_VALUE__"
+	// seoBlockStart/seoBlockEnd 包住 index.html 里的 SEO 标签，按请求路径整体替换。
+	seoBlockStart = "<!--seo:start-->"
+	seoBlockEnd   = "<!--seo:end-->"
 )
+
+const defaultSeoKeywords = "AI API 中转站,API 中转站,GPT API,OpenAI API,Claude API,DeepSeek API,AI API 聚合平台,OpenAI 兼容接口"
+
+type routeSeoDoc struct {
+	Title       string
+	Description string
+	Keywords    string
+	Robots      string
+}
 
 //go:embed all:dist
 var frontendFS embed.FS
@@ -158,6 +170,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 
 		// Replace nonce placeholder with actual nonce before serving
 		content := replaceNoncePlaceholder(cached.Content, nonce)
+		content = applyRouteSeo(content, requestOrigin(c), c.Request.URL.Path, cached.SiteName)
 
 		c.Header("ETag", cached.ETag)
 		c.Header("Cache-Control", "no-cache") // Must revalidate
@@ -191,6 +204,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 
 	// Replace nonce placeholder with actual nonce before serving
 	content := replaceNoncePlaceholder(rendered, nonce)
+	content = applyRouteSeo(content, requestOrigin(c), c.Request.URL.Path, siteNameFromSettingsJSON(settingsJSON))
 
 	cached = s.cache.Get()
 	if cached != nil {
@@ -298,6 +312,178 @@ func replaceNoncePlaceholder(html []byte, nonce string) []byte {
 	return bytes.ReplaceAll(html, []byte(NonceHTMLPlaceholder), []byte(nonce))
 }
 
+func normalizeSeoPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return "/"
+	}
+	if !strings.HasPrefix(trimmed, "/") {
+		trimmed = "/" + trimmed
+	}
+	if len(trimmed) > 1 {
+		trimmed = strings.TrimRight(trimmed, "/")
+	}
+	if trimmed == "" {
+		return "/"
+	}
+	return trimmed
+}
+
+// resolveRouteSeoDoc 决定每个路径服务端直接输出的 title/description/robots。
+// 只有公开页面允许收录；后台与登录后页面一律 noindex，避免被索引到空壳页。
+func resolveRouteSeoDoc(path, siteName string) routeSeoDoc {
+	name := strings.TrimSpace(siteName)
+	if name == "" {
+		name = "SuperAI"
+	}
+	normalized := normalizeSeoPath(path)
+	switch {
+	case normalized == "/" || normalized == "/home":
+		return routeSeoDoc{
+			Title:       name + " - GPT、OpenAI、Claude、DeepSeek API 中转站",
+			Description: "兼容 OpenAI 接口的 AI API 聚合平台，支持 GPT、Claude、Gemini、DeepSeek 等模型，提供模型价格对比与灵活计费。",
+			Keywords:    defaultSeoKeywords,
+			Robots:      "index,follow",
+		}
+	case normalized == "/model-plaza":
+		return routeSeoDoc{
+			Title:       name + " - AI 模型广场与价格对比",
+			Description: "对比 GPT、Claude、Gemini、DeepSeek 等模型的实时价格、上下文窗口与计费方式，OpenAI 兼容接口可直接接入。",
+			Keywords:    "AI API 价格,GPT API 价格,Claude API 价格,DeepSeek API 价格,AI 模型价格对比",
+			Robots:      "index,follow",
+		}
+	case normalized == "/key-usage":
+		return routeSeoDoc{
+			Title:       name + " - API 密钥用量查询",
+			Description: "按密钥、模型与时间范围查询 API 调用量与额度消耗明细。",
+			Keywords:    "API 密钥用量,API 额度查询,Token 用量",
+			Robots:      "index,follow",
+		}
+	case strings.HasPrefix(normalized, "/legal/"):
+		return routeSeoDoc{
+			Title:       name + " - 条款与政策",
+			Description: name + " 的服务条款、隐私政策与使用规范。",
+			Keywords:    defaultSeoKeywords,
+			Robots:      "index,follow",
+		}
+	}
+	return routeSeoDoc{
+		Title:       name + " - AI API Gateway",
+		Description: "兼容 OpenAI 接口的 AI API 聚合平台。",
+		Keywords:    defaultSeoKeywords,
+		Robots:      "noindex,nofollow",
+	}
+}
+
+// requestOrigin 依据可信反代头推导外部访问源，canonical/og:url 必须用真实域名。
+func requestOrigin(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	host := strings.TrimSpace(c.Request.Host)
+	if host == "" {
+		return ""
+	}
+	scheme := ""
+	if forwarded := c.GetHeader("X-Forwarded-Proto"); forwarded != "" {
+		scheme = strings.ToLower(strings.TrimSpace(strings.Split(forwarded, ",")[0]))
+	}
+	if scheme != "http" && scheme != "https" {
+		if c.Request.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme + "://" + strings.TrimRight(host, "/")
+}
+
+// applyRouteSeo 用当前请求对应的 SEO 标签整体替换 index.html 里的标记区块。
+func applyRouteSeo(html []byte, origin, path, siteName string) []byte {
+	start := bytes.Index(html, []byte(seoBlockStart))
+	end := bytes.Index(html, []byte(seoBlockEnd))
+	if start == -1 || end == -1 || end <= start {
+		return html
+	}
+	block := buildSeoBlock(origin, path, siteName)
+	var buf bytes.Buffer
+	buf.Grow(len(html) + len(block))
+	buf.Write(html[:start])
+	buf.WriteString(block)
+	buf.Write(html[end+len(seoBlockEnd):])
+	return buf.Bytes()
+}
+
+func buildSeoBlock(origin, path, siteName string) string {
+	doc := resolveRouteSeoDoc(path, siteName)
+	canonicalPath := normalizeSeoPath(path)
+	canonical := canonicalPath
+	imageURL := "/logo.svg"
+	if origin != "" {
+		canonical = origin + canonicalPath
+		imageURL = origin + "/logo.svg"
+	}
+
+	var b strings.Builder
+	esc := htmlpkg.EscapeString
+	writeTag := func(line string) {
+		b.WriteString("    " + line + "\n")
+	}
+	writeMeta := func(attr, key, content string) {
+		writeTag(`<meta ` + attr + `="` + key + `" content="` + esc(content) + `" />`)
+	}
+
+	writeTag("<title>" + esc(doc.Title) + "</title>")
+	writeMeta("name", "description", doc.Description)
+	writeMeta("name", "keywords", doc.Keywords)
+	writeMeta("name", "robots", doc.Robots)
+	writeMeta("name", "application-name", strings.TrimSpace(siteName))
+	writeMeta("name", "theme-color", "#14b8a6")
+	writeTag(`<link rel="canonical" href="` + esc(canonical) + `" />`)
+	writeMeta("property", "og:type", "website")
+	writeMeta("property", "og:site_name", strings.TrimSpace(siteName))
+	writeMeta("property", "og:title", doc.Title)
+	writeMeta("property", "og:description", doc.Description)
+	writeMeta("property", "og:url", canonical)
+	writeMeta("property", "og:image", imageURL)
+	writeMeta("name", "twitter:card", "summary")
+	writeMeta("name", "twitter:title", doc.Title)
+	writeMeta("name", "twitter:description", doc.Description)
+	b.WriteString(buildStructuredData(origin, canonical, siteName))
+	return b.String()
+}
+
+func buildStructuredData(origin, canonical, siteName string) string {
+	name := strings.TrimSpace(siteName)
+	if name == "" {
+		name = "SuperAI"
+	}
+	provider := map[string]any{"@type": "Organization", "name": name}
+	if origin != "" {
+		provider["url"] = origin + "/"
+		provider["logo"] = origin + "/logo.svg"
+	}
+	payload := map[string]any{
+		"@context": "https://schema.org",
+		"@graph": []map[string]any{
+			provider,
+			{"@type": "WebSite", "name": name, "url": canonical},
+			{
+				"@type":       "Service",
+				"name":        name + " AI API 中转与聚合服务",
+				"serviceType": "OpenAI-compatible API gateway",
+				"provider":    provider,
+				"description": "兼容 OpenAI 接口，可接入 GPT、Claude、Gemini、DeepSeek 等模型。",
+			},
+		},
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return `    <script type="application/ld+json">` + string(encoded) + "</script>\n"
+}
+
 // ServeEmbeddedFrontend returns a middleware for serving embedded frontend
 // This is the legacy function for backward compatibility when no settings provider is available
 func ServeEmbeddedFrontend() gin.HandlerFunc {
@@ -364,6 +550,8 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/models" ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||
+		strings.HasPrefix(trimmed, "/chat/completions") ||
+		strings.HasPrefix(trimmed, "/embeddings") ||
 		trimmed == "/alpha/search" ||
 		strings.HasPrefix(trimmed, "/images/") ||
 		strings.HasPrefix(trimmed, "/videos/")

@@ -5,6 +5,7 @@ package web
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"sync"
 )
 
@@ -13,14 +14,16 @@ type HTMLCache struct {
 	mu              sync.RWMutex
 	cachedHTML      []byte
 	etag            string
+	siteName        string
 	baseHTMLHash    string // Hash of the original index.html (immutable after build)
 	settingsVersion uint64 // Incremented when settings change
 }
 
 // CachedHTML represents the cache state
 type CachedHTML struct {
-	Content []byte
-	ETag    string
+	Content  []byte
+	ETag     string
+	SiteName string
 }
 
 // NewHTMLCache creates a new HTML cache instance
@@ -45,6 +48,7 @@ func (c *HTMLCache) Invalidate() {
 	c.settingsVersion++
 	c.cachedHTML = nil
 	c.etag = ""
+	c.siteName = ""
 }
 
 // Get returns the cached HTML or nil if cache is stale
@@ -56,8 +60,9 @@ func (c *HTMLCache) Get() *CachedHTML {
 		return nil
 	}
 	return &CachedHTML{
-		Content: c.cachedHTML,
-		ETag:    c.etag,
+		Content:  c.cachedHTML,
+		ETag:     c.etag,
+		SiteName: c.siteName,
 	}
 }
 
@@ -68,6 +73,18 @@ func (c *HTMLCache) Set(html []byte, settingsJSON []byte) {
 
 	c.cachedHTML = html
 	c.etag = c.generateETag(settingsJSON)
+	c.siteName = siteNameFromSettingsJSON(settingsJSON)
+}
+
+// siteNameFromSettingsJSON 取出站点名，供按路径注入 SEO 时复用（缓存随设置失效）。
+func siteNameFromSettingsJSON(settingsJSON []byte) string {
+	var cfg struct {
+		SiteName string `json:"site_name"`
+	}
+	if err := json.Unmarshal(settingsJSON, &cfg); err != nil {
+		return ""
+	}
+	return cfg.SiteName
 }
 
 // generateETag creates an ETag from base HTML hash + settings hash
