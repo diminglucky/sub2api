@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/stretchr/testify/require"
@@ -202,4 +203,22 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
+}
+
+// 卡密购买商品必须按请求值落库：删除最后一条时前端会提交空数组，
+// 若 handler 不透传该字段，旧值留在 DB、响应又回填给前端，条目就会“复活”。
+func TestUpdateSettingsPersistsEmptyRechargeCardProducts(t *testing.T) {
+	repo := &settingHandlerRepoStub{values: map[string]string{
+		service.SettingRechargeCardProducts: `[{"name":"10 元卡密","amount":10,"price":9.9,` +
+			`"url":"https://pay.ldxp.cn/item/8y6tk7","enabled":true,"sort_order":1}]`,
+	}}
+	settingSvc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	paymentSvc := service.NewPaymentConfigService(nil, repo, nil)
+	h := NewSettingHandler(settingSvc, nil, nil, nil, paymentSvc, nil, nil)
+
+	rec := doUpdateSettings(t, h, map[string]any{"payment_recharge_card_products": []any{}}, nil)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "[]", repo.values[service.SettingRechargeCardProducts],
+		"删除最后一条卡券后必须把空列表落库，否则前端会回填旧值")
 }
