@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto flex min-h-[calc(100vh-8rem)] max-w-6xl flex-col gap-4">
+    <div class="mx-auto flex min-h-[calc(100vh-8rem)] w-full max-w-[120rem] flex-col gap-4">
       <header class="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">AI 图片生成</h1>
@@ -46,7 +46,7 @@
           <p class="mt-1 text-sm">支持文生图，也可以上传参考图做图生图。</p>
         </div>
 
-        <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           <article
             v-for="image in images"
             :key="image.id"
