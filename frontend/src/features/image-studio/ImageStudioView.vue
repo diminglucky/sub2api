@@ -66,9 +66,6 @@
                 <p class="truncate text-xs text-gray-400">{{ image.meta }}</p>
               </div>
               <div v-if="!image.pending" class="flex shrink-0 gap-1">
-                <button type="button" class="mini-action" title="设为参考图" @click="useImageAsReference(image)">
-                  <Icon name="paperclip" size="sm" />
-                </button>
                 <button type="button" class="mini-action" title="下载图片" @click="downloadImage(image)">
                   <Icon name="download" size="sm" />
                 </button>
@@ -984,12 +981,6 @@ function addFiles(files: File[]) {
 
 function removeReference(id: number) {
   references.value = references.value.filter((item) => item.id !== id)
-}
-
-async function useImageAsReference(image: GeneratedImage) {
-  const response = await fetch(image.src)
-  const blob = await response.blob()
-  addFiles([new File([blob], `reference-${image.id}.png`, { type: blob.type || 'image/png' })])
 }
 
 function downloadImage(image: GeneratedImage) {
