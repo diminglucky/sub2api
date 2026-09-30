@@ -83,4 +83,8 @@ export default {
   noImageResponse: 'The upstream did not return a displayable image. Choose an image model or try again later.',
   fileReadFailed: 'Failed to read the image. Upload it again.',
 },
+manual: {
+  title: 'User Manual',
+  description: 'Per-platform setup steps, FAQ, and example configuration.'
+},
 }

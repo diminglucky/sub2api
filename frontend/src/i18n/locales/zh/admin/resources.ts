@@ -370,6 +370,25 @@ export default {
       failedToDelete: '删除兑换码失败'
     },
 
+    models: {
+      searchPlaceholder: '搜索模型...',
+      managePricing: '管理定价',
+      filters: {
+        status: '状态',
+        platform: '平台',
+        allStatuses: '全部状态',
+        allPlatforms: '全部平台'
+      },
+      resultCount: '共 {count} 个模型',
+      empty: '暂无模型',
+      billingType: '计费方式',
+      input: '输入',
+      output: '输出',
+      status: {
+        active: '启用',
+        disabled: '已禁用'
+      }
+    },
     // Announcements
     announcements: {
       title: '公告管理',
@@ -381,6 +400,13 @@ export default {
       searchAnnouncements: '搜索公告...',
       status: '状态',
       allStatus: '全部状态',
+      emailStatus: '邮件发送状态',
+      noEmailBatches: '暂无邮件批次记录',
+      emailTotal: '收件人总数',
+      emailProcessed: '已发送',
+      emailFailed: '发送失败',
+      emailAttempts: '尝试次数',
+      emailNextRetry: '下次重试',
       columns: {
         title: '标题',
         status: '状态',

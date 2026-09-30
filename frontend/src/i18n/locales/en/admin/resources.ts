@@ -373,6 +373,25 @@ export default {
       failedToUpdate: 'Failed to update redeem code'
     },
 
+    models: {
+      searchPlaceholder: 'Search models...',
+      managePricing: 'Manage Pricing',
+      filters: {
+        status: 'Status',
+        platform: 'Platform',
+        allStatuses: 'All Statuses',
+        allPlatforms: 'All Platforms'
+      },
+      resultCount: '{count} models',
+      empty: 'No models yet',
+      billingType: 'Billing',
+      input: 'Input',
+      output: 'Output',
+      status: {
+        active: 'Active',
+        disabled: 'Disabled'
+      }
+    },
     // Announcements
     announcements: {
       title: 'Announcements',
@@ -384,6 +403,13 @@ export default {
       searchAnnouncements: 'Search announcements...',
       status: 'Status',
       allStatus: 'All Status',
+      emailStatus: 'Email Delivery Status',
+      noEmailBatches: 'No email batches yet',
+      emailTotal: 'Recipients',
+      emailProcessed: 'Sent',
+      emailFailed: 'Failed',
+      emailAttempts: 'Attempts',
+      emailNextRetry: 'Next retry',
       columns: {
         title: 'Title',
         status: 'Status',

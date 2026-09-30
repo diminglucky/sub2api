@@ -41,7 +41,7 @@ sources: {
     login: 'Best for sub2api / New API admin accounts: enter the upstream login email and password, and the system will obtain the token automatically.',
     bearer: 'Use this when you already have an upstream API key or access_token. The system will send it as Authorization: Bearer Token.',
     header: 'Use this when the upstream requires a custom header, such as X-API-Key.',
-    cookie: 'Use this for NewAPI cookie mode. Fill JSON: {"cookie":"session=...","user_id":"123"}.'
+    cookie: "Use this for NewAPI cookie mode. Fill JSON: {'{'}\"cookie\":\"session=...\",\"user_id\":\"123\"{'}'}."
   },
   tokenMasked: 'Existing secret is kept; leave blank to preserve it',
   tokenConfigured: 'Authentication is already saved. Leave blank to keep the current value.',
@@ -108,8 +108,11 @@ sources: {
       authMode: 'Authentication Mode',
       authHeaderName: 'Header Name',
       authHeaderNameHint: 'Used only in custom header mode, for example X-API-Key.',
+      authUsername: 'Login Username',
+      authUsernameHint: 'Used in login mode: the email or username for signing in before pulling multipliers.',
+      authPassword: 'Login Password',
       authToken: 'Authentication Value',
-      authTokenHintCookie: 'For NewAPI cookie mode, fill JSON: {"cookie":"session=...","user_id":"123"}. For Sub2API, prefer login mode or access_token.',
+      authTokenHintCookie: "For NewAPI cookie mode, fill JSON: {'{'}\"cookie\":\"session=...\",\"user_id\":\"123\"{'}'}. For Sub2API, prefer login mode or access_token.",
       authTokenHintBearer: 'Paste the access_token here; the system will send it as a Bearer header.',
       accountIds: 'Bound Accounts',
       accountIdsHint: 'Optional. Selected accounts add cost-risk analysis; they are not required to pull or monitor upstream groups.',

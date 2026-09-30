@@ -83,4 +83,8 @@ export default {
   noImageResponse: '上游没有返回可显示的图片，请换一个图片模型或稍后重试。',
   fileReadFailed: '读取图片失败，请重新上传。',
 },
+manual: {
+  title: '使用手册',
+  description: '按平台查看接入方式、常见问题与示例配置。'
+},
 }

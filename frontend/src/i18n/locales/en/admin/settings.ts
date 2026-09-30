@@ -744,6 +744,8 @@ export default {
         title: 'Payment Settings',
         description: 'Configure payment system options',
         configGuide: 'Configuration Guide',
+        creemGuideSummary: 'Creem Setup Guide',
+        creemGuideNote: 'Create an API key and a webhook in the Creem dashboard, point the notification URL at this site\'s payment callback, then save the keys here.',
         enabled: 'Enable Payment',
         enabledHint: 'Enable or disable the payment system',
         enabledPaymentTypes: 'Enabled Providers',

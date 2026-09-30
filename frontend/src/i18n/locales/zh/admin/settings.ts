@@ -739,6 +739,8 @@ export default {
         title: '支付设置',
         description: '配置支付系统选项',
         configGuide: '支付配置指南',
+        creemGuideSummary: 'Creem 接入指引',
+        creemGuideNote: '在 Creem 后台创建 API Key 与 Webhook，把接收通知的地址填成本站点的支付回调地址，然后回来保存密钥。',
         enabled: '启用支付',
         enabledHint: '启用或禁用支付系统',
         enabledPaymentTypes: '启用的服务商',

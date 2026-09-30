@@ -681,6 +681,7 @@ export default {
       groupConfig: 'User Group Configuration',
       groupConfigHint: 'Configure custom rate multipliers for user {email} (overrides group defaults)',
       exclusiveGroups: 'Exclusive Groups',
+      exclusiveGroupsAssignHint: 'Exclusive groups can only be assigned by admins and are not self-selectable by users.',
       publicGroups: 'Public Groups (Default Available)',
       restrictPublicGroups: 'Restrict accessible public groups',
       restrictPublicGroupsHint: 'When on, this user may only use the public groups checked below. When off, every public group stays available.',

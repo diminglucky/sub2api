@@ -685,6 +685,7 @@ export default {
       groupConfig: '用户分组配置',
       groupConfigHint: '为用户 {email} 配置专属分组倍率（覆盖分组默认倍率）',
       exclusiveGroups: '专属分组',
+      exclusiveGroupsAssignHint: '专属分组只能由管理员分配，用户无法自行选择。',
       publicGroups: '公开分组（默认可用）',
       restrictPublicGroups: '限制可访问的公开分组',
       restrictPublicGroupsHint: '开启后，该用户仅能使用下方勾选的公开分组；关闭则可使用全部公开分组。',

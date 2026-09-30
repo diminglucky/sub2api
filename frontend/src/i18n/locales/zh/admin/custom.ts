@@ -41,7 +41,7 @@ export default {
       login: '适合 sub2api / New API 后台账号：填写上游登录邮箱和密码，系统会自动登录获取 Token。',
       bearer: '适合你已经拿到上游 API Key / access_token 的情况，系统会自动拼成 Authorization: Bearer Token。',
       header: '适合上游要求自定义 Header 的情况，例如 X-API-Key。',
-      cookie: '适合 NewAPI 的 Cookie 模式；请填写完整 JSON：{"cookie":"session=...","user_id":"123"}。'
+      cookie: "适合 NewAPI 的 Cookie 模式；请填写完整 JSON：{'{'}\"cookie\":\"session=...\",\"user_id\":\"123\"{'}'}。"
     },
     tokenMasked: '已保留现有密钥，不修改可留空',
     tokenConfigured: '当前已保存鉴权信息；留空表示继续使用原值。',
@@ -108,8 +108,11 @@ export default {
       authMode: '鉴权方式',
       authHeaderName: 'Header 名称',
       authHeaderNameHint: '仅在自定义 Header 模式下使用，例如 X-API-Key。',
+      authUsername: '登录用户名',
+      authUsernameHint: '登录模式下填写邮箱或用户名，用于先登录再拉取倍率。',
+      authPassword: '登录密码',
     authToken: '鉴权内容',
-    authTokenHintCookie: 'NewAPI Cookie 模式请填 JSON：{"cookie":"session=...","user_id":"123"}。Sub2API 请优先用登录模式或 access_token。',
+    authTokenHintCookie: "NewAPI Cookie 模式请填 JSON：{'{'}\"cookie\":\"session=...\",\"user_id\":\"123\"{'}'}。Sub2API 请优先用登录模式或 access_token。",
     authTokenHintBearer: '这里可填 access_token，系统会自动改成 Bearer 请求头。',
       accountIds: '绑定上游账号',
       accountIdsHint: '可选。选择实际账号后，监测页会额外用账号倍率、分组售价和上游参考倍率判断是否倒挂；不选择也不影响拉取和关注分组。',
