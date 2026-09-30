@@ -847,6 +847,13 @@ func ProvideAPIKeyService(
 }
 
 // ProviderSet is the Wire provider set for all services
+// CustomFeatureProviderSet groups SuperAI-specific services so upstream syncs
+// can keep custom features isolated from the upstream provider list.
+var CustomFeatureProviderSet = wire.NewSet(
+	NewLotteryService,
+	NewUpstreamBalanceService,
+)
+
 var ProviderSet = wire.NewSet(
 	// Core services
 	ProvideAuthService,
@@ -867,14 +874,17 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
-	NewLotteryService,
-	NewUpstreamBalanceService,
+	CustomFeatureProviderSet,
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
 	NewImageStudioGalleryService,
+	// Lets `wire` regenerate cmd/server/wire_gen.go without hand editing:
+	// the gallery service needs an ImageStudioImageSaver, which the image
+	// storage settings service already implements.
+	wire.Bind(new(ImageStudioImageSaver), new(*ImageStorageSettingService)),
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,
@@ -882,6 +892,7 @@ var ProviderSet = wire.NewSet(
 	ProvideBatchImageWorkerRuntime,
 	wire.Bind(new(AccountRuntimeBlocker), new(*OpenAIGatewayService)),
 	NewOAuthService,
+	NewClaudeResetCreditService,
 	ProvideOpenAIOAuthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
