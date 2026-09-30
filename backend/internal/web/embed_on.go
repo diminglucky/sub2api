@@ -437,6 +437,7 @@ func buildSeoBlock(origin, path, siteName string) string {
 	writeMeta("name", "description", doc.Description)
 	writeMeta("name", "keywords", doc.Keywords)
 	writeMeta("name", "robots", doc.Robots)
+	writeMeta("name", "msvalidate.01", "B55F2646907C6E19E99891EF692EBFB8")
 	writeMeta("name", "application-name", strings.TrimSpace(siteName))
 	writeMeta("name", "theme-color", "#14b8a6")
 	writeTag(`<link rel="canonical" href="` + esc(canonical) + `" />`)
