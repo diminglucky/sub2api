@@ -19,6 +19,17 @@ var fallbackRegionCountryHeaders = []string{
 	"X-Geo-Country",
 }
 
+var searchEngineCrawlerUserAgentTokens = []string{
+	"googlebot",
+	"google-inspectiontool",
+	"googleother",
+	"bingbot",
+	"msnbot",
+	"duckduckbot",
+	"applebot",
+	"yandexbot",
+}
+
 // RegionBlock blocks page navigation requests from configured countries/regions.
 // It relies on a trusted proxy/CDN such as Cloudflare to populate country
 // headers. API routes are always allowed.
@@ -120,8 +131,32 @@ func isRegionBlockPageRequest(c *gin.Context) bool {
 	if isRegionBlockExemptPath(c.Request.URL.Path) {
 		return false
 	}
+	if isSearchEngineCrawler(c.Request) && isRegionBlockPublicCrawlerPath(c.Request.URL.Path) {
+		return false
+	}
 	accept := strings.ToLower(c.GetHeader("Accept"))
 	return accept == "" || strings.Contains(accept, "text/html") || strings.Contains(accept, "*/*")
+}
+
+func isSearchEngineCrawler(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+	ua := strings.ToLower(req.UserAgent())
+	for _, token := range searchEngineCrawlerUserAgentTokens {
+		if strings.Contains(ua, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func isRegionBlockPublicCrawlerPath(path string) bool {
+	switch path {
+	case "/", "/home", "/model-plaza", "/key-usage":
+		return true
+	}
+	return false
 }
 
 func regionBlockHostMatches(req *http.Request, blockedHosts map[string]struct{}) bool {

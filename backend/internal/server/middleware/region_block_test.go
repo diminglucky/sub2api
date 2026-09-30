@@ -110,6 +110,45 @@ func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, probe("/home", "text/html"))
 }
 
+// 搜索引擎出口节点可能被 CDN/GeoIP 判定为受限地区；公开 SEO 页面要允许爬虫抓取，
+// 否则 sitemap 能读到，但条目页面仍会返回 403，收录会一直不稳定。
+func TestRegionBlock_AllowsSearchEngineCrawlersOnPublicSEOPaths(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RegionBlock(func() config.RegionBlockConfig {
+		return config.RegionBlockConfig{
+			Enabled:          true,
+			Hosts:            []string{"superai.dihappy.cfd"},
+			BlockedCountries: []string{"CN"},
+			HeaderNames:      []string{"CF-IPCountry"},
+		}
+	}))
+	for _, path := range []string{"/", "/home", "/model-plaza", "/key-usage"} {
+		r.GET(path, func(c *gin.Context) { c.String(http.StatusOK, "ok") })
+	}
+	r.GET("/dashboard", func(c *gin.Context) { c.String(http.StatusOK, "dashboard") })
+
+	probe := func(path, userAgent string) int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "superai.dihappy.cfd"
+		req.Header.Set("Accept", "text/html")
+		req.Header.Set("CF-IPCountry", "CN")
+		if userAgent != "" {
+			req.Header.Set("User-Agent", userAgent)
+		}
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	for _, path := range []string{"/", "/home", "/model-plaza", "/key-usage"} {
+		require.Equal(t, http.StatusOK, probe(path, "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"), path)
+	}
+	require.Equal(t, http.StatusOK, probe("/home", "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)"))
+	require.Equal(t, http.StatusForbidden, probe("/dashboard", "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"))
+	require.Equal(t, http.StatusForbidden, probe("/home", "Mozilla/5.0 AppleWebKit/537.36"))
+}
+
 func TestRegionBlock_AllowsAPIRouteOnBlockedHostAndCountry(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,
