@@ -210,7 +210,7 @@ func isRegionBlockExemptPath(path string) bool {
 		return true
 	}
 	switch path {
-	case "/robots.txt", "/sitemap.xml", "/site.webmanifest", "/favicon.ico", "/logo.svg":
+	case "/robots.txt", "/sitemap.xml", "/site.webmanifest", "/favicon.ico", "/logo.svg", "/BingSiteAuth.xml":
 		return true
 	}
 	return strings.HasPrefix(path, "/assets/")
