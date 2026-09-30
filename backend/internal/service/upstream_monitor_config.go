@@ -157,6 +157,35 @@ func NewUpstreamMonitorService(settingRepo SettingRepository) *UpstreamMonitorSe
 	return &UpstreamMonitorService{settingRepo: settingRepo}
 }
 
+// upstreamMonitorAccountListerFunc 把 AccountRepository 适配成监控需要的 lister。
+// 适配成自身类型是为了让 Wire 在多个实现者之间没有歧义。
+type upstreamMonitorAccountListerFunc func(context.Context) ([]Account, error)
+
+func (f upstreamMonitorAccountListerFunc) ListActive(ctx context.Context) ([]Account, error) {
+	return f(ctx)
+}
+
+// ProvideUpstreamMonitorService 构造并接好上游监控所需的三个读取依赖。
+//
+// 这些依赖以 provider 的形式接线（而不是在 wire_gen.go 里手写 setter），
+// 这样 `go generate ./cmd/server` 重新生成时不会把接线丢掉。
+func ProvideUpstreamMonitorService(
+	settingRepo SettingRepository,
+	groupService *GroupService,
+	accountRepo AccountRepository,
+	userService *UserService,
+	notificationEmailService *NotificationEmailService,
+) *UpstreamMonitorService {
+	svc := NewUpstreamMonitorService(settingRepo)
+	svc.SetGroupLister(groupService)
+	svc.SetAccountLister(upstreamMonitorAccountListerFunc(func(ctx context.Context) ([]Account, error) {
+		return accountRepo.ListActive(ctx)
+	}))
+	svc.SetAdminReader(userService)
+	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
+}
+
 func (s *UpstreamMonitorService) requireSettingRepo() error {
 	if s == nil || s.settingRepo == nil {
 		return fmt.Errorf("upstream monitor settings repository not configured")

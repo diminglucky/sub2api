@@ -852,7 +852,7 @@ func ProvideAPIKeyService(
 var CustomFeatureProviderSet = wire.NewSet(
 	NewLotteryService,
 	NewUpstreamBalanceService,
-	NewUpstreamMonitorService,
+	ProvideUpstreamMonitorService,
 )
 
 var ProviderSet = wire.NewSet(
