@@ -626,7 +626,11 @@ function galleryEntryToImage(entry: ImageStudioGalleryEntry, index: number): Gen
     id: entry.id,
     title: `历史图片 ${index + 1}`,
     src: entry.url,
-    meta: [entry.format?.toUpperCase(), entry.size, entry.model, '7 天内有效'].filter(Boolean).join(' · '),
+    meta: [
+      entry.format?.toUpperCase(),
+      entry.size,
+      entry.model,
+    ].filter(Boolean).join(' · '),
   }
 }
 
