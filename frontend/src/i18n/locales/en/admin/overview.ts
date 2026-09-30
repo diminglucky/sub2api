@@ -741,6 +741,10 @@ export default {
       failedToLoadBalanceHistory: 'Failed to load balance history',
       createdAt: 'Created',
       totalRecharged: 'Total Recharged',
+      sourceOnlineRecharge: 'Online Recharge',
+      sourceRedeemCode: 'Redeem Code',
+      sourceAdminAdjustment: 'Admin Adjustment',
+      sourceAffiliateTransfer: 'Affiliate Transfer',
       roles: {
         admin: 'Admin',
         user: 'User'
