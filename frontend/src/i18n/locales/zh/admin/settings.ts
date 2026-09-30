@@ -187,7 +187,7 @@ export default {
         hostsPlaceholder: 'superai.dihappy.cfd',
         hostsHint: '只拦截这些域名的网页访问，逗号分隔；填 * 表示所有域名。',
         supportEmail: '申诉邮箱',
-        supportEmailPlaceholder: 'support@example.com',
+        supportEmailPlaceholder: "support{'@'}example.com",
         supportEmailHint: '显示在拦截页上的联系方式，留空则不显示。',
       },
       security: {

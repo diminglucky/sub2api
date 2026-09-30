@@ -187,7 +187,7 @@ export default {
         hostsPlaceholder: 'superai.dihappy.cfd',
         hostsHint: 'Only page visits to these hosts are blocked, comma separated; use * for every host.',
         supportEmail: 'Appeal email',
-        supportEmailPlaceholder: 'support@example.com',
+        supportEmailPlaceholder: "support{'@'}example.com",
         supportEmailHint: 'Shown on the blocked page. Leave empty to hide it.',
       },
       security: {
