@@ -480,6 +480,10 @@ const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value
 const hasReferences = computed(() => references.value.length > 0)
 
 let nextImageId = 1
+
+// 本会话里已保存进图库的条目 id：这些图本地已有可显示的副本，
+// 图库列表里再渲染一次就会出现"生成一张却显示两张"的重复卡片。
+const locallySavedGalleryIds = new Set<string>()
 let nextReferenceId = 1
 let modelRequestId = 0
 
@@ -600,6 +604,9 @@ async function loadGallery() {
     const localResults = images.value.filter((item) => !item.pending && typeof item.id === 'number')
     const seen = new Set<string>()
     const gallery = entries
+      // 本会话刚保存进图库的图片，本地已经有一份可显示的数据副本；
+      // 再从图库列表渲染一份就会变成"生成一个却显示两个"。
+      .filter((entry) => !locallySavedGalleryIds.has(String(entry.id)))
       .map(galleryEntryToImage)
       .filter((item) => {
         const key = String(item.id || item.src)
@@ -668,6 +675,11 @@ async function persistGeneratedImages(items: GeneratedImage[], prompt: string, m
   }))
   const succeeded = results.filter((result) => result.status === 'fulfilled').length
   const failed = results.length - succeeded
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value?.id) {
+      locallySavedGalleryIds.add(String(result.value.id))
+    }
+  }
   if (succeeded > 0) {
     await loadGallery()
   }

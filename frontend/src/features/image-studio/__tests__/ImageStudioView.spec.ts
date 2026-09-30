@@ -295,6 +295,51 @@ describe('ImageStudioView gallery', () => {
     }))
   })
 
+  it('does not show the freshly generated image twice when the gallery lists it', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    // 首次加载图库为空，保存之后图库里就出现了这条记录
+    listGallery.mockResolvedValueOnce([])
+    listGallery.mockResolvedValue([
+      {
+        id: 'gallery-1',
+        url: 'https://cdn.example.com/gallery-1.png',
+        prompt: 'a cat',
+        model: 'gpt-image-1',
+        size: '1024x1024',
+        format: 'png',
+        created_at: 1,
+        expires_at: 2,
+      },
+    ])
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [] }) } as Response
+      }
+      if (url.endsWith('/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return { ok: true, json: async () => ({ data: [{ b64_json: 'aGVsbG8=' }] }) } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('生成结果 1')
+    // 同一张图不能既作为生成结果显示、又以「历史图片」再显示一遍
+    expect(wrapper.text()).not.toContain('历史图片')
+  })
+
   it('shows and persists a pending image while generation is in flight', async () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
