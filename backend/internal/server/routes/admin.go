@@ -73,6 +73,9 @@ func RegisterAdminRoutes(
 		// 优惠码管理
 		registerPromoCodeRoutes(admin, h)
 
+		// SuperAI 自定义功能：抽奖活动管理
+		registerCustomAdminRoutes(admin, h)
+
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
@@ -604,6 +607,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)
 		adminSettings.POST("/web-search-emulation/test", h.Admin.Setting.TestWebSearchEmulation)
 		adminSettings.POST("/web-search-emulation/reset-usage", h.Admin.Setting.ResetWebSearchUsage)
+		// SuperAI 自定义功能：上游监控设置
+		registerCustomAdminSettingsRoutes(adminSettings, h)
 	}
 }
 

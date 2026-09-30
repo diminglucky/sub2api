@@ -108,3 +108,43 @@ accepting deletes or large refactors.
 5. After each upstream sync, run:
    - `go test ./internal/server/...`
    - `pnpm --dir frontend build`
+
+## Wiring Rules (2026-09-30 upstream v0.2.10 merge)
+
+The most common way a custom feature has silently broken is losing its single
+"wiring line" inside a large upstream file. A merge resolves cleanly, tests stay
+green, and the feature is simply unreachable at runtime.
+
+Observed so far:
+
+- `backend/internal/server/router.go` — `middleware2.RegionBlock(...)` was
+  dropped by an earlier upstream merge (region blocking silently disabled).
+- `backend/internal/server/routes/admin.go` — the calls to
+  `registerCustomAdminRoutes` and `registerCustomAdminSettingsRoutes` were
+  missing, so `/api/v1/admin/lotteries` and
+  `/api/v1/admin/settings/upstream-monitor` returned 404.
+- `backend/internal/server/router.go` — `routes.RegisterPublicRoutes` was never
+  called, so `/api/v1/public/models/available` returned 404.
+- `Service.UpstreamMonitorService` was absent from the Wire graph, so even after
+  the routes were restored the endpoint returned 500.
+
+To stop the silent regressions:
+
+- `backend/internal/server/custom_feature_wiring_test.go` asserts every custom
+  wiring line at the source level. If a merge drops one, this test fails with
+  the exact file and snippet.
+- After a sync, run `go test -tags unit ./internal/server/`.
+- Smoke-test the custom endpoints on a running instance:
+  `/api/v1/lotteries`, `/api/v1/admin/lotteries`,
+  `/api/v1/admin/settings/upstream-monitor`, `/api/v1/public/models/available`.
+
+### Generated Wire File
+
+`backend/cmd/server/wire_gen.go` must be produced by `go generate ./cmd/server`
+(run from `backend/`), never hand-edited. Hand edits are erased by the next
+regeneration — that is how the upstream monitor service lost its setter call.
+
+SuperAI-only services therefore belong in a provider set, and any "attach this
+service to an upstream handler" step must live inside a provider function
+(see `ProvideAdminSettingHandler` in `backend/internal/handler/wire.go`) rather
+than as a hand-written line in the generated file.
