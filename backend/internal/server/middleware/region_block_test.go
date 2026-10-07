@@ -94,6 +94,7 @@ func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
 	r.GET("/robots.txt", func(c *gin.Context) { c.String(http.StatusOK, "User-agent: *") })
 	r.GET("/sitemap.xml", func(c *gin.Context) { c.String(http.StatusOK, "<urlset/>") })
 	r.GET("/BingSiteAuth.xml", func(c *gin.Context) { c.String(http.StatusOK, "<users/>") })
+	r.GET("/d50c6a35c27b4f489f7d9f2021249077.txt", func(c *gin.Context) { c.String(http.StatusOK, "d50c6a35c27b4f489f7d9f2021249077") })
 	r.GET("/home", func(c *gin.Context) { c.String(http.StatusOK, "ok") })
 
 	probe := func(path, accept string) int {
@@ -109,6 +110,7 @@ func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
 	require.Equal(t, http.StatusOK, probe("/robots.txt", "*/*"))
 	require.Equal(t, http.StatusOK, probe("/sitemap.xml", "*/*"))
 	require.Equal(t, http.StatusOK, probe("/BingSiteAuth.xml", "*/*"))
+	require.Equal(t, http.StatusOK, probe("/d50c6a35c27b4f489f7d9f2021249077.txt", "*/*"))
 	require.Equal(t, http.StatusForbidden, probe("/home", "text/html"))
 }
 
