@@ -90,7 +90,7 @@ describe('ImageStudioView image model loading', () => {
     })
   })
 
-  it('automatically loads image models for the selected API key', async () => {
+  it('automatically loads and deduplicates image models from the batch endpoint', async () => {
     listKeys.mockResolvedValue({
       items: [
         {
@@ -109,14 +109,18 @@ describe('ImageStudioView image model loading', () => {
       if (url.endsWith('/images/batches/models')) {
         return {
           ok: true,
-          json: async () => ({ data: [{ id: 'nano-banana-2' }] }),
+          json: async () => ({
+            data: [
+              { id: 'gpt-image-1' },
+              { id: ' gpt-image-2-5-flare ' },
+              { id: 'GPT-IMAGE-2-5-FLARE' },
+              { id: 'gpt-image-2-5-flare' },
+            ],
+          }),
         } as Response
       }
       if (url.endsWith('/models')) {
-        return {
-          ok: true,
-          json: async () => ({ data: [{ id: 'gpt-image-1' }, { id: 'gpt-5' }] }),
-        } as Response
+        throw new Error('generic models endpoint should not be requested when batch models exist')
       }
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -128,9 +132,7 @@ describe('ImageStudioView image model loading', () => {
     expect(fetchMock).toHaveBeenCalledWith('/v1/images/batches/models', {
       headers: { Authorization: 'Bearer sk-local' },
     })
-    expect(fetchMock).toHaveBeenCalledWith('/v1/models', {
-      headers: { Authorization: 'Bearer sk-local' },
-    })
+    expect(fetchMock).not.toHaveBeenCalledWith('/v1/models', expect.anything())
 
     const apiKeySelect = wrapper.get('[data-testid="api-key-select"]')
     expect(apiKeySelect.text()).toContain('dd')
@@ -147,10 +149,62 @@ describe('ImageStudioView image model loading', () => {
     expect(apiKeySelect.text()).toContain('dd')
 
     await modelSelect.get('button').trigger('click')
-    expect(modelSelect.text()).toContain('nano-banana-2')
     expect(modelSelect.text()).toContain('gpt-image-1')
-    expect(modelSelect.text()).not.toContain('gpt-5')
+    expect(modelSelect.text()).toContain('gpt-image-2-5-flare')
+    expect(modelSelect.text().match(/gpt-image-2-5-flare/g)).toHaveLength(1)
     expect(wrapper.find('input[placeholder="输入图片模型"]').exists()).toBe(false)
+  })
+
+  it('renders keys before public settings finish loading', async () => {
+    let resolveSettings: (value: any) => void = () => {}
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'dd',
+          key: 'sk-local',
+          status: 'active',
+          group_id: 2,
+        },
+      ],
+    })
+    getPublicSettings.mockReturnValue(new Promise((resolve) => {
+      resolveSettings = resolve
+    }))
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="api-key-select"]').text()).toContain('dd')
+
+    resolveSettings({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    await flushPromises()
+  })
+
+  it('keeps loaded keys visible when public settings fail', async () => {
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'dd',
+          key: 'sk-local',
+          status: 'active',
+          group_id: 2,
+        },
+      ],
+    })
+    getPublicSettings.mockRejectedValue({
+      status: 0,
+      code: 'ERR_NETWORK',
+      message: 'Network error. Please check your connection.',
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="api-key-select"]').text()).toContain('dd')
+    expect(wrapper.text()).toContain('无法连接到 API 服务，请检查网络或 API 地址。')
   })
 
   it('shows insufficient balance errors in Chinese', async () => {
@@ -269,7 +323,9 @@ describe('ImageStudioView gallery', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('历史图片 1')
-    expect(wrapper.get('img[src="https://cdn.example.com/gallery-1.png"]').exists()).toBe(true)
+    const image = wrapper.get('img[src="https://cdn.example.com/gallery-1.png"]')
+    expect(image.exists()).toBe(true)
+    expect(image.attributes('loading')).toBe('lazy')
   })
 
   it('opens the image detail dialog and copies the original prompt', async () => {

@@ -58,7 +58,7 @@
                 <strong>正在生成</strong>
                 <small>请稍候，完成后将在此显示</small>
               </div>
-              <img v-else :src="image.src" :alt="image.title" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
+              <img v-else :src="image.src" :alt="image.title" loading="lazy" decoding="async" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
             </button>
             <div class="flex items-center justify-between gap-2 px-3 py-2">
               <div class="min-w-0">
@@ -628,20 +628,25 @@ function parseSize(value: string) {
 async function loadData() {
   errorMessage.value = ''
   restorePendingImages()
-  try {
-    const [keyResponse, settings] = await Promise.all([
-      keysAPI.list(1, 100, { status: 'active' }),
-      authAPI.getPublicSettings(),
-    ])
-    keys.value = keyResponse.items || []
-    if (!selectedKeyId.value && activeKeys.value.length) {
-      selectedKeyId.value = String(activeKeys.value[0].id)
-    }
-    apiBaseUrl.value = resolveEndpoint(settings.api_base_url || '')
-    await loadGallery()
-  } catch (error) {
-    errorMessage.value = errorMessageFrom(error, '加载数据失败')
-  }
+  const keysPromise = keysAPI.list(1, 100, { status: 'active' })
+    .then((keyResponse) => {
+      keys.value = keyResponse.items || []
+      if (!selectedKeyId.value && activeKeys.value.length) {
+        selectedKeyId.value = String(activeKeys.value[0].id)
+      }
+    })
+    .catch((error) => {
+      errorMessage.value = errorMessageFrom(error, '加载密钥失败')
+    })
+  const settingsPromise = authAPI.getPublicSettings()
+    .then((settings) => {
+      apiBaseUrl.value = resolveEndpoint(settings.api_base_url || '')
+    })
+    .catch((error) => {
+      if (!errorMessage.value) errorMessage.value = errorMessageFrom(error, '加载设置失败')
+    })
+
+  await Promise.allSettled([keysPromise, settingsPromise, loadGallery()])
 }
 
 async function loadGallery() {
@@ -772,27 +777,31 @@ async function loadModels() {
   }
 
   try {
-    const [batchResult, genericResult] = await Promise.allSettled([
-      fetchModelNames(`${endpoint}/images/batches/models`, key.key),
-      fetchModelNames(`${endpoint}/models`, key.key, true),
-    ])
+    let batchNames: string[] = []
+    let batchError: unknown = null
+    try {
+      batchNames = await fetchModelNames(`${endpoint}/images/batches/models`, key.key)
+    } catch (error) {
+      batchError = error
+    }
     if (requestId !== modelRequestId) return
 
-    const names = new Set<string>()
-    if (batchResult.status === 'fulfilled') {
-      batchResult.value.forEach((name) => names.add(name))
-    }
-    if (genericResult.status === 'fulfilled') {
-      genericResult.value.forEach((name) => names.add(name))
+    let names = batchNames
+    let genericError: unknown = null
+    if (!names.length) {
+      try {
+        names = await fetchModelNames(`${endpoint}/models`, key.key, true)
+      } catch (error) {
+        genericError = error
+      }
+      if (requestId !== modelRequestId) return
     }
 
-    imageModels.value = Array.from(names).sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
-    )
+    imageModels.value = deduplicateModelNames(names)
     imageModel.value = imageModels.value[0] || ''
 
-    if (batchResult.status === 'rejected' && genericResult.status === 'rejected') {
-      modelLoadError.value = errorMessageFrom(batchResult.reason)
+    if (!imageModels.value.length && (batchError || genericError)) {
+      modelLoadError.value = errorMessageFrom(genericError || batchError)
     }
   } catch (error) {
     if (requestId === modelRequestId) {
@@ -828,10 +837,18 @@ async function fetchModelNames(endpoint: string, apiKey: string, filterImages = 
 }
 
 function errorMessageFrom(error: unknown, fallback = '加载图片模型失败') {
-  const message = error instanceof Error ? error.message : ''
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message?: unknown }).message || '')
+      : ''
   const normalized = message.trim().toLowerCase()
   if (!normalized) return fallback
-  if (normalized === 'failed to fetch' || normalized.includes('networkerror')) {
+  if (
+    normalized === 'failed to fetch' ||
+    normalized.includes('networkerror') ||
+    normalized.includes('network error')
+  ) {
     return '无法连接到 API 服务，请检查网络或 API 地址。'
   }
   if (
@@ -859,6 +876,19 @@ function isImageModel(name: string) {
     value.includes('imagen') ||
     value.includes('flux') ||
     value.includes('sdxl')
+}
+
+function deduplicateModelNames(names: string[]): string[] {
+  const unique = new Map<string, string>()
+  for (const rawName of names) {
+    const name = rawName.replace(/\s+/g, ' ').trim()
+    if (!name) continue
+    const key = name.toLowerCase()
+    if (!unique.has(key)) unique.set(key, name)
+  }
+  return Array.from(unique.values()).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
+  )
 }
 
 function isGeminiModel(name: string) {
