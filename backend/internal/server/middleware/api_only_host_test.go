@@ -116,7 +116,7 @@ func TestAPIOnlyHostAllowsOtherHosts(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	req.Host = "superai.dihappy.cfd"
+	req.Host = "superai.sbs"
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)

@@ -21,12 +21,12 @@ describe('resolveRouteSeo', () => {
         descriptionKey: 'home.seoDescription',
         seoKeywords: ['SuperAI', 'GPT', 'OpenAI', 'Claude', 'DeepSeek'],
       },
-    }, 'SuperAI - AI API Gateway', 'https://superai.dihappy.cfd')
+    }, 'SuperAI - AI API Gateway', 'https://superai.sbs')
 
     expect(seo.description).toContain('SuperAI')
     expect(seo.description).toContain('OpenAI')
     expect(seo.keywords).toContain('GPT')
-    expect(seo.canonical).toBe('https://superai.dihappy.cfd/home')
+    expect(seo.canonical).toBe('https://superai.sbs/home')
     expect(seo.robots).toBe('index,follow')
   })
 
@@ -37,7 +37,7 @@ describe('resolveRouteSeo', () => {
         requiresAuth: true,
         requiresAdmin: true,
       },
-    }, 'System Settings - SuperAI', 'https://superai.dihappy.cfd')
+    }, 'System Settings - SuperAI', 'https://superai.sbs')
 
     expect(seo.robots).toBe('noindex,nofollow')
   })

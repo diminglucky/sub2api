@@ -35,10 +35,10 @@ func TestApplyRouteSeoUsesPerPathCanonical(t *testing.T) {
 		`<title>old</title><link rel="canonical" href="https://example.com/" />` +
 		seoBlockEnd + `</head><body></body></html>`)
 
-	result := string(applyRouteSeo(base, "https://superai.dihappy.cfd", "/model-plaza", "SuperAI"))
+	result := string(applyRouteSeo(base, "https://superai.sbs", "/model-plaza", "SuperAI"))
 
-	require.Contains(t, result, `<link rel="canonical" href="https://superai.dihappy.cfd/model-plaza" />`)
-	require.Contains(t, result, `<meta property="og:url" content="https://superai.dihappy.cfd/model-plaza" />`)
+	require.Contains(t, result, `<link rel="canonical" href="https://superai.sbs/model-plaza" />`)
+	require.Contains(t, result, `<meta property="og:url" content="https://superai.sbs/model-plaza" />`)
 	require.Contains(t, result, `<meta name="robots" content="index,follow" />`)
 	require.Contains(t, result, "AI 模型广场与价格对比")
 	require.NotContains(t, result, ">old<")
@@ -63,19 +63,19 @@ func TestRequestOriginPrefersForwardedProto(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodGet, "/home", nil)
-	c.Request.Host = "superai.dihappy.cfd"
+	c.Request.Host = "superai.sbs"
 	c.Request.Header.Set("X-Forwarded-Proto", "https")
 
-	assert.Equal(t, "https://superai.dihappy.cfd", requestOrigin(c))
+	assert.Equal(t, "https://superai.sbs", requestOrigin(c))
 
 	// 没有反代头时退回请求本身的 scheme
 	c.Request.Header.Del("X-Forwarded-Proto")
-	assert.Equal(t, "http://superai.dihappy.cfd", requestOrigin(c))
+	assert.Equal(t, "http://superai.sbs", requestOrigin(c))
 }
 
 func TestBuildSeoBlockOmitsAbsoluteURLsWithoutOrigin(t *testing.T) {
 	block := buildSeoBlock("", "/home", "SuperAI")
 	assert.Contains(t, block, `<link rel="canonical" href="/home" />`)
 	assert.Contains(t, block, `<meta property="og:url" content="/home" />`)
-	assert.False(t, strings.Contains(block, "superai.dihappy.cfd"), "no host should be invented without one")
+	assert.False(t, strings.Contains(block, "superai.sbs"), "no host should be invented without one")
 }

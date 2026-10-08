@@ -14,4 +14,4 @@ Disallow: /purchase
 Disallow: /redeem
 Disallow: /setup
 Disallow: /api/
-Sitemap: https://superai.dihappy.cfd/sitemap.xml
+Sitemap: https://superai.sbs/sitemap.xml

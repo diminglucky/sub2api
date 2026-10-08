@@ -186,7 +186,7 @@ export default {
         countriesPlaceholder: 'CN, HK, MO, TW',
         countriesHint: 'Two-letter country codes, comma separated. Leave empty to stop blocking by region.',
         hosts: 'Hosts to enforce on',
-        hostsPlaceholder: 'superai.dihappy.cfd',
+        hostsPlaceholder: 'superai.sbs',
         hostsHint: 'Only page visits to these hosts are blocked, comma separated; use * for every host.',
         supportEmail: 'Appeal email',
         supportEmailPlaceholder: "support{'@'}example.com",

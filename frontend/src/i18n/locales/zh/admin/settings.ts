@@ -186,7 +186,7 @@ export default {
         countriesPlaceholder: 'CN, HK, MO, TW',
         countriesHint: '两位国家/地区码，逗号分隔；留空表示不按地区拦截。',
         hosts: '生效域名',
-        hostsPlaceholder: 'superai.dihappy.cfd',
+        hostsPlaceholder: 'superai.sbs',
         hostsHint: '只拦截这些域名的网页访问，逗号分隔；填 * 表示所有域名。',
         supportEmail: '申诉邮箱',
         supportEmailPlaceholder: "support{'@'}example.com",

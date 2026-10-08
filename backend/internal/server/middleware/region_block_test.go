@@ -26,7 +26,7 @@ func newRegionBlockTestRouter(cfg config.RegionBlockConfig) *gin.Engine {
 func TestRegionBlock_BlockedCountryReturnsHTMLPage(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN", "HK", "MO", "TW"},
 		HeaderNames:      []string{"CF-IPCountry"},
 		SupportEmail:     "support@example.com",
@@ -34,7 +34,7 @@ func TestRegionBlock_BlockedCountryReturnsHTMLPage(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/home", nil)
-	req.Host = "superai.dihappy.cfd"
+	req.Host = "superai.sbs"
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("CF-IPCountry", "CN")
 	r.ServeHTTP(w, req)
@@ -52,7 +52,7 @@ func TestRegionBlock_PicksUpUpdatedConfigWithoutRestart(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := config.RegionBlockConfig{
 		Enabled:          true,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN"},
 		HeaderNames:      []string{"CF-IPCountry"},
 	}
@@ -65,7 +65,7 @@ func TestRegionBlock_PicksUpUpdatedConfigWithoutRestart(t *testing.T) {
 	probe := func() int {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/home", nil)
-		req.Host = "superai.dihappy.cfd"
+		req.Host = "superai.sbs"
 		req.Header.Set("Accept", "text/html")
 		req.Header.Set("CF-IPCountry", "CN")
 		r.ServeHTTP(w, req)
@@ -86,7 +86,7 @@ func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
 	r.Use(RegionBlock(func() config.RegionBlockConfig {
 		return config.RegionBlockConfig{
 			Enabled:          true,
-			Hosts:            []string{"superai.dihappy.cfd"},
+			Hosts:            []string{"superai.sbs"},
 			BlockedCountries: []string{"CN"},
 			HeaderNames:      []string{"CF-IPCountry"},
 		}
@@ -100,7 +100,7 @@ func TestRegionBlock_AllowsCrawlerFilesFromBlockedCountry(t *testing.T) {
 	probe := func(path, accept string) int {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.Host = "superai.dihappy.cfd"
+		req.Host = "superai.sbs"
 		req.Header.Set("Accept", accept)
 		req.Header.Set("CF-IPCountry", "CN")
 		r.ServeHTTP(w, req)
@@ -122,7 +122,7 @@ func TestRegionBlock_AllowsSearchEngineCrawlersOnPublicSEOPaths(t *testing.T) {
 	r.Use(RegionBlock(func() config.RegionBlockConfig {
 		return config.RegionBlockConfig{
 			Enabled:          true,
-			Hosts:            []string{"superai.dihappy.cfd"},
+			Hosts:            []string{"superai.sbs"},
 			BlockedCountries: []string{"CN"},
 			HeaderNames:      []string{"CF-IPCountry"},
 		}
@@ -135,7 +135,7 @@ func TestRegionBlock_AllowsSearchEngineCrawlersOnPublicSEOPaths(t *testing.T) {
 	probe := func(path, userAgent string) int {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, path, nil)
-		req.Host = "superai.dihappy.cfd"
+		req.Host = "superai.sbs"
 		req.Header.Set("Accept", "text/html")
 		req.Header.Set("CF-IPCountry", "CN")
 		if userAgent != "" {
@@ -156,14 +156,14 @@ func TestRegionBlock_AllowsSearchEngineCrawlersOnPublicSEOPaths(t *testing.T) {
 func TestRegionBlock_AllowsAPIRouteOnBlockedHostAndCountry(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN"},
 		HeaderNames:      []string{"CF-IPCountry"},
 	})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", nil)
-	req.Host = "superai.dihappy.cfd"
+	req.Host = "superai.sbs"
 	req.Header.Set("CF-IPCountry", "cn")
 	r.ServeHTTP(w, req)
 
@@ -174,7 +174,7 @@ func TestRegionBlock_AllowsAPIRouteOnBlockedHostAndCountry(t *testing.T) {
 func TestRegionBlock_AllowsUnblockedAndMissingCountries(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN"},
 		HeaderNames:      []string{"CF-IPCountry"},
 	})
@@ -182,7 +182,7 @@ func TestRegionBlock_AllowsUnblockedAndMissingCountries(t *testing.T) {
 	for _, country := range []string{"US", ""} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/home", nil)
-		req.Host = "superai.dihappy.cfd"
+		req.Host = "superai.sbs"
 		if country != "" {
 			req.Header.Set("CF-IPCountry", country)
 		}
@@ -196,7 +196,7 @@ func TestRegionBlock_AllowsUnblockedAndMissingCountries(t *testing.T) {
 func TestRegionBlock_AllowsOtherHosts(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          true,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN"},
 		HeaderNames:      []string{"CF-IPCountry"},
 	})
@@ -215,14 +215,14 @@ func TestRegionBlock_AllowsOtherHosts(t *testing.T) {
 func TestRegionBlock_DisabledAllowsBlockedCountry(t *testing.T) {
 	r := newRegionBlockTestRouter(config.RegionBlockConfig{
 		Enabled:          false,
-		Hosts:            []string{"superai.dihappy.cfd"},
+		Hosts:            []string{"superai.sbs"},
 		BlockedCountries: []string{"CN"},
 		HeaderNames:      []string{"CF-IPCountry"},
 	})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/home", nil)
-	req.Host = "superai.dihappy.cfd"
+	req.Host = "superai.sbs"
 	req.Header.Set("CF-IPCountry", "CN")
 	r.ServeHTTP(w, req)
 

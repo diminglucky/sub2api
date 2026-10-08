@@ -81,7 +81,7 @@ func TestWeChatOAuthStartBuildsDefaultCallbackFromRequestHost(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open", nil)
-	c.Request.Host = "superai.dihappy.cfd"
+	c.Request.Host = "superai.sbs"
 	c.Request.Header.Set("X-Forwarded-Proto", "https")
 
 	handler.WeChatOAuthStart(c)
@@ -90,7 +90,7 @@ func TestWeChatOAuthStartBuildsDefaultCallbackFromRequestHost(t *testing.T) {
 	location := recorder.Header().Get("Location")
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
-	require.Equal(t, "https://superai.dihappy.cfd/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
+	require.Equal(t, "https://superai.sbs/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
 	require.NotContains(t, parsed.Query().Get("redirect_uri"), "/v1/api/v1/")
 }
 
@@ -111,7 +111,7 @@ func TestWeChatOAuthStartNormalizesAPIBaseURLCallbackPath(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/wechat/start?mode=open", nil)
-	c.Request.Host = "superai.dihappy.cfd"
+	c.Request.Host = "superai.sbs"
 	c.Request.Header.Set("X-Forwarded-Proto", "https")
 
 	handler.WeChatOAuthStart(c)

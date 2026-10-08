@@ -364,7 +364,7 @@ func TestEmailQueueAnnouncementBatchContinuesAfterRecipientFailure(t *testing.T)
 
 func TestNotificationEmailAnnouncementTemplateIsOptionalAndEscapesContent(t *testing.T) {
 	repo := newNotificationEmailMemorySettingRepo()
-	require.NoError(t, repo.Set(context.Background(), SettingKeyFrontendURL, "https://superai.dihappy.cfd"))
+	require.NoError(t, repo.Set(context.Background(), SettingKeyFrontendURL, "https://superai.sbs"))
 	svc := NewNotificationEmailService(repo, nil)
 	info, event, err := svc.eventInfo(NotificationEmailEventAnnouncementPublished)
 	require.NoError(t, err)
@@ -387,7 +387,7 @@ func TestNotificationEmailAnnouncementTemplateIsOptionalAndEscapesContent(t *tes
 	require.Contains(t, preview.HTML, "&lt;script&gt;")
 	require.NotContains(t, preview.HTML, "<script>")
 	require.Contains(t, preview.HTML, "unsubscribe")
-	require.Contains(t, preview.HTML, "https://superai.dihappy.cfd")
+	require.Contains(t, preview.HTML, "https://superai.sbs")
 }
 
 func TestOpsScheduledReportDeliverySourceIDIncludesReportIdentity(t *testing.T) {
@@ -495,13 +495,13 @@ func TestNotificationEmailPreferenceKeyUsesShortStableHashAndReadsLegacyKey(t *t
 func TestNotificationEmailBaseURLPrefersFrontendURL(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
-	require.NoError(t, repo.Set(ctx, SettingKeyFrontendURL, "https://superai.dihappy.cfd/"))
+	require.NoError(t, repo.Set(ctx, SettingKeyFrontendURL, "https://superai.sbs/"))
 	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.dihappy.cfd/v1"))
 	svc := NewNotificationEmailService(repo, nil)
 
-	require.Equal(t, "https://superai.dihappy.cfd", svc.baseURL(ctx))
-	require.Equal(t, "https://superai.dihappy.cfd", svc.sampleVariables(ctx, NotificationEmailEventAnnouncementPublished, "en")["site_url"])
-	require.Equal(t, "https://superai.dihappy.cfd", svc.runtimeVariables(ctx, NotificationEmailEventAnnouncementPublished, "en", NotificationEmailSendInput{})["site_url"])
+	require.Equal(t, "https://superai.sbs", svc.baseURL(ctx))
+	require.Equal(t, "https://superai.sbs", svc.sampleVariables(ctx, NotificationEmailEventAnnouncementPublished, "en")["site_url"])
+	require.Equal(t, "https://superai.sbs", svc.runtimeVariables(ctx, NotificationEmailEventAnnouncementPublished, "en", NotificationEmailSendInput{})["site_url"])
 }
 
 func TestNotificationEmailBaseURLNormalizesAPIBaseURLFallback(t *testing.T) {
