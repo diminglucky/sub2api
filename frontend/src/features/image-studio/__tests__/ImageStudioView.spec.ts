@@ -181,6 +181,14 @@ describe('ImageStudioView image model loading', () => {
           status: 'active',
           group_id: null,
         },
+        {
+          id: 4,
+          name: 'legacy-group',
+          key: 'sk-legacy',
+          status: 'active',
+          group_id: 4,
+          group: { platform: 'openai' },
+        },
       ],
     })
     getPublicSettings.mockResolvedValue({ api_base_url: '' })
@@ -195,6 +203,7 @@ describe('ImageStudioView image model loading', () => {
     await apiKeySelect.get('button').trigger('click')
     expect(apiKeySelect.text()).toContain('image-key')
     expect(apiKeySelect.text()).toContain('ungrouped')
+    expect(apiKeySelect.text()).toContain('legacy-group')
     expect(apiKeySelect.text()).not.toContain('text-only')
   })
 

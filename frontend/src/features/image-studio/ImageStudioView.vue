@@ -522,7 +522,7 @@ const modelSelectPlaceholder = computed(() => {
 })
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
 const imageCapableKeys = computed(() => activeKeys.value.filter(
-  (key) => !key.group || key.group.allow_image_generation,
+  (key) => key.group?.allow_image_generation !== false,
 ))
 const apiKeyOptions = computed(() => imageCapableKeys.value.map((key) => ({ value: String(key.id), label: key.name })))
 const selectedKey = computed(() => imageCapableKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
