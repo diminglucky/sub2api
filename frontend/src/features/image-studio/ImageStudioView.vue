@@ -52,7 +52,7 @@
             :key="image.id"
             class="group overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
           >
-            <button type="button" class="relative block aspect-square w-full overflow-hidden" :disabled="image.pending" @click="!image.pending && (previewImage = image.src)">
+            <button type="button" class="relative block aspect-square w-full overflow-hidden" :disabled="image.pending" @click="!image.pending && (previewImage = image)">
               <div v-if="image.pending" class="image-pending-card">
                 <span class="image-generation-spinner" aria-hidden="true"></span>
                 <strong>正在生成</strong>
@@ -190,10 +190,54 @@
           </div>
         </div>
       </div>
-      <div v-if="previewImage" class="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4" @click="previewImage = ''">
-        <img :src="previewImage" alt="图片预览" class="max-h-[88vh] max-w-[92vw] rounded-xl object-contain shadow-2xl" />
-      </div>
     </Teleport>
+
+    <BaseDialog
+      :show="!!previewImage"
+      :title="previewImage?.title || '图片详情'"
+      width="extra-wide"
+      :close-on-click-outside="true"
+      @close="previewImage = null"
+    >
+      <div v-if="previewImage" class="image-detail-dialog">
+        <div class="image-detail-dialog__media">
+          <img :src="previewImage.src" :alt="previewImage.title" />
+        </div>
+        <section class="image-detail-dialog__panel">
+          <div class="image-detail-dialog__section-head">
+            <span>提示词</span>
+            <button type="button" class="image-detail-dialog__copy" data-testid="copy-image-prompt" @click="copyPreviewPrompt">
+              <Icon name="copy" size="xs" />
+              <span>复制</span>
+            </button>
+          </div>
+          <p class="image-detail-dialog__prompt">{{ previewImage.prompt || '暂无提示词' }}</p>
+          <dl class="image-detail-dialog__info">
+            <div v-if="previewImage.size">
+              <dt>尺寸</dt>
+              <dd>{{ previewImage.size }}</dd>
+            </div>
+            <div v-if="previewImage.format">
+              <dt>格式</dt>
+              <dd>{{ previewImage.format.toUpperCase() }}</dd>
+            </div>
+            <div v-if="previewImage.model">
+              <dt>模型</dt>
+              <dd>{{ previewImage.model }}</dd>
+            </div>
+          </dl>
+        </section>
+      </div>
+
+      <template #footer>
+        <div class="image-detail-dialog__footer">
+          <button type="button" class="image-detail-dialog__download" @click="previewImage && downloadImage(previewImage)">
+            <Icon name="download" size="sm" />
+            <span>下载图片</span>
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
 
     <BaseDialog
       :show="sizeDialogOpen"
@@ -348,6 +392,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ImageStudioSelect from './ImageStudioSelect.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { useClipboard } from '@/composables/useClipboard'
 import { authAPI, imageStudioGalleryAPI, keysAPI, type ImageStudioGalleryEntry } from '@/api'
 import type { ApiKey } from '@/types'
 import { resolvePlaygroundApiEndpoint } from '@/utils/apiEndpoint'
@@ -357,6 +402,10 @@ interface GeneratedImage {
   title: string
   src: string
   meta: string
+  prompt?: string
+  model?: string
+  size?: string
+  format?: string
   pending?: boolean
 }
 
@@ -409,8 +458,9 @@ const activeGenerations = ref(0)
 const errorMessage = ref('')
 const images = ref<GeneratedImage[]>([])
 const references = ref<ReferenceItem[]>([])
-const previewImage = ref('')
+const previewImage = ref<GeneratedImage | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const { copyToClipboard } = useClipboard()
 
 const PENDING_STORAGE_KEY = 'sub2api:image-studio:pending'
 
@@ -626,6 +676,10 @@ function galleryEntryToImage(entry: ImageStudioGalleryEntry, index: number): Gen
     id: entry.id,
     title: `历史图片 ${index + 1}`,
     src: entry.url,
+    prompt: entry.prompt,
+    model: entry.model,
+    size: entry.size,
+    format: entry.format,
     meta: [
       entry.format?.toUpperCase(),
       entry.size,
@@ -864,6 +918,10 @@ async function generate() {
         id: nextImageId++,
         title: `生成结果 ${index + 1}`,
         src: b64 ? `data:${mime};base64,${b64}` : String(item.url || ''),
+        prompt: currentPrompt,
+        model: imageModel.value,
+        size: size.value,
+        format: format.value,
         meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
       }
     }).filter((item: GeneratedImage) => item.src)
@@ -992,6 +1050,12 @@ function downloadImage(image: GeneratedImage) {
   link.href = image.src
   link.download = `${image.title}.png`
   link.click()
+}
+
+function copyPreviewPrompt() {
+  const text = previewImage.value?.prompt
+  if (!text) return
+  void copyToClipboard(text, '提示词已复制')
 }
 
 watch([selectedKeyId, apiBaseUrl], () => {
@@ -1456,6 +1520,137 @@ onMounted(loadData)
   transform: none;
 }
 
+.image-detail-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(18rem, 0.85fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.image-detail-dialog__media {
+  display: flex;
+  min-height: 28rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: rgb(241 245 249);
+  padding: 1rem;
+}
+
+.image-detail-dialog__media img {
+  max-height: 72vh;
+  max-width: 100%;
+  border-radius: 0.5rem;
+  object-fit: contain;
+}
+
+.image-detail-dialog__panel {
+  display: flex;
+  min-height: 28rem;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.75rem;
+  background: rgb(248 250 252);
+  padding: 1rem;
+}
+
+.image-detail-dialog__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: rgb(71 85 105);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.image-detail-dialog__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: rgb(100 116 139);
+  font-size: 0.78rem;
+}
+
+.image-detail-dialog__prompt {
+  flex: 1;
+  margin: 0.8rem 0 1rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: rgb(15 23 42);
+  font-size: 0.86rem;
+  line-height: 1.65;
+}
+
+.image-detail-dialog__info {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  border-top: 1px solid rgb(226 232 240);
+  padding-top: 0.9rem;
+}
+
+.image-detail-dialog__info div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.image-detail-dialog__info dt {
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+}
+
+.image-detail-dialog__info dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: rgb(30 41 59);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-align: right;
+}
+
+.image-detail-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.image-detail-dialog__download {
+  display: inline-flex;
+  min-height: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 0.6rem;
+  background: white;
+  padding: 0 0.9rem;
+  color: rgb(51 65 85);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .image-detail-dialog {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .image-detail-dialog__media,
+  .image-detail-dialog__panel {
+    min-height: 0;
+  }
+
+  .image-detail-dialog__panel {
+    max-height: 42vh;
+  }
+}
+
 .mini-action,
 .secondary-button,
 .primary-button {
@@ -1498,12 +1693,10 @@ onMounted(loadData)
 
 .image-generation-overlay {
   position: fixed;
-  inset: 0;
+  top: 1rem;
+  right: 1rem;
   z-index: 60;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 1.5rem;
+  max-width: calc(100vw - 2rem);
   pointer-events: none;
 }
 
@@ -1524,6 +1717,7 @@ onMounted(loadData)
   display: flex;
   align-items: center;
   gap: 0.8rem;
+  max-width: min(24rem, calc(100vw - 2rem));
   border: 1px solid rgb(226 232 240);
   border-radius: 0.9rem;
   background: rgb(255 255 255 / 0.96);
@@ -1632,13 +1826,52 @@ onMounted(loadData)
   color: rgb(226 232 240);
 }
 
+:global(.dark .size-base-option.active),
+:global(.dark .size-ratio-option.active),
+:global(.dark .size-custom-ratio-toggle.active) {
+  border-color: rgb(45 212 191 / 0.7);
+  background: rgb(19 78 74 / 0.72);
+  color: rgb(204 251 241);
+  box-shadow: 0 6px 18px rgb(13 148 136 / 0.2);
+}
+
 :global(.dark .size-preview),
 :global(.dark .size-dimension-hint),
 :global(.dark .size-dialog__cancel) {
   background: rgb(30 41 59);
 }
 
+:global(.dark .size-dialog__current strong),
+:global(.dark .size-dimension-hint) {
+  color: rgb(226 232 240);
+}
+
 :global(.dark .size-auto-icon) {
   background: rgb(19 78 74 / 0.65);
+}
+
+:global(.dark .image-detail-dialog__panel) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27);
+}
+
+:global(.dark .image-detail-dialog__media) {
+  background: rgb(15 23 42);
+}
+
+:global(.dark .image-detail-dialog__section-head),
+:global(.dark .image-detail-dialog__prompt),
+:global(.dark .image-detail-dialog__info dd) {
+  color: rgb(244 244 245);
+}
+
+:global(.dark .image-detail-dialog__info) {
+  border-color: rgb(63 63 70);
+}
+
+:global(.dark .image-detail-dialog__download) {
+  border-color: rgb(63 63 70);
+  background: rgb(24 24 27);
+  color: rgb(226 232 240);
 }
 </style>

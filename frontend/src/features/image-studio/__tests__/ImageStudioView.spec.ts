@@ -7,11 +7,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ImageStudioView from '../ImageStudioView.vue'
 
-const { listKeys, getPublicSettings, listGallery, saveGallery } = vi.hoisted(() => ({
+const { listKeys, getPublicSettings, listGallery, saveGallery, copyToClipboard } = vi.hoisted(() => ({
   listKeys: vi.fn(),
   getPublicSettings: vi.fn(),
   listGallery: vi.fn(),
   saveGallery: vi.fn(),
+  copyToClipboard: vi.fn(),
 }))
 
 vi.mock('@/api', () => ({
@@ -27,6 +28,12 @@ vi.mock('@/api', () => ({
   },
 }))
 
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({
+    copyToClipboard,
+  }),
+}))
+
 const componentPath = resolve(dirname(fileURLToPath(import.meta.url)), '../ImageStudioView.vue')
 const componentSource = readFileSync(componentPath, 'utf8')
 
@@ -36,8 +43,9 @@ function mountImageStudio() {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
         BaseDialog: {
-          props: ['show', 'title'],
-          template: '<div v-if="show"><h3>{{ title }}</h3><slot /><slot name="footer" /></div>',
+          props: ['show', 'title', 'closeOnClickOutside'],
+          emits: ['close'],
+          template: '<div v-if="show"><button v-if="closeOnClickOutside" data-testid="dialog-backdrop" @click="$emit(\'close\')">backdrop</button><h3>{{ title }}</h3><slot /><slot name="footer" /></div>',
         },
         Icon: { template: '<span />' },
       },
@@ -50,7 +58,9 @@ function resetCommonMocks() {
   getPublicSettings.mockReset()
   listGallery.mockReset()
   saveGallery.mockReset()
+  copyToClipboard.mockReset()
   listGallery.mockResolvedValue([])
+  copyToClipboard.mockResolvedValue(true)
   saveGallery.mockResolvedValue({
     id: 'gallery-1',
     url: 'https://cdn.example.com/gallery-1.png',
@@ -260,6 +270,66 @@ describe('ImageStudioView gallery', () => {
 
     expect(wrapper.text()).toContain('历史图片 1')
     expect(wrapper.get('img[src="https://cdn.example.com/gallery-1.png"]').exists()).toBe(true)
+  })
+
+  it('opens the image detail dialog and copies the original prompt', async () => {
+    listGallery.mockResolvedValue([
+      {
+        id: 'gallery-1',
+        url: 'https://cdn.example.com/gallery-1.png',
+        prompt: 'a cat wearing a spacesuit',
+        model: 'gpt-image-1',
+        size: '1024x1024',
+        format: 'png',
+        created_at: 1,
+        expires_at: 9999999999,
+      },
+    ])
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    const imageButton = wrapper.findAll('button').find((button) =>
+      button.find('img[src="https://cdn.example.com/gallery-1.png"]').exists(),
+    )
+    expect(imageButton).toBeDefined()
+    await imageButton!.trigger('click')
+
+    expect(wrapper.text()).toContain('提示词')
+    expect(wrapper.text()).toContain('a cat wearing a spacesuit')
+
+    const copyButton = wrapper.findAll('button').find((button) => button.text().includes('复制'))
+    expect(copyButton).toBeDefined()
+    await copyButton!.trigger('click')
+
+    expect(copyToClipboard).toHaveBeenCalledWith('a cat wearing a spacesuit', expect.any(String))
+  })
+
+  it('closes the image detail dialog from the backdrop', async () => {
+    listGallery.mockResolvedValue([
+      {
+        id: 'gallery-1',
+        url: 'https://cdn.example.com/gallery-1.png',
+        prompt: 'a cat',
+        model: 'gpt-image-1',
+        size: '1024x1024',
+        format: 'png',
+        created_at: 1,
+        expires_at: 9999999999,
+      },
+    ])
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    const imageButton = wrapper.findAll('button').find((button) =>
+      button.find('img[src="https://cdn.example.com/gallery-1.png"]').exists(),
+    )
+    await imageButton!.trigger('click')
+    expect(wrapper.text()).toContain('a cat')
+
+    await wrapper.get('[data-testid="dialog-backdrop"]').trigger('click')
+    expect(wrapper.text()).not.toContain('a cat')
   })
 
   it('saves a generated image to the seven-day gallery', async () => {
