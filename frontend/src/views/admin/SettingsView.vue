@@ -10908,7 +10908,13 @@ const currentOrigin =
 
 function buildApiCallbackUrl(path: string): string {
   const base = (form.api_base_url || currentOrigin).replace(/\/+$/, "");
-  const apiRoot = base.endsWith("/api/v1") ? base : `${base}/api/v1`;
+  const normalizedBase =
+    base.endsWith("/v1") && !base.endsWith("/api/v1")
+      ? base.slice(0, -"/v1".length)
+      : base;
+  const apiRoot = normalizedBase.endsWith("/api/v1")
+    ? normalizedBase
+    : `${normalizedBase}/api/v1`;
   return `${apiRoot}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
