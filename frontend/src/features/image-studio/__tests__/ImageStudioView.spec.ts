@@ -545,6 +545,7 @@ describe('ImageStudioView gallery', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('正在生成')
+    expect(wrapper.text()).not.toContain('可以切换到其他页面')
     expect(localStorage.getItem('sub2api:image-studio:pending')).toContain('"pending":true')
 
     resolveGeneration({

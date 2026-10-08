@@ -180,18 +180,6 @@
       </form>
     </div>
 
-    <Teleport to="body">
-      <div v-if="generating" class="image-generation-overlay" role="status" aria-live="polite">
-        <div class="image-generation-overlay__card">
-          <span class="image-generation-spinner" aria-hidden="true"></span>
-          <div>
-            <p>正在生成图片</p>
-            <span>可以切换到其他页面，任务会继续进行。</span>
-          </div>
-        </div>
-      </div>
-    </Teleport>
-
     <BaseDialog
       :show="!!previewImage"
       :title="previewImage?.title || '图片详情'"
@@ -1729,15 +1717,6 @@ onMounted(loadData)
   opacity: 0.45;
 }
 
-.image-generation-overlay {
-  position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 60;
-  max-width: calc(100vw - 2rem);
-  pointer-events: none;
-}
-
 .image-pending-card {
   display: flex;
   height: 100%;
@@ -1751,30 +1730,6 @@ onMounted(loadData)
 
 .image-pending-card small { color: rgb(100 116 139); }
 
-.image-generation-overlay__card {
-  display: flex;
-  align-items: center;
-  gap: 0.8rem;
-  max-width: min(24rem, calc(100vw - 2rem));
-  border: 1px solid rgb(226 232 240);
-  border-radius: 0.9rem;
-  background: rgb(255 255 255 / 0.96);
-  padding: 0.8rem 1rem;
-  box-shadow: 0 16px 34px rgb(15 23 42 / 0.16);
-}
-
-.image-generation-overlay__card p {
-  margin: 0;
-  color: rgb(15 23 42);
-  font-size: 0.9rem;
-  font-weight: 700;
-}
-
-.image-generation-overlay__card span:not(.image-generation-spinner) {
-  color: rgb(100 116 139);
-  font-size: 0.78rem;
-}
-
 .image-generation-spinner {
   width: 1.5rem;
   height: 1.5rem;
@@ -1787,15 +1742,6 @@ onMounted(loadData)
 
 @keyframes image-generation-spin {
   to { transform: rotate(360deg); }
-}
-
-:global(.dark .image-generation-overlay__card) {
-  border-color: rgb(63 63 70);
-  background: rgb(24 24 27 / 0.96);
-}
-
-:global(.dark .image-generation-overlay__card p) {
-  color: rgb(244 244 245);
 }
 
 :global(.dark .toolbar-field),
