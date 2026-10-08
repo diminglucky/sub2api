@@ -497,6 +497,8 @@ func TestNotificationEmailBaseURLPrefersFrontendURL(t *testing.T) {
 	svc := NewNotificationEmailService(repo, nil)
 
 	require.Equal(t, "https://superai.dihappy.cfd", svc.baseURL(ctx))
+	require.Equal(t, "https://superai.dihappy.cfd", svc.sampleVariables(ctx, NotificationEmailEventAnnouncementPublished, "en")["site_url"])
+	require.Equal(t, "https://superai.dihappy.cfd", svc.runtimeVariables(ctx, NotificationEmailEventAnnouncementPublished, "en", NotificationEmailSendInput{})["site_url"])
 }
 
 func TestNotificationEmailBaseURLNormalizesAPIBaseURLFallback(t *testing.T) {

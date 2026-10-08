@@ -245,6 +245,7 @@ const appStore = useAppStore();
 
 const fallbackPlaceholders = [
   "{{site_name}}",
+  "{{site_url}}",
   "{{recipient_name}}",
   "{{recipient_email}}",
   "{{verification_code}}",

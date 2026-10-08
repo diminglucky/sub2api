@@ -52,7 +52,7 @@ const (
 var (
 	notificationEmailPlaceholderPattern = regexp.MustCompile(`{{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*}}`)
 	notificationEmailLocales            = []string{notificationEmailDefaultLocale, notificationEmailLocaleChinese}
-	notificationEmailCommonPlaceholders = []string{"site_name", "recipient_name", "recipient_email"}
+	notificationEmailCommonPlaceholders = []string{"site_name", "site_url", "recipient_name", "recipient_email"}
 	// Keep summary values separate so admins can rearrange or omit individual metrics in the template.
 	notificationEmailOpsSummaryPlaceholders = []string{
 		"report_summary_display",
@@ -520,6 +520,10 @@ func (s *NotificationEmailService) sampleVariables(ctx context.Context, event, l
 		variables[key] = value
 	}
 	variables["site_name"] = s.siteName(ctx)
+	variables["site_url"] = s.baseURL(ctx)
+	if variables["site_url"] == "" {
+		variables["site_url"] = "https://example.com"
+	}
 	if variables["unsubscribe_url"] == "" && info.Optional {
 		variables["unsubscribe_url"] = "https://example.com/unsubscribe"
 	}
@@ -560,6 +564,7 @@ func (s *NotificationEmailService) runtimeVariables(ctx context.Context, event, 
 		}
 	}
 	variables["site_name"] = s.siteName(ctx)
+	variables["site_url"] = s.baseURL(ctx)
 	variables["recipient_email"] = input.RecipientEmail
 	if strings.TrimSpace(input.RecipientName) != "" {
 		variables["recipient_name"] = input.RecipientName
@@ -1307,6 +1312,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>Hello {{recipient_name}},</p>
 <h2 style="font-size: 20px; margin: 20px 0 12px;">{{announcement_title}}</h2>
 <div style="white-space: pre-line;">{{announcement_content}}</div>
+<p class="muted"><a href="{{site_url}}">{{site_url}}</a></p>
 <p class="muted"><a href="{{unsubscribe_url}}">Unsubscribe from announcement emails</a></p>`),
 		},
 		notificationEmailLocaleChinese: {
@@ -1315,6 +1321,7 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 <p>{{recipient_name}}，您好：</p>
 <h2 style="font-size: 20px; margin: 20px 0 12px;">{{announcement_title}}</h2>
 <div style="white-space: pre-line;">{{announcement_content}}</div>
+<p class="muted"><a href="{{site_url}}">{{site_url}}</a></p>
 <p class="muted"><a href="{{unsubscribe_url}}">退订此类公告邮件</a></p>`),
 		},
 	},
