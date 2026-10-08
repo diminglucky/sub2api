@@ -77,7 +77,7 @@ describe('PlaygroundView model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     const fetchMock = vi.mocked(fetch)
     fetchMock.mockResolvedValue({
       ok: true,
@@ -134,7 +134,7 @@ describe('PlaygroundView model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     const fetchMock = vi.mocked(fetch)
     fetchMock.mockImplementation(async (input) => {
       const url = String(input)
@@ -200,7 +200,7 @@ describe('PlaygroundView model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     const fetchMock = vi.mocked(fetch)
     fetchMock.mockImplementation(async (input) => {
       const url = String(input)

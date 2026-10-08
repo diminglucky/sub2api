@@ -97,7 +97,7 @@ func TestWeChatOAuthStartBuildsDefaultCallbackFromRequestHost(t *testing.T) {
 func TestWeChatOAuthStartNormalizesAPIBaseURLCallbackPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler, client := newWeChatOAuthTestHandlerWithSettings(t, false, map[string]string{
-		service.SettingKeyAPIBaseURL:                       "https://api.dihappy.cfd/v1",
+		service.SettingKeyAPIBaseURL:                       "https://api.superai.sbs/v1",
 		service.SettingKeyWeChatConnectEnabled:             "true",
 		service.SettingKeyWeChatConnectAppID:               "wx-open-app",
 		service.SettingKeyWeChatConnectAppSecret:           "wx-open-secret",
@@ -120,7 +120,7 @@ func TestWeChatOAuthStartNormalizesAPIBaseURLCallbackPath(t *testing.T) {
 	location := recorder.Header().Get("Location")
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
-	require.Equal(t, "https://api.dihappy.cfd/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
+	require.Equal(t, "https://api.superai.sbs/api/v1/auth/oauth/wechat/callback", parsed.Query().Get("redirect_uri"))
 	require.NotContains(t, parsed.Query().Get("redirect_uri"), "/v1/api/v1/")
 }
 

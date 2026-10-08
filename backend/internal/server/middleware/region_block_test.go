@@ -203,7 +203,7 @@ func TestRegionBlock_AllowsOtherHosts(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/home", nil)
-	req.Host = "api.dihappy.cfd"
+	req.Host = "api.superai.sbs"
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("CF-IPCountry", "CN")
 	r.ServeHTTP(w, req)

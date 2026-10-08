@@ -496,7 +496,7 @@ func TestNotificationEmailBaseURLPrefersFrontendURL(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
 	require.NoError(t, repo.Set(ctx, SettingKeyFrontendURL, "https://superai.sbs/"))
-	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.dihappy.cfd/v1"))
+	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.superai.sbs/v1"))
 	svc := NewNotificationEmailService(repo, nil)
 
 	require.Equal(t, "https://superai.sbs", svc.baseURL(ctx))
@@ -507,14 +507,14 @@ func TestNotificationEmailBaseURLPrefersFrontendURL(t *testing.T) {
 func TestNotificationEmailBaseURLNormalizesAPIBaseURLFallback(t *testing.T) {
 	ctx := context.Background()
 	repo := newNotificationEmailMemorySettingRepo()
-	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.dihappy.cfd/v1"))
+	require.NoError(t, repo.Set(ctx, SettingKeyAPIBaseURL, "https://api.superai.sbs/v1"))
 	svc := NewNotificationEmailService(repo, nil)
 
-	require.Equal(t, "https://api.dihappy.cfd", svc.baseURL(ctx))
+	require.Equal(t, "https://api.superai.sbs", svc.baseURL(ctx))
 
 	unsubscribeURL, err := svc.buildUnsubscribeURL(ctx, "user@example.com", NotificationEmailEventBalanceLow)
 	require.NoError(t, err)
-	require.Contains(t, unsubscribeURL, "https://api.dihappy.cfd/api/v1/settings/email-unsubscribe?token=")
+	require.Contains(t, unsubscribeURL, "https://api.superai.sbs/api/v1/settings/email-unsubscribe?token=")
 	require.NotContains(t, unsubscribeURL, "/v1/api/v1/")
 }
 

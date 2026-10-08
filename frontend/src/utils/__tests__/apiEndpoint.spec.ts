@@ -12,8 +12,8 @@ describe('resolvePublicApiEndpoint', () => {
   })
 
   it('adds the v1 path for the dedicated API root domain', () => {
-    expect(resolvePublicApiEndpoint('https://api.dihappy.cfd')).toBe(DEFAULT_PUBLIC_API_BASE_URL)
-    expect(resolvePublicApiEndpoint('https://api.dihappy.cfd/')).toBe(DEFAULT_PUBLIC_API_BASE_URL)
+    expect(resolvePublicApiEndpoint('https://api.superai.sbs')).toBe(DEFAULT_PUBLIC_API_BASE_URL)
+    expect(resolvePublicApiEndpoint('https://api.superai.sbs/')).toBe(DEFAULT_PUBLIC_API_BASE_URL)
   })
 
   it('keeps custom paths on the web domain', () => {
@@ -33,7 +33,7 @@ describe('resolvePlaygroundApiEndpoint', () => {
 
   it('uses the local proxy in localhost development when the public default is configured', () => {
     expect(resolvePlaygroundApiEndpoint(DEFAULT_PUBLIC_API_BASE_URL, 'localhost')).toBe(LOCAL_PUBLIC_API_BASE_URL)
-    expect(resolvePlaygroundApiEndpoint('https://api.dihappy.cfd', 'localhost')).toBe(LOCAL_PUBLIC_API_BASE_URL)
+    expect(resolvePlaygroundApiEndpoint('https://api.superai.sbs', 'localhost')).toBe(LOCAL_PUBLIC_API_BASE_URL)
     expect(resolvePlaygroundApiEndpoint('https://superai.sbs/v1/', 'localhost')).toBe(LOCAL_PUBLIC_API_BASE_URL)
   })
 

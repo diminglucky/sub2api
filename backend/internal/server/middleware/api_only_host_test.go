@@ -44,11 +44,11 @@ func newAPIOnlyHostTestRouter(hosts []string) *gin.Engine {
 }
 
 func TestAPIOnlyHostBlocksFrontendPages(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	req.Host = "api.dihappy.cfd"
+	req.Host = "api.superai.sbs"
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
@@ -57,11 +57,11 @@ func TestAPIOnlyHostBlocksFrontendPages(t *testing.T) {
 }
 
 func TestAPIOnlyHostBlocksInternalAPIs(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/register", nil)
-	req.Host = "api.dihappy.cfd"
+	req.Host = "api.superai.sbs"
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
@@ -69,7 +69,7 @@ func TestAPIOnlyHostBlocksInternalAPIs(t *testing.T) {
 }
 
 func TestAPIOnlyHostBlocksNonGatewayAPIs(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	for _, path := range []string{"/api/event_logging/batch", "/health", "/v1", "/images"} {
 		w := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestAPIOnlyHostBlocksNonGatewayAPIs(t *testing.T) {
 		if path == "/health" || path == "/v1" || path == "/images" {
 			req = httptest.NewRequest(http.MethodGet, path, nil)
 		}
-		req.Host = "api.dihappy.cfd"
+		req.Host = "api.superai.sbs"
 		r.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusNotFound, w.Code, path)
@@ -86,11 +86,11 @@ func TestAPIOnlyHostBlocksNonGatewayAPIs(t *testing.T) {
 }
 
 func TestAPIOnlyHostAllowsTransportRoutes(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	req.Host = "api.dihappy.cfd"
+	req.Host = "api.superai.sbs"
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
@@ -98,12 +98,12 @@ func TestAPIOnlyHostAllowsTransportRoutes(t *testing.T) {
 }
 
 func TestAPIOnlyHostAllowsRootTransportAliases(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	for _, path := range []string{"/chat/completions", "/embeddings"} {
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodPost, path, nil)
-		req.Host = "api.dihappy.cfd"
+		req.Host = "api.superai.sbs"
 		r.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusOK, w.Code, path)
@@ -112,7 +112,7 @@ func TestAPIOnlyHostAllowsRootTransportAliases(t *testing.T) {
 }
 
 func TestAPIOnlyHostAllowsOtherHosts(t *testing.T) {
-	r := newAPIOnlyHostTestRouter([]string{"api.dihappy.cfd"})
+	r := newAPIOnlyHostTestRouter([]string{"api.superai.sbs"})
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
@@ -128,7 +128,7 @@ func TestAPIOnlyHostDisabledWhenNoHostsConfigured(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
-	req.Host = "api.dihappy.cfd"
+	req.Host = "api.superai.sbs"
 	r.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)

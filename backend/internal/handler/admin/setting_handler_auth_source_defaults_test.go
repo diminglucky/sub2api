@@ -217,7 +217,7 @@ func TestSettingHandler_UpdateSettings_RejectsInvalidAPIBaseURL(t *testing.T) {
 	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	rawBody, err := json.Marshal(map[string]any{
-		"api_base_url": "api.dihappy.cfd/v1",
+		"api_base_url": "api.superai.sbs/v1",
 	})
 	require.NoError(t, err)
 
@@ -243,7 +243,7 @@ func TestSettingHandler_UpdateSettings_TrimsAndPersistsAPIBaseURL(t *testing.T) 
 	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
 
 	rawBody, err := json.Marshal(map[string]any{
-		"api_base_url": " https://api.dihappy.cfd/v1 ",
+		"api_base_url": " https://api.superai.sbs/v1 ",
 	})
 	require.NoError(t, err)
 
@@ -255,7 +255,7 @@ func TestSettingHandler_UpdateSettings_TrimsAndPersistsAPIBaseURL(t *testing.T) 
 	handler.UpdateSettings(c)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "https://api.dihappy.cfd/v1", repo.values[service.SettingKeyAPIBaseURL])
+	require.Equal(t, "https://api.superai.sbs/v1", repo.values[service.SettingKeyAPIBaseURL])
 }
 
 func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedScheduler(t *testing.T) {

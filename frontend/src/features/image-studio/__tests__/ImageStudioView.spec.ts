@@ -102,7 +102,7 @@ describe('ImageStudioView image model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     const fetchMock = vi.mocked(fetch)
     fetchMock.mockImplementation(async (input) => {
       const url = String(input)
@@ -229,7 +229,7 @@ describe('ImageStudioView image model loading', () => {
 
     expect(wrapper.get('[data-testid="api-key-select"]').text()).toContain('dd')
 
-    resolveSettings({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    resolveSettings({ api_base_url: 'https://api.superai.sbs/v1' })
     await flushPromises()
   })
 
@@ -271,7 +271,7 @@ describe('ImageStudioView image model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     vi.mocked(fetch).mockResolvedValue({
       ok: false,
       status: 402,
@@ -304,7 +304,7 @@ describe('ImageStudioView image model loading', () => {
         },
       ],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: [] }),
@@ -444,7 +444,7 @@ describe('ImageStudioView gallery', () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input)
       if (url.endsWith('/images/batches/models')) {
@@ -477,7 +477,7 @@ describe('ImageStudioView gallery', () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     // 首次加载图库为空，保存之后图库里就出现了这条记录
     listGallery.mockResolvedValueOnce([])
     listGallery.mockResolvedValue([
@@ -522,7 +522,7 @@ describe('ImageStudioView gallery', () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
     })
-    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.dihappy.cfd/v1' })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
     let resolveGeneration!: (response: Response) => void
     vi.mocked(fetch).mockImplementation(async (input) => {
       const url = String(input)
