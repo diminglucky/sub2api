@@ -363,7 +363,9 @@ func TestEmailQueueAnnouncementBatchContinuesAfterRecipientFailure(t *testing.T)
 }
 
 func TestNotificationEmailAnnouncementTemplateIsOptionalAndEscapesContent(t *testing.T) {
-	svc := NewNotificationEmailService(newNotificationEmailMemorySettingRepo(), nil)
+	repo := newNotificationEmailMemorySettingRepo()
+	require.NoError(t, repo.Set(context.Background(), SettingKeyFrontendURL, "https://superai.dihappy.cfd"))
+	svc := NewNotificationEmailService(repo, nil)
 	info, event, err := svc.eventInfo(NotificationEmailEventAnnouncementPublished)
 	require.NoError(t, err)
 	require.Equal(t, NotificationEmailEventAnnouncementPublished, event)
@@ -385,6 +387,7 @@ func TestNotificationEmailAnnouncementTemplateIsOptionalAndEscapesContent(t *tes
 	require.Contains(t, preview.HTML, "&lt;script&gt;")
 	require.NotContains(t, preview.HTML, "<script>")
 	require.Contains(t, preview.HTML, "unsubscribe")
+	require.Contains(t, preview.HTML, "https://superai.dihappy.cfd")
 }
 
 func TestOpsScheduledReportDeliverySourceIDIncludesReportIdentity(t *testing.T) {
