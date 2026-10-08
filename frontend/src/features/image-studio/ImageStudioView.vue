@@ -33,6 +33,16 @@
               direction="down"
             />
           </label>
+          <button
+            type="button"
+            class="mini-action"
+            data-testid="image-refresh"
+            title="刷新密钥和模型"
+            :disabled="refreshing"
+            @click="refreshAll"
+          >
+            <Icon name="refresh" size="sm" :class="{ 'is-spinning': refreshing }" />
+          </button>
           <span v-if="modelLoadError" class="toolbar-error">{{ modelLoadError }}</span>
         </div>
       </header>
@@ -375,7 +385,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ImageStudioSelect from './ImageStudioSelect.vue'
@@ -423,6 +433,7 @@ const apiBaseUrl = ref('')
 const imageModel = ref('')
 const imageModels = ref<string[]>([])
 const loadingModels = ref(false)
+const refreshing = ref(false)
 const modelLoadError = ref('')
 const prompt = ref('一只趴在桌上的橙色小猫，柔和窗边自然光，电影感，极简背景')
 const appliedSize = reactive<SizeSettings>({
@@ -721,19 +732,22 @@ function persistPendingImages() {
 async function persistGeneratedImages(items: GeneratedImage[], prompt: string, model: string) {
   const results = await Promise.allSettled(items.map(async (item) => {
     const imageDataURL = await imageSourceToDataURL(item.src)
-    return imageStudioGalleryAPI.save({
+    const entry = await imageStudioGalleryAPI.save({
       image_data_url: imageDataURL,
       prompt,
       model,
       size: size.value,
       format: format.value,
     })
+    return { item, entry }
   }))
   const succeeded = results.filter((result) => result.status === 'fulfilled').length
   const failed = results.length - succeeded
   for (const result of results) {
-    if (result.status === 'fulfilled' && result.value?.id) {
-      locallySavedGalleryIds.add(String(result.value.id))
+    if (result.status === 'fulfilled' && result.value?.entry?.id) {
+      locallySavedGalleryIds.add(String(result.value.entry.id))
+      const storedURL = String(result.value.entry.url || '')
+      if (storedURL) result.value.item.src = storedURL
     }
   }
   if (succeeded > 0) {
@@ -757,6 +771,17 @@ async function imageSourceToDataURL(src: string) {
     reader.onload = () => resolve(String(reader.result || ''))
     reader.readAsDataURL(blob)
   })
+}
+
+// 上游有时会忽略 response_format=b64_json，直接返回它自己域名下的图片链接。
+// 这里统一转成自包含的 data URL，避免放大/下载时直接加载、暴露第三方域名。
+async function toSelfHostedImageSrc(src: string) {
+  if (src.startsWith('data:')) return src
+  try {
+    return await imageSourceToDataURL(src)
+  } catch {
+    return src
+  }
 }
 
 async function loadModels() {
@@ -807,6 +832,27 @@ async function loadModels() {
     if (requestId === modelRequestId) {
       loadingModels.value = false
     }
+  }
+}
+
+// 手动刷新密钥、设置和模型，用于切换后状态没跟上的场景。
+// 保留当前已选模型（只要它仍然可用），避免刷新后又被重置成第一个。
+async function refreshAll() {
+  if (refreshing.value) return
+  refreshing.value = true
+  errorMessage.value = ''
+  modelLoadError.value = ''
+  const previousModel = imageModel.value
+  try {
+    await loadData()
+    // 等 loadData 触发的 watch 跑完，避免它的异步 loadModels 覆盖下面的结果。
+    await nextTick()
+    await loadModels()
+    if (previousModel && imageModels.value.includes(previousModel)) {
+      imageModel.value = previousModel
+    }
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -937,20 +983,22 @@ async function generate() {
     }
     const items = extractImages(payload)
     if (!items.length) throw new Error('上游没有返回图片')
-    const generated = items.map((item: any, index: number) => {
+    const generated = (await Promise.all(items.map(async (item: any, index: number): Promise<GeneratedImage | null> => {
       const mime = String(item.mimeType || item.mime_type || 'image/png')
       const b64 = String(item.b64_json || item.data || '')
+      const rawSrc = b64 ? `data:${mime};base64,${b64}` : String(item.url || '')
+      if (!rawSrc) return null
       return {
         id: nextImageId++,
         title: `生成结果 ${index + 1}`,
-        src: b64 ? `data:${mime};base64,${b64}` : String(item.url || ''),
+        src: await toSelfHostedImageSrc(rawSrc),
         prompt: currentPrompt,
         model: imageModel.value,
         size: size.value,
         format: format.value,
         meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
       }
-    }).filter((item: GeneratedImage) => item.src)
+    }))).filter((item): item is GeneratedImage => item !== null)
     const pendingIndex = images.value.findIndex((item) => item.id === requestId)
     if (pendingIndex >= 0) images.value.splice(pendingIndex, 1, ...generated)
     persistPendingImages()
@@ -1694,6 +1742,21 @@ onMounted(loadData)
   height: 2rem;
   background: rgb(255 255 255 / 0.9);
   color: rgb(71 85 105);
+}
+
+.mini-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.mini-action .is-spinning {
+  animation: studio-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes studio-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .secondary-button {

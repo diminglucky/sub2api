@@ -155,6 +155,41 @@ describe('ImageStudioView image model loading', () => {
     expect(wrapper.find('input[placeholder="输入图片模型"]').exists()).toBe(false)
   })
 
+  it('reloads keys and models when the toolbar refresh button is pressed', async () => {
+    listKeys.mockResolvedValue({
+      items: [
+        { id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 },
+      ],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    const fetchMock = vi.mocked(fetch)
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+
+    const modelCallsBefore = fetchMock.mock.calls
+      .filter((call) => String(call[0]).endsWith('/images/batches/models')).length
+    const keyCallsBefore = listKeys.mock.calls.length
+    expect(modelCallsBefore).toBeGreaterThan(0)
+
+    await wrapper.get('[data-testid="image-refresh"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(listKeys.mock.calls.length).toBeGreaterThan(keyCallsBefore)
+    expect(
+      fetchMock.mock.calls.filter((call) => String(call[0]).endsWith('/images/batches/models')).length,
+    ).toBeGreaterThan(modelCallsBefore)
+  })
+
   it('only exposes image-capable API keys', async () => {
     listKeys.mockResolvedValue({
       items: [
@@ -353,6 +388,7 @@ describe('ImageStudioView gallery', () => {
   beforeEach(() => {
     resetCommonMocks()
     vi.stubGlobal('fetch', vi.fn())
+    localStorage.clear()
     listKeys.mockResolvedValue({ items: [] })
     getPublicSettings.mockResolvedValue({ api_base_url: '' })
   })
@@ -516,6 +552,84 @@ describe('ImageStudioView gallery', () => {
     expect(wrapper.text()).toContain('生成结果 1')
     // 同一张图不能既作为生成结果显示、又以「历史图片」再显示一遍
     expect(wrapper.text()).not.toContain('历史图片')
+  })
+
+  it('rewrites upstream image URLs so the enlarged image is not served from the other site', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    saveGallery.mockRejectedValue(new Error('storage unavailable'))
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [] }) } as Response
+      }
+      if (url.endsWith('/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return { ok: true, json: async () => ({ data: [{ url: 'https://upstream.example.com/out.png' }] }) } as Response
+      }
+      if (url === 'https://upstream.example.com/out.png') {
+        return {
+          ok: true,
+          blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+        } as unknown as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    await vi.waitFor(() => {
+      expect(wrapper.find('img[alt="生成结果 1"]').exists()).toBe(true)
+    })
+
+    const generatedImage = wrapper.get('img[alt="生成结果 1"]')
+    expect(generatedImage.attributes('src')).toMatch(/^data:image\/png;base64,/)
+    expect(wrapper.html()).not.toContain('upstream.example.com')
+  })
+
+  it('points the generated image at the owned storage URL after saving', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [] }) } as Response
+      }
+      if (url.endsWith('/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return { ok: true, json: async () => ({ data: [{ url: 'https://upstream.example.com/out.png' }] }) } as Response
+      }
+      if (url === 'https://upstream.example.com/out.png') {
+        return {
+          ok: true,
+          blob: async () => new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+        } as unknown as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    await vi.waitFor(() => {
+      expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toBe('https://cdn.example.com/gallery-1.png')
+    })
+
+    expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toBe('https://cdn.example.com/gallery-1.png')
+    expect(wrapper.html()).not.toContain('upstream.example.com')
   })
 
   it('shows and persists a pending image while generation is in flight', async () => {

@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"net/http"
-	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -93,7 +91,8 @@ func (s *ImageStudioGalleryService) Save(
 		return nil, ErrImageStudioGalleryQuotaExceeded
 	}
 
-	key := path.Join(strings.TrimSpace(formatUserID(userID)), id+extensionForContentType(contentType))
+	// 对象键只用随机 id，不带用户 ID，避免公开访问域名暴露用户身份。
+	key := id + extensionForContentType(contentType)
 	url, err := s.storage.SaveImage(ctx, key, contentType, data)
 	if err != nil {
 		return nil, err
@@ -132,8 +131,4 @@ func (s *ImageStudioGalleryService) List(ctx context.Context, userID int64, limi
 		entries = []*ImageStudioGalleryEntry{}
 	}
 	return entries, nil
-}
-
-func formatUserID(userID int64) string {
-	return strconv.FormatInt(userID, 10)
 }
