@@ -17,7 +17,7 @@
               class="toolbar-image-select"
               data-testid="api-key-select"
               :options="apiKeyOptions"
-              placeholder="选择密钥"
+              :placeholder="imageCapableKeys.length ? '选择密钥' : '没有可生图的密钥'"
               direction="down"
             />
           </label>
@@ -521,8 +521,11 @@ const modelSelectPlaceholder = computed(() => {
   return '选择模型'
 })
 const activeKeys = computed(() => keys.value.filter((key) => key.status === 'active'))
-const apiKeyOptions = computed(() => activeKeys.value.map((key) => ({ value: String(key.id), label: key.name })))
-const selectedKey = computed(() => activeKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
+const imageCapableKeys = computed(() => activeKeys.value.filter(
+  (key) => !key.group || key.group.allow_image_generation,
+))
+const apiKeyOptions = computed(() => imageCapableKeys.value.map((key) => ({ value: String(key.id), label: key.name })))
+const selectedKey = computed(() => imageCapableKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
 const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value?.key && imageModel.value.trim() && prompt.value.trim()))
 const hasReferences = computed(() => references.value.length > 0)
 
@@ -631,8 +634,13 @@ async function loadData() {
   const keysPromise = keysAPI.list(1, 100, { status: 'active' })
     .then((keyResponse) => {
       keys.value = keyResponse.items || []
-      if (!selectedKeyId.value && activeKeys.value.length) {
-        selectedKeyId.value = String(activeKeys.value[0].id)
+      if (
+        !selectedKeyId.value ||
+        !imageCapableKeys.value.some((key) => String(key.id) === selectedKeyId.value)
+      ) {
+        selectedKeyId.value = imageCapableKeys.value.length
+          ? String(imageCapableKeys.value[0].id)
+          : ''
       }
     })
     .catch((error) => {

@@ -155,6 +155,49 @@ describe('ImageStudioView image model loading', () => {
     expect(wrapper.find('input[placeholder="输入图片模型"]').exists()).toBe(false)
   })
 
+  it('only exposes image-capable API keys', async () => {
+    listKeys.mockResolvedValue({
+      items: [
+        {
+          id: 1,
+          name: 'text-only',
+          key: 'sk-text',
+          status: 'active',
+          group_id: 1,
+          group: { platform: 'anthropic', allow_image_generation: false },
+        },
+        {
+          id: 2,
+          name: 'image-key',
+          key: 'sk-image',
+          status: 'active',
+          group_id: 2,
+          group: { platform: 'openai', allow_image_generation: true },
+        },
+        {
+          id: 3,
+          name: 'ungrouped',
+          key: 'sk-ungrouped',
+          status: 'active',
+          group_id: null,
+        },
+      ],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: '' })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    const apiKeySelect = wrapper.get('[data-testid="api-key-select"]')
+    expect(apiKeySelect.text()).toContain('image-key')
+    expect(apiKeySelect.text()).not.toContain('text-only')
+
+    await apiKeySelect.get('button').trigger('click')
+    expect(apiKeySelect.text()).toContain('image-key')
+    expect(apiKeySelect.text()).toContain('ungrouped')
+    expect(apiKeySelect.text()).not.toContain('text-only')
+  })
+
   it('renders keys before public settings finish loading', async () => {
     let resolveSettings: (value: any) => void = () => {}
     listKeys.mockResolvedValue({
