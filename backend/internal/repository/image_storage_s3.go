@@ -86,3 +86,18 @@ func (s *S3ImageStorage) SaveWithExpiry(ctx context.Context, key, contentType st
 	}
 	return result.URL, nil
 }
+
+// HeadBucket verifies that the configured bucket exists and the credentials
+// can access it. The admin test button uses this instead of only constructing
+// an SDK client, which performs no network request.
+func (s *S3ImageStorage) HeadBucket(ctx context.Context) error {
+	finish := servertiming.ObserveDependency(ctx, "s3")
+	_, err := s.client.HeadBucket(ctx, &s3.HeadBucketInput{
+		Bucket: &s.bucket,
+	})
+	finish()
+	if err != nil {
+		return fmt.Errorf("S3 HeadBucket failed: %w", err)
+	}
+	return nil
+}

@@ -23,6 +23,13 @@ var ErrImageStorageIncomplete = errors.New("image storage is enabled but bucket/
 // 与 BackupObjectStoreFactory 同样的注入方式，避免 service 反向依赖 repository。
 type ImageStorageFactory func(ctx context.Context, cfg *config.ImageStorageConfig) (ImageStorage, error)
 
+// ImageStorageConnectionChecker verifies that the configured bucket is reachable.
+// Implementations that only build a vendor SDK client cannot detect bad
+// credentials or a missing bucket, which would make the admin test button lie.
+type ImageStorageConnectionChecker interface {
+	HeadBucket(ctx context.Context) error
+}
+
 // ImageStorageSettings 是后台可编辑的异步生图对象存储配置。
 //
 // ReuseBackupS3 为真时不保存自己的凭证，直接借用数据库备份已配置的 S3 端点与密钥，
@@ -253,8 +260,12 @@ func (s *ImageStorageSettingService) TestConnection(ctx context.Context, in Imag
 	if !cfg.IsConfigured() {
 		return ErrImageStorageIncomplete
 	}
-	if _, err := s.factory(ctx, cfg); err != nil {
+	storage, err := s.factory(ctx, cfg)
+	if err != nil {
 		return err
+	}
+	if checker, ok := storage.(ImageStorageConnectionChecker); ok {
+		return checker.HeadBucket(ctx)
 	}
 	return nil
 }

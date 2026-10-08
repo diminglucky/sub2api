@@ -68,6 +68,15 @@ func (s *recordingStorage) Save(_ context.Context, key, _ string, _ []byte) (str
 	return "https://cdn.example.com/" + key, nil
 }
 
+type healthCheckingStorage struct {
+	recordingStorage
+	headErr error
+}
+
+func (s *healthCheckingStorage) HeadBucket(context.Context) error {
+	return s.headErr
+}
+
 func newImageStorageFixture(t *testing.T, fallback config.ImageStorageConfig) (*ImageStorageSettingService, *stubSettingRepo, *[]config.ImageStorageConfig) {
 	return newImageStorageFixtureWithKey(t, fallback, true)
 }
@@ -231,6 +240,33 @@ func TestImageStorageSettingsIncompleteStaysDisabled(t *testing.T) {
 	_, enabled := svc.resolve()
 	require.False(t, enabled, "missing credentials must not enable the feature")
 	require.Empty(t, *built, "no client is built from an incomplete configuration")
+}
+
+func TestImageStorageTestConnectionChecksBucket(t *testing.T) {
+	repo := newStubSettingRepo()
+	backup := NewBackupService(repo, &config.Config{
+		Totp: config.TotpConfig{EncryptionKeyConfigured: true},
+	}, reversibleEncryptor{}, nil, nil)
+	headErr := errors.New("bucket is not reachable")
+	svc := NewImageStorageSettingService(
+		repo,
+		reversibleEncryptor{},
+		backup,
+		func(context.Context, *config.ImageStorageConfig) (ImageStorage, error) {
+			return &healthCheckingStorage{headErr: headErr}, nil
+		},
+		config.ImageStorageConfig{},
+	)
+
+	err := svc.TestConnection(context.Background(), ImageStorageSettings{
+		Enabled:         true,
+		Bucket:          "missing-bucket",
+		Endpoint:        "https://s3.example.com",
+		Region:          "auto",
+		AccessKeyID:     "ak",
+		SecretAccessKey: "sk",
+	})
+	require.ErrorIs(t, err, headErr)
 }
 
 // Deployments that already enabled the feature through config.yaml must keep
