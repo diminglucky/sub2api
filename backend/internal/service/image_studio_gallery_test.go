@@ -34,6 +34,10 @@ type gallerySaverStub struct {
 	contentType string
 	data        []byte
 	retention   time.Duration
+	fetchData   []byte
+	fetchType   string
+	fetchErr    error
+	fetchedURL  string
 }
 
 func (s *gallerySaverStub) SaveImage(_ context.Context, key, contentType string, data []byte) (string, error) {
@@ -41,6 +45,14 @@ func (s *gallerySaverStub) SaveImage(_ context.Context, key, contentType string,
 	s.contentType = contentType
 	s.data = append([]byte(nil), data...)
 	return "https://cdn.example.com/" + key, nil
+}
+
+func (s *gallerySaverStub) FetchImageURL(_ context.Context, rawURL string) ([]byte, string, error) {
+	s.fetchedURL = rawURL
+	if s.fetchErr != nil {
+		return nil, "", s.fetchErr
+	}
+	return s.fetchData, s.fetchType, nil
 }
 
 func (s *gallerySaverStub) GalleryRetention() time.Duration {
@@ -73,6 +85,27 @@ func TestImageStudioGallerySaveUsesSevenDayRetention(t *testing.T) {
 	require.Len(t, saver.data, len(smallPNG(t)))
 	require.Equal(t, ImageStudioGalleryTTL, store.ttl)
 	require.Equal(t, entry.ExpiresAt-entry.CreatedAt, int64(ImageStudioGalleryTTL/time.Second))
+}
+
+func TestImageStudioGallerySaveFromURLStoresServerFetchedBytes(t *testing.T) {
+	store := &galleryStoreStub{}
+	saver := &gallerySaverStub{fetchData: smallPNG(t), fetchType: "image/png"}
+	svc := NewImageStudioGalleryService(store, saver)
+
+	entry, err := svc.SaveFromURL(
+		context.Background(),
+		42,
+		"a cat",
+		"gpt-image-1",
+		"1024x1024",
+		"png",
+		"https://upstream.example.com/out.png",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "https://upstream.example.com/out.png", saver.fetchedURL)
+	require.Equal(t, entry.ID+".png", saver.key)
+	require.Equal(t, "image/png", saver.contentType)
+	require.Len(t, saver.data, len(smallPNG(t)))
 }
 
 func TestImageStudioGalleryUsesConfiguredRetention(t *testing.T) {

@@ -731,9 +731,13 @@ function persistPendingImages() {
 
 async function persistGeneratedImages(items: GeneratedImage[], prompt: string, model: string) {
   const results = await Promise.allSettled(items.map(async (item) => {
-    const imageDataURL = await imageSourceToDataURL(item.src)
+    // data: 前缀直接上传；http(s) 交给服务端下载转存，
+    // 避免浏览器抓上游图片时被 CORS 拦掉导致保存失败。
+    const source = item.src.startsWith('data:')
+      ? { image_data_url: item.src }
+      : { image_url: item.src }
     const entry = await imageStudioGalleryAPI.save({
-      image_data_url: imageDataURL,
+      ...source,
       prompt,
       model,
       size: size.value,

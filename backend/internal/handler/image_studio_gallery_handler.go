@@ -21,6 +21,7 @@ type ImageStudioGalleryHandler struct {
 
 type saveImageStudioGalleryRequest struct {
 	ImageDataURL string `json:"image_data_url"`
+	ImageURL     string `json:"image_url"`
 	Prompt       string `json:"prompt"`
 	Model        string `json:"model"`
 	Size         string `json:"size"`
@@ -42,21 +43,33 @@ func (h *ImageStudioGalleryHandler) Save(c *gin.Context) {
 		response.BadRequest(c, "Invalid gallery request")
 		return
 	}
-	data, contentType, err := decodeImageStudioDataURL(request.ImageDataURL)
-	if err != nil {
-		response.BadRequest(c, err.Error())
+
+	ctx := c.Request.Context()
+	dataURL := strings.TrimSpace(request.ImageDataURL)
+	imageURL := strings.TrimSpace(request.ImageURL)
+
+	var entry *service.ImageStudioGalleryEntry
+	var err error
+	switch {
+	case dataURL != "":
+		var data []byte
+		var contentType string
+		data, contentType, err = decodeImageStudioDataURL(dataURL)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+		entry, err = h.gallery.Save(
+			ctx, subject.UserID, request.Prompt, request.Model, request.Size, request.Format, contentType, data,
+		)
+	case imageURL != "":
+		entry, err = h.gallery.SaveFromURL(
+			ctx, subject.UserID, request.Prompt, request.Model, request.Size, request.Format, imageURL,
+		)
+	default:
+		response.BadRequest(c, "image_data_url or image_url is required")
 		return
 	}
-	entry, err := h.gallery.Save(
-		c.Request.Context(),
-		subject.UserID,
-		request.Prompt,
-		request.Model,
-		request.Size,
-		request.Format,
-		contentType,
-		data,
-	)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

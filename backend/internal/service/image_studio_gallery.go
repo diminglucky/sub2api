@@ -49,6 +49,8 @@ type ImageStudioGalleryStore interface {
 type ImageStudioImageSaver interface {
 	SaveImage(ctx context.Context, key, contentType string, data []byte) (string, error)
 	GalleryRetention() time.Duration
+	// FetchImageURL 在服务端下载上游图片，避免浏览器跨域失败导致无法转存。
+	FetchImageURL(ctx context.Context, rawURL string) ([]byte, string, error)
 }
 
 type ImageStudioGalleryService struct {
@@ -114,6 +116,28 @@ func (s *ImageStudioGalleryService) Save(
 		return nil, err
 	}
 	return entry, nil
+}
+
+// SaveFromURL 由服务端下载上游图片并转存到对象存储。
+// 上游返回的 URL 常常不允许浏览器跨域读取、且大多是短时效签名链接，
+// 由服务端抓取可以避开这两点，保证图库里存的是自己的长期地址。
+func (s *ImageStudioGalleryService) SaveFromURL(
+	ctx context.Context,
+	userID int64,
+	prompt string,
+	model string,
+	size string,
+	format string,
+	rawURL string,
+) (*ImageStudioGalleryEntry, error) {
+	if s == nil || s.store == nil || s.storage == nil || userID <= 0 || strings.TrimSpace(rawURL) == "" {
+		return nil, ErrImageStudioGalleryUnavailable
+	}
+	data, contentType, err := s.storage.FetchImageURL(ctx, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	return s.Save(ctx, userID, prompt, model, size, format, contentType, data)
 }
 
 func (s *ImageStudioGalleryService) List(ctx context.Context, userID int64, limit int) ([]*ImageStudioGalleryEntry, error) {

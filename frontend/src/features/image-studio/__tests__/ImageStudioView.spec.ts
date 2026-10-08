@@ -632,6 +632,42 @@ describe('ImageStudioView gallery', () => {
     expect(wrapper.html()).not.toContain('upstream.example.com')
   })
 
+  it('hands the upstream URL to the server when the browser cannot fetch it', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [] }) } as Response
+      }
+      if (url.endsWith('/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-1' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return { ok: true, json: async () => ({ data: [{ url: 'https://upstream.example.com/out.png' }] }) } as Response
+      }
+      // 浏览器直连上游图片被 CORS 拦下
+      throw new TypeError('Failed to fetch')
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    await vi.waitFor(() => {
+      expect(saveGallery).toHaveBeenCalledWith(expect.objectContaining({
+        image_url: 'https://upstream.example.com/out.png',
+      }))
+    })
+    await vi.waitFor(() => {
+      expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toBe('https://cdn.example.com/gallery-1.png')
+    })
+  })
+
   it('shows and persists a pending image while generation is in flight', async () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],

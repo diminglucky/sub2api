@@ -12,7 +12,8 @@ export interface ImageStudioGalleryEntry {
 }
 
 export interface SaveImageStudioGalleryRequest {
-  image_data_url: string
+  image_data_url?: string
+  image_url?: string
   prompt: string
   model: string
   size: string

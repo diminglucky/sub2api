@@ -111,6 +111,20 @@ func (s *ImageStorageSettingService) SaveImage(ctx context.Context, key, content
 	return uploader.storage.Save(ctx, key, contentType, data)
 }
 
+// FetchImageURL 在服务端下载上游图片，供图库转存使用。
+// 浏览器直接抓上游链接会受 CORS 限制，且上游多为短期签名地址，服务端抓取更可靠。
+func (s *ImageStorageSettingService) FetchImageURL(ctx context.Context, rawURL string) ([]byte, string, error) {
+	rawURL = strings.TrimSpace(rawURL)
+	if s == nil || rawURL == "" {
+		return nil, "", ErrImageStorageIncomplete
+	}
+	uploader, enabled := s.resolve()
+	if !enabled || uploader == nil {
+		return nil, "", ErrImageStorageIncomplete
+	}
+	return uploader.download(ctx, rawURL)
+}
+
 func (s *ImageStorageSettingService) resolve() (*ImageResultUploader, bool) {
 	if s == nil {
 		return nil, false
