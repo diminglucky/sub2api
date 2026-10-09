@@ -50,16 +50,16 @@ const (
 // Subsite is a downstream tenant serving a branded site on
 // "<slug>.superai.sbs". The V1 pilot tenant is draw.superai.sbs.
 type Subsite struct {
-	ID          int64
-	Slug        string
-	Domain      string
-	Name        string
-	LogoURL     string
-	ThemeColor  string
-	Status      string
-	AdminUserID *int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64     `json:"id"`
+	Slug        string    `json:"slug"`
+	Domain      string    `json:"domain"`
+	Name        string    `json:"name"`
+	LogoURL     string    `json:"logo_url"`
+	ThemeColor  string    `json:"theme_color"`
+	Status      string    `json:"status"`
+	AdminUserID *int64    `json:"admin_user_id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // IsActive reports whether the subsite may serve traffic.
@@ -91,20 +91,20 @@ func (m *SubsiteMember) IsAdmin() bool {
 // RateMultiplier is applied on top of the resolved main-site price; explicit
 // price fields, when set, take precedence over the multiplier.
 type PriceOverride struct {
-	ID              int64
-	SubsiteID       int64
-	Scope           string
-	GroupID         *int64
-	Model           *string
-	RateMultiplier  float64
-	InputPrice      *float64
-	OutputPrice     *float64
-	CacheWritePrice *float64
-	CacheReadPrice  *float64
-	PerRequestPrice *float64
-	Status          string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              int64     `json:"id"`
+	SubsiteID       int64     `json:"subsite_id"`
+	Scope           string    `json:"scope"`
+	GroupID         *int64    `json:"group_id"`
+	Model           *string   `json:"model"`
+	RateMultiplier  float64   `json:"rate_multiplier"`
+	InputPrice      *float64  `json:"input_price"`
+	OutputPrice     *float64  `json:"output_price"`
+	CacheWritePrice *float64  `json:"cache_write_price"`
+	CacheReadPrice  *float64  `json:"cache_read_price"`
+	PerRequestPrice *float64  `json:"per_request_price"`
+	Status          string    `json:"status"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // SettlementEntry records the payable difference for one billed API usage

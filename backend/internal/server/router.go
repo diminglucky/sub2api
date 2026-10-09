@@ -73,7 +73,7 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.RegionBlock(cfg.RegionBlockSettings))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
-	r.Use(middleware2.DownstreamSubsite(downstreamRepo, "superai.sbs"))
+	r.Use(middleware2.DownstreamSubsite(downstreamRepo, downstream.SubsiteBaseDomain))
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
@@ -136,7 +136,7 @@ func registerRoutes(
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	// SuperAI 自定义功能：公开的可用模型接口
 	routes.RegisterPublicRoutes(v1, h)
-	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
+	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter, downstreamRepo)
 	routes.RegisterGatewayRoutes(r, h, apiKeyAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg)
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 

@@ -823,6 +823,9 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 	subsitePrice *downstream.Price,
 ) *CostBreakdown {
+	if cost := downstreamMediaOverrideCost(subsitePrice, result.ImageCount, multiplier, BillingModeImage); cost != nil {
+		return cost
+	}
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if subsitePrice != nil {
@@ -888,6 +891,9 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	if videoCount <= 0 {
 		videoCount = 1
 	}
+	if cost := downstreamMediaOverrideCost(subsitePrice, videoCount, multiplier, BillingModeVideo); cost != nil {
+		return cost
+	}
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
@@ -946,6 +952,29 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	}
 
 	return s.billingService.CalculateVideoCost(billingModel, resolution, videoCount, durationSeconds, groupConfig, multiplier)
+}
+
+func downstreamMediaOverrideCost(
+	price *downstream.Price,
+	count int,
+	multiplier float64,
+	mode BillingMode,
+) *CostBreakdown {
+	if price == nil || price.PerRequestPrice == nil {
+		return nil
+	}
+	if count <= 0 {
+		return &CostBreakdown{BillingMode: string(mode)}
+	}
+	totalCost := *price.PerRequestPrice * float64(count)
+	if multiplier < 0 {
+		multiplier = 0
+	}
+	return &CostBreakdown{
+		TotalCost:   totalCost,
+		ActualCost:  totalCost * multiplier,
+		BillingMode: string(mode),
+	}
 }
 
 func (s *OpenAIGatewayService) apiKeyWithFreshGroupMediaPricing(ctx context.Context, apiKey *APIKey) *APIKey {

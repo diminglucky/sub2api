@@ -133,8 +133,11 @@ const subsiteAdminSummarySQL = `
 SELECT
     $1::bigint AS subsite_id,
     COALESCE((
-        SELECT COUNT(*) FROM subsite_members sm
+        SELECT COUNT(*)
+        FROM subsite_members sm
+        JOIN users u ON u.id = sm.user_id
         WHERE sm.subsite_id = $1
+          AND u.deleted_at IS NULL
     ), 0) AS member_count,
     COALESCE((
         SELECT COUNT(*) FROM payment_orders po

@@ -107,6 +107,7 @@ func TestMeSummaryUsesScopedUserID(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	require.Equal(t, int64(7), repo.gotUserSubsiteID)
 	require.Equal(t, int64(42), repo.gotUserID)
 	var got struct {
@@ -134,6 +135,7 @@ func TestAdminSummaryRequiresSubsiteAdmin(t *testing.T) {
 	router.ServeHTTP(rec, req)
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 	require.Equal(t, int64(7), repo.gotAdminSubsiteID)
 	require.Equal(t, int64(42), repo.gotUserID)
 }

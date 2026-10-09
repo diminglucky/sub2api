@@ -316,6 +316,58 @@ func newOpenAIRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo U
 	return svc
 }
 
+func TestOpenAIImageCostUsesSubsitePerRequestOverride(t *testing.T) {
+	svc := newOpenAIRecordUsageServiceForTest(&openAIRecordUsageLogRepoStub{}, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupImagePrice := 0.20
+	apiKey := &APIKey{
+		ID: 1000,
+		Group: &Group{
+			ID:           1,
+			ImagePrice2K: &groupImagePrice,
+		},
+	}
+	result := &OpenAIForwardResult{ImageCount: 2, ImageSize: "2K"}
+	subsitePerRequest := 0.50
+	subsitePrice := &downstream.Price{PerRequestPrice: &subsitePerRequest}
+
+	wholesale := svc.calculateOpenAIImageCost(context.Background(), "gpt-image-2", apiKey, result, 1, nil)
+	revenue := svc.calculateOpenAIImageCost(context.Background(), "gpt-image-2", apiKey, result, 1, subsitePrice)
+
+	require.NotNil(t, wholesale)
+	require.NotNil(t, revenue)
+	require.InDelta(t, 0.40, wholesale.ActualCost, 1e-12)
+	require.InDelta(t, 1.00, revenue.ActualCost, 1e-12)
+	require.InDelta(t, revenue.ActualCost-wholesale.ActualCost,
+		downstream.UsageSettlement{RevenueAmount: revenue.ActualCost, CostAmount: wholesale.ActualCost}.MarginAmount(), 1e-12)
+}
+
+func TestOpenAIVideoCostUsesSubsitePerRequestOverride(t *testing.T) {
+	svc := newOpenAIRecordUsageServiceForTest(&openAIRecordUsageLogRepoStub{}, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	groupVideoPrice := 0.10
+	apiKey := &APIKey{
+		ID: 1000,
+		Group: &Group{
+			ID:             1,
+			VideoPrice480P: &groupVideoPrice,
+		},
+	}
+	result := &OpenAIForwardResult{VideoCount: 2, VideoResolution: "480p", VideoDurationSeconds: 10}
+	subsitePerRequest := 1.25
+	subsitePrice := &downstream.Price{PerRequestPrice: &subsitePerRequest}
+
+	wholesale := svc.calculateOpenAIVideoCost(context.Background(), "grok-imagine-video", apiKey, result, 1, nil)
+	revenue := svc.calculateOpenAIVideoCost(context.Background(), "grok-imagine-video", apiKey, result, 1, subsitePrice)
+
+	require.NotNil(t, wholesale)
+	require.NotNil(t, revenue)
+	require.InDelta(t, 2.00, wholesale.ActualCost, 1e-12)
+	require.InDelta(t, 2.50, revenue.ActualCost, 1e-12)
+	require.InDelta(t, revenue.ActualCost-wholesale.ActualCost,
+		downstream.UsageSettlement{RevenueAmount: revenue.ActualCost, CostAmount: wholesale.ActualCost}.MarginAmount(), 1e-12)
+}
+
 func openAIRecordUsageAPIKeyWithGroup(svc *OpenAIGatewayService, id int64, groupLongContext bool) *APIKey {
 	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
 	return &APIKey{

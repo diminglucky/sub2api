@@ -231,7 +231,7 @@ func TestRepositoryGetSubsiteAdminSummaryScopesBySubsite(t *testing.T) {
 	mock.ExpectQuery(`(?s)FROM subsites s\s+LEFT JOIN subsite_members sm\s+ON sm\.subsite_id = s\.id AND sm\.user_id = \$2`).
 		WithArgs(int64(7), int64(42)).
 		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
-	mock.ExpectQuery(`(?s)FROM settlement_ledger sl\s+WHERE sl\.subsite_id = \$1 AND sl\.status = 'pending'`).
+	mock.ExpectQuery(`(?s)JOIN users u ON u\.id = sm\.user_id\s+WHERE sm\.subsite_id = \$1\s+AND u\.deleted_at IS NULL.*FROM settlement_ledger sl\s+WHERE sl\.subsite_id = \$1 AND sl\.status = 'pending'`).
 		WithArgs(int64(7)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"subsite_id", "member_count", "recharge_count", "recharge_amount",

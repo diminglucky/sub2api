@@ -57,6 +57,7 @@ func (h *Handler) Site(c *gin.Context) {
 // MeSummary returns the authenticated user's shared account data plus only the
 // usage and recharge rows attributed to the current subsite.
 func (h *Handler) MeSummary(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	subsite, ok := FromGin(c)
 	if !ok {
 		response.NotFound(c, "downstream subsite context is required")
@@ -88,6 +89,7 @@ func (h *Handler) MeSummary(c *gin.Context) {
 // AdminSummary returns scoped dashboard aggregates after verifying that the
 // authenticated user is an owner/admin of the current subsite.
 func (h *Handler) AdminSummary(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
 	subsite, ok := FromGin(c)
 	if !ok {
 		response.NotFound(c, "downstream subsite context is required")
