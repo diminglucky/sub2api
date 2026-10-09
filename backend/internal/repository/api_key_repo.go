@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -43,7 +44,39 @@ func (r *apiKeyRepository) activeQuery() *dbent.APIKeyQuery {
 }
 
 func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) error {
-	builder := r.client.APIKey.Create().
+	if key == nil {
+		return nil
+	}
+	subsiteID := int64(0)
+	if key.SubsiteID != nil && *key.SubsiteID > 0 {
+		subsiteID = *key.SubsiteID
+	}
+	// 主站/无子站请求保持原有单次写入路径（subsite_id = NULL）。
+	if subsiteID <= 0 {
+		return r.persistAPIKey(ctx, clientFromContext(ctx, r.client), key, 0)
+	}
+	// 子站归属必须与 Key 创建原子化：归属写入失败时整体回滚，避免留下
+	// 未归属的孤儿 Key（旧实现是插入成功后再补一条 UPDATE）。
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return r.persistAPIKey(ctx, tx.Client(), key, subsiteID)
+	}
+	tx, err := r.client.Tx(ctx)
+	switch {
+	case errors.Is(err, dbent.ErrTxStarted):
+		return r.persistAPIKey(ctx, r.client, key, subsiteID)
+	case err != nil:
+		return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	if err := r.persistAPIKey(txCtx, tx.Client(), key, subsiteID); err != nil {
+		return err
+	}
+	return translatePersistenceError(tx.Commit(), nil, service.ErrAPIKeyExists)
+}
+
+func (r *apiKeyRepository) persistAPIKey(ctx context.Context, client *dbent.Client, key *service.APIKey, subsiteID int64) error {
+	builder := client.APIKey.Create().
 		SetUserID(key.UserID).
 		SetKey(key.Key).
 		SetName(key.Name).
@@ -65,21 +98,20 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 	}
 
 	created, err := builder.Save(ctx)
-	if err == nil {
-		key.ID = created.ID
-		key.LastUsedAt = created.LastUsedAt
-		key.CreatedAt = created.CreatedAt
-		key.UpdatedAt = created.UpdatedAt
-		if key.SubsiteID != nil && *key.SubsiteID > 0 {
-			if _, updateErr := r.client.ExecContext(ctx,
-				`UPDATE api_keys SET subsite_id = $1 WHERE id = $2`,
-				*key.SubsiteID, created.ID,
-			); updateErr != nil {
-				return fmt.Errorf("attribute api key to subsite: %w", updateErr)
-			}
+	if err != nil {
+		return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	}
+	key.ID = created.ID
+	key.LastUsedAt = created.LastUsedAt
+	key.CreatedAt = created.CreatedAt
+	key.UpdatedAt = created.UpdatedAt
+	if subsiteID > 0 {
+		// 复用 downstream 中的唯一实现，避免仓库层再写一份内联 SQL。
+		if err := downstream.AttributeAPIKey(ctx, client, subsiteID, created.ID); err != nil {
+			return fmt.Errorf("attribute api key to subsite: %w", err)
 		}
 	}
-	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
+	return nil
 }
 
 func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIKey, error) {

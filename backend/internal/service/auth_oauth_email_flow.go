@@ -174,6 +174,10 @@ func (s *AuthService) RegisterOAuthEmailAccount(
 			return nil, nil, ErrServiceUnavailable
 		}
 	}
+	if err := s.attributeDownstreamRegistration(ctx, user.ID); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+		return nil, nil, ErrServiceUnavailable
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
@@ -260,6 +264,10 @@ func (s *AuthService) RegisterVerifiedOAuthEmailAccount(
 			return nil, nil, ErrServiceUnavailable
 		}
 	}
+	if err := s.attributeDownstreamRegistration(ctx, user.ID); err != nil {
+		_ = s.RollbackOAuthEmailAccountCreation(ctx, user.ID, "")
+		return nil, nil, ErrServiceUnavailable
+	}
 
 	tokenPair, err := s.GenerateTokenPair(ctx, user, "")
 	if err != nil {
@@ -310,6 +318,9 @@ func (s *AuthService) RollbackOAuthEmailAccountCreation(ctx context.Context, use
 	}
 	if err := s.restoreOAuthRegistrationInvitation(ctx, invitationCode, userID); err != nil {
 		return err
+	}
+	if err := s.removeDownstreamRegistrationAttribution(ctx, userID); err != nil {
+		return fmt.Errorf("remove downstream membership: %w", err)
 	}
 	if err := s.userRepo.Delete(ctx, userID); err != nil {
 		return fmt.Errorf("delete created oauth user: %w", err)

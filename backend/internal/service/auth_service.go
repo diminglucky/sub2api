@@ -770,7 +770,8 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 				SignupSource: signupSource,
 			}
 
-			if s.entClient != nil && invitationRedeemCode != nil {
+			_, hasSubsite := downstream.SubsiteIDFromContext(ctx)
+			if s.entClient != nil && (invitationRedeemCode != nil || hasSubsite) {
 				tx, err := s.entClient.Tx(ctx)
 				if err != nil {
 					logger.LegacyPrintf("service.auth", "[Auth] Failed to begin transaction for oauth registration: %v", err)
@@ -791,8 +792,15 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 						return nil, nil, ErrServiceUnavailable
 					}
 				} else {
-					if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
-						return nil, nil, ErrInvitationCodeInvalid
+					if invitationRedeemCode != nil {
+						if err := s.redeemRepo.Use(txCtx, invitationRedeemCode.ID, newUser.ID); err != nil {
+							return nil, nil, ErrInvitationCodeInvalid
+						}
+					}
+					if hasSubsite {
+						if err := s.attributeDownstreamRegistration(txCtx, newUser.ID); err != nil {
+							return nil, nil, ErrServiceUnavailable
+						}
 					}
 					if err := tx.Commit(); err != nil {
 						logger.LegacyPrintf("service.auth", "[Auth] Failed to commit oauth registration transaction: %v", err)
@@ -829,6 +837,12 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 					if invitationRedeemCode != nil {
 						if err := s.redeemRepo.Use(ctx, invitationRedeemCode.ID, user.ID); err != nil {
 							return nil, nil, ErrInvitationCodeInvalid
+						}
+					}
+					if hasSubsite {
+						if err := s.attributeDownstreamRegistration(ctx, user.ID); err != nil {
+							_ = s.userRepo.Delete(ctx, user.ID)
+							return nil, nil, ErrServiceUnavailable
 						}
 					}
 				}
@@ -1283,30 +1297,19 @@ func (s *AuthService) createUserWithRegistrationEmailGuard(ctx context.Context, 
 //   - 并发下只有一个事务能占用成功，其余事务回滚——既不产生多余账号，也不让码被烧掉；
 //   - 事务回滚同时撤销用户创建，避免“账号已建、码被占用”的中间态。
 //
-// 无邀请码时保持原单次创建路径（不开事务）；entClient 缺失的异常配置下退化为顺序执行，
+// 无邀请码且无子站时保持原单次创建路径（不开事务）。当请求带有子站上下文时，
+// 即使没有邀请码也会开启事务，把“建用户 + 写 subsite_members”做成一个原子操作，
+// 避免出现已建用户却没有子站归属的中间态。entClient 缺失的异常配置下退化为顺序执行，
 // 并发正确性仍由 Use 的条件更新兜底（可能产生孤儿用户，但不会放行第二个注册）。
 func (s *AuthService) createUserAndClaimInvitation(ctx context.Context, user *User, invitation *RedeemCode) error {
+	_, hasSubsite := downstream.SubsiteIDFromContext(ctx)
 	commitUser := func(execCtx context.Context) error {
 		if err := s.createUserWithRegistrationEmailGuard(execCtx, user); err != nil {
 			return err
 		}
-		if subsiteID, ok := downstream.SubsiteIDFromContext(execCtx); ok {
-			var exec downstream.SQLExecutor
-			if tx := dbent.TxFromContext(execCtx); tx != nil {
-				exec = tx.Client()
-			} else if s.entClient != nil {
-				exec = s.entClient
-			}
-			if exec != nil {
-				if err := downstream.RecordSubsiteMember(
-					execCtx,
-					exec,
-					subsiteID,
-					user.ID,
-					downstream.SubsiteMemberSourceRegistration,
-				); err != nil {
-					return fmt.Errorf("record subsite member: %w", err)
-				}
+		if hasSubsite {
+			if err := s.attributeDownstreamRegistration(execCtx, user.ID); err != nil {
+				return err
 			}
 		}
 		if invitation == nil {
@@ -1325,7 +1328,8 @@ func (s *AuthService) createUserAndClaimInvitation(ctx context.Context, user *Us
 		return nil
 	}
 
-	if invitation == nil {
+	// 无子站且无邀请码时保持原有单次创建路径（不开事务）。
+	if invitation == nil && !hasSubsite {
 		return commitUser(ctx)
 	}
 	if s.entClient == nil {
@@ -1347,6 +1351,59 @@ func (s *AuthService) createUserAndClaimInvitation(ctx context.Context, user *Us
 		return ErrServiceUnavailable
 	}
 	return nil
+}
+
+// downstreamAttributionExecutor 选择子站归属写入使用的 executor：优先复用当前
+// 事务以保证与用户创建原子化，其次使用主 ent client；都不可用时返回 nil。
+func (s *AuthService) downstreamAttributionExecutor(ctx context.Context) downstream.SQLExecutor {
+	if s == nil {
+		return nil
+	}
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		return tx.Client()
+	}
+	if s.entClient != nil {
+		return s.entClient
+	}
+	return nil
+}
+
+// attributeDownstreamRegistration 把刚注册的用户挂到当前请求解析出的子站。
+// 主站/无子站请求是 no-op，保证 subsite_members 不写入、行为与旧版一致。
+func (s *AuthService) attributeDownstreamRegistration(ctx context.Context, userID int64) error {
+	subsiteID, ok := downstream.SubsiteIDFromContext(ctx)
+	if !ok || userID <= 0 {
+		return nil
+	}
+	exec := s.downstreamAttributionExecutor(ctx)
+	if exec == nil {
+		logger.LegacyPrintf("service.auth",
+			"[Auth] downstream registration attribution skipped: no SQL executor (user_id=%d subsite_id=%d)", userID, subsiteID)
+		return nil
+	}
+	if err := downstream.RecordSubsiteMember(ctx, exec, subsiteID, userID, downstream.SubsiteMemberSourceRegistration); err != nil {
+		return fmt.Errorf("record subsite member: %w", err)
+	}
+	return nil
+}
+
+// removeDownstreamRegistrationAttribution 清理注册回滚时留下的子站成员行，
+// 避免 user 被删除后 subsite_members 出现悬挂记录。
+func (s *AuthService) removeDownstreamRegistrationAttribution(ctx context.Context, userID int64) error {
+	// 与 attributeDownstreamRegistration 对称：只有子站请求才可能写入成员行，
+	// 主站回滚不应触碰 subsite_members（也避免在未迁移的环境里误删表）。
+	if _, ok := downstream.SubsiteIDFromContext(ctx); !ok {
+		return nil
+	}
+	if s == nil || userID <= 0 {
+		return nil
+	}
+	exec := s.downstreamAttributionExecutor(ctx)
+	if exec == nil {
+		return nil
+	}
+	_, err := exec.ExecContext(ctx, `DELETE FROM subsite_members WHERE user_id = $1`, userID)
+	return err
 }
 
 func buildEmailSuffixNotAllowedError(whitelist []string) error {
