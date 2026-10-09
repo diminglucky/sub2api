@@ -152,7 +152,7 @@ BEGIN
 END $$;
 
 -- usage_logs 是最大的表，按仓库既有约定索引放在单独的 `_notx.sql` 迁移里，
--- 使用 `CREATE INDEX CONCURRENTLY` 避免启动迁移时长时间持锁。
+-- 避免启动迁移时长时间持锁。
 
 COMMENT ON COLUMN payment_orders.subsite_id IS '充值订单归属子站；NULL 表示主站订单';
 COMMENT ON COLUMN usage_logs.subsite_id IS '调用用量归属子站；NULL 表示主站用量';
