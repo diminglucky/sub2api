@@ -239,6 +239,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
 	baselineBillingModel := firstUsageBillingModel(billingModels)
 	subsitePricing, hasSubsitePricing := s.resolveSubsitePricingForModel(ctx, baselineBillingModel, apiKey)
+	// Media (image/video) pricing usually lives in the group media price fields,
+	// not in the token base, so the token resolution above can miss the override
+	// entirely. When a media per-request override is configured it takes
+	// precedence for image/video requests.
+	if mediaPricing, mediaOK := s.resolveDownstreamMediaPricing(ctx, baselineBillingModel, apiKey, result); mediaOK {
+		subsitePricing, hasSubsitePricing = mediaPricing, true
+	}
 	var subsitePrice *downstream.Price
 	if hasSubsitePricing {
 		price := subsitePricing.Price

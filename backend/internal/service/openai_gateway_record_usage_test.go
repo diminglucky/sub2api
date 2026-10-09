@@ -3629,6 +3629,178 @@ func TestOpenAIGatewayServiceRecordUsage_DownstreamSettlementUsesAdoptedResponse
 	require.InDelta(t, expectedRevenue.ActualCost, settlement.lastEntry.RevenueAmount, 1e-12)
 }
 
+// Media (image/video) pricing comes from the group media price fields, not the
+// token base. These tests drive the full RecordUsage seam with a media model
+// that has no resolved token price, so they fail if the media override is gated
+// on a non-zero token base (override dropped, no settlement).
+func TestOpenAIGatewayServiceRecordUsage_DownstreamImageMediaOverrideWithoutTokenBase(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	const imageModel = "downstream-image-model-no-token-price"
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{imageModel: 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	groupImagePrice := 0.20
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      120,
+		GroupID: &gid,
+		Group: &Group{
+			ID:             gid,
+			Platform:       PlatformOpenAI,
+			RateMultiplier: 1,
+			ImagePrice2K:   &groupImagePrice,
+		},
+	}
+
+	err := svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID:  "resp_downstream_image_media_override",
+				Model:      imageModel,
+				ImageCount: 2,
+				ImageSize:  "2K",
+				Duration:   time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Contains(t, pricing.models, imageModel, "media override must be resolved for image requests")
+	require.NotNil(t, usageRepo.lastLog)
+	// Wholesale = 0.20 × 2 = 0.40; subsite override = 1.5× → charged 0.60.
+	require.InDelta(t, 0.60, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, 1, settlement.calls)
+	entry := settlement.lastEntry
+	require.Equal(t, int64(77), entry.SubsiteID)
+	require.Equal(t, "USD", entry.Currency)
+	require.Equal(t, "image", entry.BillingMode)
+	require.InDelta(t, 0.60, entry.RevenueAmount, 1e-12)
+	require.InDelta(t, 0.40, entry.CostAmount, 1e-12)
+	require.InDelta(t, 0.20, entry.MarginAmount(), 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DownstreamVideoMediaOverrideWithoutTokenBase(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	const videoModel = "downstream-video-model-no-token-price"
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{videoModel: 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	groupVideoPrice := 0.10 // per second
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      121,
+		GroupID: &gid,
+		Group: &Group{
+			ID:             gid,
+			Platform:       PlatformOpenAI,
+			RateMultiplier: 1,
+			VideoPrice480P: &groupVideoPrice,
+		},
+	}
+
+	err := svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID:            "resp_downstream_video_media_override",
+				Model:                videoModel,
+				VideoCount:           2,
+				VideoResolution:      "480p",
+				VideoDurationSeconds: 10,
+				Duration:             time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Contains(t, pricing.models, videoModel, "media override must be resolved for video requests")
+	require.NotNil(t, usageRepo.lastLog)
+	// Wholesale = 0.10/s × 10s × 2 = 2.00; override = 1.5× → charged 3.00.
+	require.InDelta(t, 3.00, usageRepo.lastLog.ActualCost, 1e-12)
+	require.Equal(t, 1, settlement.calls)
+	entry := settlement.lastEntry
+	require.Equal(t, int64(77), entry.SubsiteID)
+	require.Equal(t, "USD", entry.Currency)
+	require.Equal(t, "video", entry.BillingMode)
+	require.InDelta(t, 3.00, entry.RevenueAmount, 1e-12)
+	require.InDelta(t, 2.00, entry.CostAmount, 1e-12)
+	require.InDelta(t, 1.00, entry.MarginAmount(), 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_MainSiteMediaWritesNoSettlement(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	const imageModel = "downstream-image-model-no-token-price"
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{imageModel: 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	groupImagePrice := 0.20
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      122,
+		GroupID: &gid,
+		Group: &Group{
+			ID:             gid,
+			Platform:       PlatformOpenAI,
+			RateMultiplier: 1,
+			ImagePrice2K:   &groupImagePrice,
+		},
+	}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:  "resp_main_site_image_no_settlement",
+			Model:      imageModel,
+			ImageCount: 2,
+			ImageSize:  "2K",
+			Duration:   time.Second,
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 200},
+		Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.Empty(t, pricing.models, "main-site media requests must not resolve downstream pricing")
+	require.Zero(t, settlement.calls)
+	require.NotNil(t, usageRepo.lastLog)
+	// Main-site media price is unchanged: 0.20 × 2.
+	require.InDelta(t, 0.40, usageRepo.lastLog.ActualCost, 1e-12)
+}
+
 func TestGroupBillsOpenAIFastAtStandardRequiresOpenAIAccount(t *testing.T) {
 	apiKey := &APIKey{Group: &Group{Platform: PlatformComposite, FreeOpenAIFast: true}}
 

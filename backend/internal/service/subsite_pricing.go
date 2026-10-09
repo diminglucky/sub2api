@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"strings"
 	"time"
 
@@ -102,6 +103,105 @@ func (s *OpenAIGatewayService) resolveSubsitePricingForModel(
 	gid := apiKey.Group.ID
 	base := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &gid, Group: apiKey.Group})
 	return s.resolveSubsitePricing(ctx, model, apiKey, base)
+}
+
+// resolveDownstreamMediaPricing resolves a sub-site per-request override for
+// image/video requests. Media pricing normally comes from the group media price
+// fields (ImagePrice1K/2K/4K, VideoPrice*, per-model video prices, or the code
+// defaults), which are not part of the resolved token base price. Gating media
+// overrides on the token base being non-zero therefore drops the override
+// entirely whenever the media model has no token price — the user is charged the
+// main-site media price and no settlement row is written.
+//
+// The base price here is the main-site per-unit media price for the same
+// dimensions/duration, so a rate multiplier scales the wholesale media price
+// while an explicit per-request price wins outright. It returns ok=true only
+// when the per-request component actually changed, so a token-only override on
+// a media request stays with the token resolution path.
+func (s *OpenAIGatewayService) resolveDownstreamMediaPricing(
+	ctx context.Context,
+	model string,
+	apiKey *APIKey,
+	result *OpenAIForwardResult,
+) (subsitePricingResolution, bool) {
+	if s == nil || s.downstreamPricing == nil || apiKey == nil || apiKey.Group == nil {
+		return subsitePricingResolution{}, false
+	}
+	if result == nil || (result.ImageCount <= 0 && result.VideoCount <= 0) {
+		return subsitePricingResolution{}, false
+	}
+	subsiteID, ok := downstream.SubsiteIDFromContext(ctx)
+	if !ok || subsiteID <= 0 {
+		return subsitePricingResolution{}, false
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return subsitePricingResolution{}, false
+	}
+	// When the model is channel/group-priced by token the media cost path is not
+	// used at all; keep the token resolution so a token override is not lost.
+	if resolved := s.resolveOpenAIChannelPricing(ctx, model, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
+		return subsitePricingResolution{}, false
+	}
+	base := s.downstreamMediaBasePrice(ctx, model, apiKey, result)
+	var groupID []int64
+	if apiKey.GroupID != nil && *apiKey.GroupID > 0 {
+		groupID = []int64{*apiKey.GroupID}
+	}
+	price, err := s.downstreamPricing.ResolveSubsitePrice(ctx, subsiteID, model, base, groupID...)
+	if err != nil {
+		return subsitePricingResolution{}, false
+	}
+	if !downstreamPriceFieldChanged(price.PerRequestPrice, base.PerRequestPrice) {
+		return subsitePricingResolution{}, false
+	}
+	return subsitePricingResolution{SubsiteID: subsiteID, Price: price, Applied: true}, true
+}
+
+// downstreamMediaBasePrice snapshots the main-site per-unit media price for one
+// image or one video (video unit = per-second price × duration). It runs the
+// existing main-site media cost path with multiplier 1 and a single unit, so
+// group media prices, per-model video prices and code defaults all resolve the
+// same way they do during wholesale settlement.
+func (s *OpenAIGatewayService) downstreamMediaBasePrice(
+	ctx context.Context,
+	model string,
+	apiKey *APIKey,
+	result *OpenAIForwardResult,
+) downstream.Price {
+	if s == nil || s.billingService == nil || apiKey == nil || apiKey.Group == nil || result == nil {
+		return downstream.Price{}
+	}
+	switch {
+	case result.VideoCount > 0:
+		single := *result
+		single.VideoCount = 1
+		if cost := s.calculateOpenAIVideoCost(ctx, model, apiKey, &single, 1, nil); cost != nil {
+			unit := cost.ActualCost
+			return downstream.Price{PerRequestPrice: &unit}
+		}
+	case result.ImageCount > 0:
+		single := *result
+		single.ImageCount = 1
+		if cost := s.calculateOpenAIImageCost(ctx, model, apiKey, &single, 1, nil); cost != nil {
+			unit := cost.ActualCost
+			return downstream.Price{PerRequestPrice: &unit}
+		}
+	}
+	return downstream.Price{}
+}
+
+// downstreamPriceFieldChanged reports whether an override produced a different
+// value than the supplied base. A nil override field is not a change; a nil base
+// with a non-nil override is.
+func downstreamPriceFieldChanged(value, base *float64) bool {
+	if value == nil {
+		return false
+	}
+	if base == nil {
+		return true
+	}
+	return math.Abs(*value-*base) > 1e-12
 }
 
 // recordDownstreamUsageSettlement snapshots the main-site wholesale cost for a
