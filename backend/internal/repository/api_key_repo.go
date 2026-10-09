@@ -70,6 +70,14 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		key.LastUsedAt = created.LastUsedAt
 		key.CreatedAt = created.CreatedAt
 		key.UpdatedAt = created.UpdatedAt
+		if key.SubsiteID != nil && *key.SubsiteID > 0 {
+			if _, updateErr := r.client.ExecContext(ctx,
+				`UPDATE api_keys SET subsite_id = $1 WHERE id = $2`,
+				*key.SubsiteID, created.ID,
+			); updateErr != nil {
+				return fmt.Errorf("attribute api key to subsite: %w", updateErr)
+			}
+		}
 	}
 	return translatePersistenceError(err, nil, service.ErrAPIKeyExists)
 }

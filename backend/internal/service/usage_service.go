@@ -7,6 +7,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
@@ -114,6 +115,9 @@ func (s *UsageService) Create(ctx context.Context, req CreateUsageLogRequest) (*
 		RateMultiplier:        req.RateMultiplier,
 		Stream:                req.Stream,
 		DurationMs:            req.DurationMs,
+	}
+	if subsiteID, ok := downstream.SubsiteIDFromContext(txCtx); ok {
+		usageLog.SubsiteID = &subsiteID
 	}
 
 	inserted, err := s.usageRepo.Create(txCtx, usageLog)

@@ -16,6 +16,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 
@@ -1288,6 +1289,25 @@ func (s *AuthService) createUserAndClaimInvitation(ctx context.Context, user *Us
 	commitUser := func(execCtx context.Context) error {
 		if err := s.createUserWithRegistrationEmailGuard(execCtx, user); err != nil {
 			return err
+		}
+		if subsiteID, ok := downstream.SubsiteIDFromContext(execCtx); ok {
+			var exec downstream.SQLExecutor
+			if tx := dbent.TxFromContext(execCtx); tx != nil {
+				exec = tx.Client()
+			} else if s.entClient != nil {
+				exec = s.entClient
+			}
+			if exec != nil {
+				if err := downstream.RecordSubsiteMember(
+					execCtx,
+					exec,
+					subsiteID,
+					user.ID,
+					downstream.SubsiteMemberSourceRegistration,
+				); err != nil {
+					return fmt.Errorf("record subsite member: %w", err)
+				}
+			}
 		}
 		if invitation == nil {
 			return nil

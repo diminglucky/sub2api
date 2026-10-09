@@ -106,6 +106,7 @@ type UsageLog struct {
 	UserID    int64
 	APIKeyID  int64
 	AccountID int64
+	SubsiteID *int64
 	RequestID string
 	Model     string
 	// RequestedModel is the client-requested model name recorded for stable user/admin display.
