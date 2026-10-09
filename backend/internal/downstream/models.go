@@ -126,3 +126,41 @@ type SettlementEntry struct {
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
+
+// SubsiteUserSummary is the subsite-scoped view of one main-site user. Balance
+// and account identity are shared with the main site; usage and recharge totals
+// are limited to rows whose subsite_id matches the current subsite.
+type SubsiteUserSummary struct {
+	UserID         int64   `json:"user_id"`
+	SubsiteID      int64   `json:"subsite_id"`
+	Email          string  `json:"email"`
+	Balance        float64 `json:"balance"`
+	Role           string  `json:"role"`
+	Source         string  `json:"source"`
+	Admin          bool    `json:"is_admin"`
+	UsageCount     int64   `json:"usage_count"`
+	UsageCost      float64 `json:"usage_cost"`
+	RechargeCount  int64   `json:"recharge_count"`
+	RechargeAmount float64 `json:"recharge_amount"`
+}
+
+// IsAdmin reports whether this member can view the subsite admin dashboard.
+func (s *SubsiteUserSummary) IsAdmin() bool {
+	if s == nil {
+		return false
+	}
+	return s.Role == SubsiteMemberRoleOwner || s.Role == SubsiteMemberRoleAdmin
+}
+
+// SubsiteAdminSummary is the aggregate dashboard view for one subsite. All
+// totals are scoped to the current subsite; NULL subsite_id rows are main-site
+// data and are never included.
+type SubsiteAdminSummary struct {
+	SubsiteID         int64   `json:"subsite_id"`
+	MemberCount       int64   `json:"member_count"`
+	RechargeCount     int64   `json:"recharge_count"`
+	RechargeAmount    float64 `json:"recharge_amount"`
+	UsageCount        int64   `json:"usage_count"`
+	UsageCost         float64 `json:"usage_cost"`
+	SettlementPending float64 `json:"settlement_pending"`
+}

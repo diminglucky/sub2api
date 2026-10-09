@@ -160,6 +160,85 @@ func TestSettlementEntryNullableReferences(t *testing.T) {
 	require.Equal(t, int64(42), *entry.UserID)
 }
 
+func TestRepositoryGetSubsiteUserSummaryScopesBySubsite(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`(?s)LEFT JOIN subsite_members sm\s+ON sm\.subsite_id = \$1 AND sm\.user_id = u\.id\s+WHERE u\.id = \$2`).
+		WithArgs(int64(7), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "subsite_id", "email", "balance", "role", "source",
+			"usage_count", "usage_cost", "recharge_count", "recharge_amount",
+		}).AddRow(
+			int64(42), int64(7), "u@example.com", 12.5, SubsiteMemberRoleAdmin, SubsiteMemberSourceRegistration,
+			int64(3), 1.25, int64(2), 20.0,
+		))
+
+	repo := NewRepository(db)
+	summary, err := repo.GetSubsiteUserSummary(context.Background(), 7, 42)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+	require.Equal(t, int64(42), summary.UserID)
+	require.Equal(t, int64(7), summary.SubsiteID)
+	require.Equal(t, "u@example.com", summary.Email)
+	require.Equal(t, 12.5, summary.Balance)
+	require.True(t, summary.IsAdmin())
+	require.True(t, summary.Admin)
+	require.Equal(t, int64(3), summary.UsageCount)
+	require.Equal(t, 1.25, summary.UsageCost)
+	require.Equal(t, int64(2), summary.RechargeCount)
+	require.Equal(t, 20.0, summary.RechargeAmount)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRepositoryGetSubsiteAdminSummaryScopesBySubsite(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`(?s)FROM subsites s\s+LEFT JOIN subsite_members sm\s+ON sm\.subsite_id = s\.id AND sm\.user_id = \$2`).
+		WithArgs(int64(7), int64(42)).
+		WillReturnRows(sqlmock.NewRows([]string{"?column?"}).AddRow(1))
+	mock.ExpectQuery(`(?s)FROM settlement_ledger sl\s+WHERE sl\.subsite_id = \$1 AND sl\.status = 'pending'`).
+		WithArgs(int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"subsite_id", "member_count", "recharge_count", "recharge_amount",
+			"usage_count", "usage_cost", "settlement_pending",
+		}).AddRow(
+			int64(7), int64(5), int64(2), 20.0, int64(3), 1.25, 4.0,
+		))
+
+	repo := NewRepository(db)
+	summary, err := repo.GetSubsiteAdminSummary(context.Background(), 7, 42)
+	require.NoError(t, err)
+	require.NotNil(t, summary)
+	require.Equal(t, int64(7), summary.SubsiteID)
+	require.Equal(t, int64(5), summary.MemberCount)
+	require.Equal(t, int64(2), summary.RechargeCount)
+	require.Equal(t, 20.0, summary.RechargeAmount)
+	require.Equal(t, int64(3), summary.UsageCount)
+	require.Equal(t, 1.25, summary.UsageCost)
+	require.Equal(t, 4.0, summary.SettlementPending)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRepositoryGetSubsiteAdminSummaryRejectsNonAdmin(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	mock.ExpectQuery(`(?s)FROM subsites s\s+LEFT JOIN subsite_members sm\s+ON sm\.subsite_id = s\.id AND sm\.user_id = \$2`).
+		WithArgs(int64(7), int64(42)).
+		WillReturnError(sql.ErrNoRows)
+
+	repo := NewRepository(db)
+	summary, err := repo.GetSubsiteAdminSummary(context.Background(), 7, 42)
+	require.ErrorIs(t, err, ErrSubsiteAdminRequired)
+	require.Nil(t, summary)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // stripSQLLineComments removes `--` comment lines so structural assertions do
 // not match explanatory text.
 func stripSQLLineComments(sqlText string) string {

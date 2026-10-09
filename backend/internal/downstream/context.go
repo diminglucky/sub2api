@@ -11,6 +11,11 @@ import (
 // should read the value through FromGin so the lookup stays type safe.
 const ContextKeySubsite = "downstream.subsite"
 
+// ContextKeyUserID is set by the server after JWT authentication. Keeping the
+// key in this package avoids importing the server middleware package, which
+// would create a dependency cycle for downstream handlers.
+const ContextKeyUserID = "downstream.user_id"
+
 // subsiteContextKey scopes the request-context value so no other package can
 // spoof it by reusing an untyped string key.
 type subsiteContextKey struct{}
