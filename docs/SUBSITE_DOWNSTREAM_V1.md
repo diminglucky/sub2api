@@ -43,7 +43,7 @@
 - 边缘层只把已注册且启用的子站转发到下游服务。
 - 未注册子域名返回 404。
 - 下游服务通过 `X-Subsite-Slug` 或等价可信头读取子站上下文，并校验来源。
-- V1 的前端页面和子站 API 都使用同一域名 `draw.superai.sbs`；API 路径建议放在 `https://draw.superai.sbs/api/...`。
+- V1 的前端页面和子站 API 都使用同一域名 `draw.superai.sbs`；OpenAI 兼容接口继续使用 `https://draw.superai.sbs/v1/...`，不改变 `/v1` 路径和 OpenAI 请求格式。
 
 ## 权限模型
 
