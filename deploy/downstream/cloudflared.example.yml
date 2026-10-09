@@ -1,0 +1,13 @@
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /etc/cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  - hostname: draw.superai.sbs
+    service: http://sub2api:8080
+    originRequest:
+      httpHostHeader: draw.superai.sbs
+
+  - hostname: superai.sbs
+    service: http://sub2api:8080
+
+  - service: http_status:404

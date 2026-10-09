@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/gin-gonic/gin"
 )
@@ -41,6 +42,9 @@ type routeSeoDoc struct {
 //go:embed all:dist
 var frontendFS embed.FS
 
+//go:embed all:dist-downstream
+var downstreamFrontendFS embed.FS
+
 // PublicSettingsProvider is an interface to fetch public settings
 type PublicSettingsProvider interface {
 	GetPublicSettingsForInjection(ctx context.Context) (any, error)
@@ -48,12 +52,14 @@ type PublicSettingsProvider interface {
 
 // FrontendServer serves the embedded frontend with settings injection
 type FrontendServer struct {
-	distFS      fs.FS
-	fileServer  http.Handler
-	baseHTML    []byte
-	cache       *HTMLCache
-	settings    PublicSettingsProvider
-	overrideDir string // local file override directory
+	distFS               fs.FS
+	fileServer           http.Handler
+	downstreamDistFS     fs.FS
+	downstreamFileServer http.Handler
+	baseHTML             []byte
+	cache                *HTMLCache
+	settings             PublicSettingsProvider
+	overrideDir          string // local file override directory
 }
 
 // NewFrontendServer creates a new frontend server with settings injection
@@ -78,14 +84,29 @@ func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer
 	cache := NewHTMLCache()
 	cache.SetBaseHTML(baseHTML)
 
+	downstreamDistFS, downstreamFileServer := loadDownstreamFrontendFS()
+
 	return &FrontendServer{
-		distFS:      distFS,
-		fileServer:  http.FileServer(http.FS(distFS)),
-		baseHTML:    baseHTML,
-		cache:       cache,
-		settings:    settingsProvider,
-		overrideDir: filepath.Join("data", "public"),
+		distFS:               distFS,
+		fileServer:           http.FileServer(http.FS(distFS)),
+		downstreamDistFS:     downstreamDistFS,
+		downstreamFileServer: downstreamFileServer,
+		baseHTML:             baseHTML,
+		cache:                cache,
+		settings:             settingsProvider,
+		overrideDir:          filepath.Join("data", "public"),
 	}, nil
+}
+
+func loadDownstreamFrontendFS() (fs.FS, http.Handler) {
+	distFS, err := fs.Sub(downstreamFrontendFS, "dist-downstream")
+	if err != nil {
+		return nil, nil
+	}
+	if _, err := fs.Stat(distFS, "index.html"); err != nil {
+		return nil, nil
+	}
+	return distFS, http.FileServer(http.FS(distFS))
 }
 
 // InvalidateCache invalidates the HTML cache (call when settings change)
@@ -103,6 +124,11 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		// Skip API routes
 		if shouldBypassEmbeddedFrontend(path) {
 			c.Next()
+			return
+		}
+
+		if _, ok := downstream.FromGin(c); ok {
+			s.serveDownstreamFrontend(c)
 			return
 		}
 
@@ -129,8 +155,37 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 	}
 }
 
+func (s *FrontendServer) serveDownstreamFrontend(c *gin.Context) {
+	if s.downstreamDistFS == nil || s.downstreamFileServer == nil {
+		c.String(http.StatusServiceUnavailable, "Downstream frontend not embedded")
+		c.Abort()
+		return
+	}
+
+	path := c.Request.URL.Path
+	cleanPath := strings.TrimPrefix(path, "/")
+	if cleanPath == "" {
+		cleanPath = "index.html"
+	}
+	if cleanPath == "index.html" || !fileExists(s.downstreamDistFS, cleanPath) {
+		serveIndexHTML(c, s.downstreamDistFS)
+		return
+	}
+
+	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
+	s.downstreamFileServer.ServeHTTP(c.Writer, c.Request)
+	c.Abort()
+}
+
 func (s *FrontendServer) fileExists(path string) bool {
-	file, err := s.distFS.Open(path)
+	return fileExists(s.distFS, path)
+}
+
+func fileExists(fsys fs.FS, path string) bool {
+	if fsys == nil {
+		return false
+	}
+	file, err := fsys.Open(path)
 	if err != nil {
 		return false
 	}

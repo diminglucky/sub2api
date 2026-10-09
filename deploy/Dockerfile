@@ -38,6 +38,22 @@ COPY docs/legal/ /app/docs/legal/
 RUN pnpm run build
 
 # -----------------------------------------------------------------------------
+# Stage 1b: Downstream Frontend Builder
+# -----------------------------------------------------------------------------
+FROM ${NODE_IMAGE} AS downstream-frontend-builder
+
+WORKDIR /app/frontend-downstream
+ENV NODE_OPTIONS=--max-old-space-size=1536
+
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+
+COPY frontend-downstream/package.json frontend-downstream/pnpm-lock.yaml frontend-downstream/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY frontend-downstream/ ./
+RUN pnpm run build
+
+# -----------------------------------------------------------------------------
 # Stage 2: Backend Builder
 # -----------------------------------------------------------------------------
 FROM ${GOLANG_IMAGE} AS backend-builder
@@ -66,6 +82,7 @@ COPY backend/ ./
 
 # Copy frontend dist from previous stage (must be after backend copy to avoid being overwritten)
 COPY --from=frontend-builder /app/backend/internal/web/dist ./internal/web/dist
+COPY --from=downstream-frontend-builder /app/frontend-downstream/dist ./internal/web/dist-downstream
 
 # Build the binary (BuildType=release for CI builds, embed frontend)
 # Version precedence: build arg VERSION > exact git tag > cmd/server/VERSION

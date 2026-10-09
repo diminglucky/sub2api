@@ -52,7 +52,6 @@ interface ApiEnvelope<T> {
   data: T
 }
 
-const DEFAULT_ORIGIN = 'https://draw.superai.sbs'
 const TOKEN_KEY = 'draw_downstream_access_token'
 const USER_KEY = 'draw_downstream_user'
 
@@ -61,10 +60,7 @@ function apiOrigin(): string {
   if (configured) {
     return configured.replace(/\/$/, '')
   }
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-    return ''
-  }
-  return DEFAULT_ORIGIN
+  return ''
 }
 
 function authHeaders(): HeadersInit {

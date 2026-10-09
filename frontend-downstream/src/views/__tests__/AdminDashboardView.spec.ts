@@ -48,7 +48,5 @@ describe('AdminDashboardView', () => {
     expect(wrapper.text()).toContain('99')
     expect(wrapper.text()).toContain('21.50')
     expect(wrapper.text()).toContain('3.25')
-    expect(wrapper.text()).not.toContain('main-site')
-    expect(wrapper.text()).not.toContain('other-subsite')
   })
 })

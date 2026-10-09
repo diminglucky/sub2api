@@ -1,5 +1,5 @@
-import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
-import { hasSession } from './api'
+import { createRouter, createWebHistory, type RouteLocationNormalized, type RouteRecordRaw } from 'vue-router'
+import { getMeSummary, hasSession } from './api'
 import LoginView from './views/LoginView.vue'
 import RegisterView from './views/RegisterView.vue'
 import UserDashboardView from './views/UserDashboardView.vue'
@@ -18,12 +18,24 @@ export const router = createRouter({
   routes
 })
 
-router.beforeEach((to) => {
+export async function downstreamRouteGuard(to: RouteLocationNormalized) {
   if (to.meta.requiresAuth && !hasSession()) {
     return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.name === 'admin' && hasSession()) {
+    try {
+      const summary = await getMeSummary()
+      if (!summary.is_admin) {
+        return { name: 'dashboard' }
+      }
+    } catch {
+      return { name: 'dashboard' }
+    }
   }
   if ((to.name === 'login' || to.name === 'register') && hasSession()) {
     return { name: 'dashboard' }
   }
   return true
-})
+}
+
+router.beforeEach(downstreamRouteGuard)
