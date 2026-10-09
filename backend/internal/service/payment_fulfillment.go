@@ -16,6 +16,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentauditlog"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
@@ -408,6 +409,9 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	if lease == nil {
 		return errors.New("missing payment fulfillment lease")
 	}
+	if subsiteID, ok := downstream.SubsiteIDFromProviderSnapshot(o.ProviderSnapshot); ok {
+		return s.markCompletedWithSubsiteSettlement(ctx, o, lease, auditAction, subsiteID)
+	}
 	now := time.Now()
 	updated, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
@@ -424,6 +428,58 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		}
 		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
 	}
+	s.afterPaymentOrderCompleted(ctx, o, auditAction)
+	return nil
+}
+
+func (s *PaymentService) markCompletedWithSubsiteSettlement(
+	ctx context.Context,
+	o *dbent.PaymentOrder,
+	lease *paymentFulfillmentLease,
+	auditAction string,
+	subsiteID int64,
+) error {
+	tx, err := s.entClient.Tx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin downstream settlement tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now()
+	updated, err := tx.PaymentOrder.Update().Where(
+		paymentorder.IDEQ(o.ID),
+		paymentorder.StatusEQ(OrderStatusRecharging),
+		paymentorder.UpdatedAtEQ(lease.version),
+	).SetStatus(OrderStatusCompleted).SetCompletedAt(now).Save(ctx)
+	if err != nil {
+		return fmt.Errorf("mark completed: %w", err)
+	}
+	if updated == 0 {
+		current, getErr := tx.PaymentOrder.Get(ctx, o.ID)
+		if getErr == nil && current.Status == OrderStatusCompleted {
+			return nil
+		}
+		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
+	}
+	if err := downstream.RecordSettlementForOrder(ctx, tx.Client(), downstream.SettlementOrder{
+		ID:          o.ID,
+		SubsiteID:   subsiteID,
+		UserID:      o.UserID,
+		Currency:    PaymentOrderCurrency(o),
+		GrossAmount: o.PayAmount,
+		CostAmount:  o.Amount,
+	}); err != nil {
+		return fmt.Errorf("record downstream settlement: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit downstream settlement tx: %w", err)
+	}
+
+	s.afterPaymentOrderCompleted(ctx, o, auditAction)
+	return nil
+}
+
+func (s *PaymentService) afterPaymentOrderCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) {
 	if !s.hasAuditLog(ctx, o.ID, auditAction) {
 		s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
 			"rechargeCode":   o.RechargeCode,
@@ -432,7 +488,6 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		})
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}
-	return nil
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {
