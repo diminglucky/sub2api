@@ -257,13 +257,6 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, err
 	}
 	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
-	subsiteID, hasSubsite := downstream.SubsiteIDFromContext(ctx)
-	if hasSubsite {
-		if providerSnapshot == nil {
-			providerSnapshot = map[string]any{}
-		}
-		providerSnapshot[downstream.ProviderSnapshotSubsiteIDKey] = subsiteID
-	}
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -307,7 +300,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-	if hasSubsite {
+	if subsiteID, hasSubsite := downstream.SubsiteIDFromContext(ctx); hasSubsite {
 		if err := downstream.AttributePaymentOrder(ctx, tx.Client(), subsiteID, order.ID); err != nil {
 			return nil, fmt.Errorf("attribute payment order to subsite: %w", err)
 		}

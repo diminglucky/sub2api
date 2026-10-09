@@ -90,7 +90,13 @@ func ProvideRouter(
 		service.SetWebSearchManager(websearch.NewManager(configs, redisClient))
 	})
 
-	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, downstream.NewRepository(db), cfg, redisClient)
+	downstreamRepo := downstream.NewRepository(db)
+	// Sub-site price resolution and usage-based settlement share the same
+	// repository. Main-site requests keep the pre-existing billing path.
+	if handlers != nil && handlers.OpenAIGateway != nil {
+		handlers.OpenAIGateway.SetDownstreamPricing(downstreamRepo, downstreamRepo)
+	}
+	return SetupRouter(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, downstreamRepo, cfg, redisClient)
 }
 
 func configureTrustedProxies(r *gin.Engine, cfg config.ServerConfig) {

@@ -31,6 +31,32 @@ func (p Price) Clone() Price {
 	}
 }
 
+// IsZero reports whether every price field is unset.
+func (p Price) IsZero() bool {
+	return p.InputPrice == nil &&
+		p.OutputPrice == nil &&
+		p.CacheWritePrice == nil &&
+		p.CacheReadPrice == nil &&
+		p.PerRequestPrice == nil
+}
+
+// Equal reports whether two prices carry the same set of values. Pointers are
+// compared by value, so callers can detect a no-op override.
+func (p Price) Equal(other Price) bool {
+	return priceFieldEqual(p.InputPrice, other.InputPrice) &&
+		priceFieldEqual(p.OutputPrice, other.OutputPrice) &&
+		priceFieldEqual(p.CacheWritePrice, other.CacheWritePrice) &&
+		priceFieldEqual(p.CacheReadPrice, other.CacheReadPrice) &&
+		priceFieldEqual(p.PerRequestPrice, other.PerRequestPrice)
+}
+
+func priceFieldEqual(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return math.Abs(*a-*b) < 1e-12
+}
+
 // ResolveSubsitePrice applies the subsite override precedence:
 // model override, group override, then the supplied base price.
 //

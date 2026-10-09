@@ -1,0 +1,265 @@
+package service
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+)
+
+// DownstreamPricingRepository resolves sub-site price overrides. It is
+// satisfied by *downstream.Repository.
+//
+// The main-site price passed as basePrice is the wholesale cost; the returned
+// price is what the sub-site charges its users. NULL subsite rows (main site)
+// are never resolved here.
+type DownstreamPricingRepository interface {
+	ResolveSubsitePrice(ctx context.Context, subsiteID int64, model string, basePrice downstream.Price, groupID ...int64) (downstream.Price, error)
+}
+
+// DownstreamUsageSettlementRecorder records one usage-based settlement ledger
+// entry. It is satisfied by *downstream.Repository.
+type DownstreamUsageSettlementRecorder interface {
+	RecordUsageSettlement(ctx context.Context, entry downstream.UsageSettlement) error
+}
+
+// SetDownstreamPricing wires the optional sub-site price resolver and usage
+// settlement recorder. When unset (default, and for every main-site request)
+// billing behaves exactly as before.
+func (s *OpenAIGatewayService) SetDownstreamPricing(
+	pricing DownstreamPricingRepository,
+	settlement DownstreamUsageSettlementRecorder,
+) {
+	if s == nil {
+		return
+	}
+	s.downstreamPricing = pricing
+	s.downstreamSettlement = settlement
+}
+
+// subsitePricingResolution is the resolved sub-site price for one request.
+type subsitePricingResolution struct {
+	SubsiteID int64
+	Price     downstream.Price
+	Applied   bool
+}
+
+// resolveSubsitePricing resolves the sub-site price override for the current
+// request. It returns ok=false for main-site traffic, when no resolver is
+// wired, or when the resolved price is identical to the main-site price.
+func (s *OpenAIGatewayService) resolveSubsitePricing(
+	ctx context.Context,
+	model string,
+	apiKey *APIKey,
+	base *ResolvedPricing,
+) (subsitePricingResolution, bool) {
+	if s == nil || s.downstreamPricing == nil {
+		return subsitePricingResolution{}, false
+	}
+	subsiteID, ok := downstream.SubsiteIDFromContext(ctx)
+	if !ok || subsiteID <= 0 {
+		return subsitePricingResolution{}, false
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return subsitePricingResolution{}, false
+	}
+	basePrice := downstreamPriceFromResolved(base)
+	if basePrice.IsZero() {
+		return subsitePricingResolution{}, false
+	}
+	var groupID []int64
+	if apiKey != nil && apiKey.GroupID != nil && *apiKey.GroupID > 0 {
+		groupID = []int64{*apiKey.GroupID}
+	}
+	price, err := s.downstreamPricing.ResolveSubsitePrice(ctx, subsiteID, model, basePrice, groupID...)
+	if err != nil {
+		return subsitePricingResolution{}, false
+	}
+	if price.Equal(basePrice) {
+		return subsitePricingResolution{SubsiteID: subsiteID, Price: price}, false
+	}
+	return subsitePricingResolution{SubsiteID: subsiteID, Price: price, Applied: true}, true
+}
+
+// resolveSubsitePricingForModel resolves the main-site base pricing for a model
+// and then applies any sub-site override. It returns ok=false for main-site
+// traffic or when no override changes the price.
+func (s *OpenAIGatewayService) resolveSubsitePricingForModel(
+	ctx context.Context,
+	model string,
+	apiKey *APIKey,
+) (subsitePricingResolution, bool) {
+	if s == nil || s.downstreamPricing == nil || s.resolver == nil ||
+		apiKey == nil || apiKey.Group == nil {
+		return subsitePricingResolution{}, false
+	}
+	gid := apiKey.Group.ID
+	base := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &gid, Group: apiKey.Group})
+	return s.resolveSubsitePricing(ctx, model, apiKey, base)
+}
+
+// recordDownstreamUsageSettlement snapshots the main-site wholesale cost for a
+// billed sub-site request and writes one usage-based ledger row. It recomputes
+// the cost without the sub-site override so revenue (sub-site price) and cost
+// (main-site price) share the exact same usage, model and multiplier context.
+func (s *OpenAIGatewayService) recordDownstreamUsageSettlement(
+	ctx context.Context,
+	requestID string,
+	userID int64,
+	apiKey *APIKey,
+	result *OpenAIForwardResult,
+	billingModels []string,
+	multiplier, imageMultiplier, videoMultiplier, webSearchMultiplier float64,
+	tokens UsageTokens,
+	serviceTier string,
+	longContextBillingGate *bool,
+	pricingAt time.Time,
+	revenue *CostBreakdown,
+	subsitePricing subsitePricingResolution,
+) {
+	if s == nil || s.downstreamSettlement == nil || revenue == nil {
+		return
+	}
+	subsiteID := subsitePricing.SubsiteID
+	requestID = strings.TrimSpace(requestID)
+	if subsiteID <= 0 || requestID == "" {
+		return
+	}
+	wholesaleCost, err := s.calculateOpenAIRecordUsageCostWithSubsite(
+		ctx,
+		result,
+		apiKey,
+		billingModels,
+		multiplier,
+		imageMultiplier,
+		videoMultiplier,
+		webSearchMultiplier,
+		tokens,
+		serviceTier,
+		longContextBillingGate,
+		pricingAt,
+		nil,
+	)
+	if err != nil || wholesaleCost == nil {
+		return
+	}
+	entry := downstream.UsageSettlement{
+		SubsiteID:      subsiteID,
+		UserID:         userID,
+		UsageRequestID: requestID,
+		BillingMode:    strings.TrimSpace(revenue.BillingMode),
+		RevenueAmount:  revenue.ActualCost,
+		CostAmount:     wholesaleCost.ActualCost,
+	}
+	// Best-effort: a ledger write must never fail the billing path. The ledger
+	// insert is idempotent on (subsite_id, usage_request_id), so a retry driven
+	// by a later duplicate callback is safe.
+	if err := s.downstreamSettlement.RecordUsageSettlement(ctx, entry); err != nil {
+		logger.LegacyPrintf(
+			"service.openai_gateway",
+			"downstream settlement record failed: subsite_id=%d request_id=%s err=%v",
+			subsiteID, requestID, err,
+		)
+	}
+}
+
+// downstreamPriceFromResolved snapshots the main-site unit prices that a
+// sub-site override is applied on top of.
+func downstreamPriceFromResolved(resolved *ResolvedPricing) downstream.Price {
+	if resolved == nil {
+		return downstream.Price{}
+	}
+	var price downstream.Price
+	if resolved.BasePricing != nil {
+		input := resolved.BasePricing.InputPricePerToken
+		output := resolved.BasePricing.OutputPricePerToken
+		cacheWrite := resolved.BasePricing.CacheCreationPricePerToken
+		cacheRead := resolved.BasePricing.CacheReadPricePerToken
+		price.InputPrice = &input
+		price.OutputPrice = &output
+		if resolved.BasePricing.CacheCreationPriceExplicit || cacheWrite > 0 {
+			price.CacheWritePrice = &cacheWrite
+		}
+		price.CacheReadPrice = &cacheRead
+	}
+	if resolved.DefaultPerRequestPrice > 0 {
+		perRequest := resolved.DefaultPerRequestPrice
+		price.PerRequestPrice = &perRequest
+	}
+	if price.IsZero() && len(resolved.Intervals) > 0 {
+		if iv := FindMatchingInterval(resolved.Intervals, 0); iv != nil {
+			price.InputPrice = iv.InputPrice
+			price.OutputPrice = iv.OutputPrice
+			price.CacheWritePrice = iv.CacheWritePrice
+			price.CacheReadPrice = iv.CacheReadPrice
+			price.PerRequestPrice = iv.PerRequestPrice
+		}
+	}
+	return price
+}
+
+// applyDownstreamPriceToResolved returns a copy of resolved with the sub-site
+// absolute prices applied. The main-site (wholesale) pricing is never mutated.
+func applyDownstreamPriceToResolved(resolved *ResolvedPricing, price downstream.Price) *ResolvedPricing {
+	if resolved == nil || price.IsZero() {
+		return resolved
+	}
+	out := *resolved
+	if resolved.BasePricing != nil {
+		cloned := *resolved.BasePricing
+		if price.InputPrice != nil {
+			cloned.InputPricePerToken = *price.InputPrice
+		}
+		if price.OutputPrice != nil {
+			cloned.OutputPricePerToken = *price.OutputPrice
+		}
+		if price.CacheWritePrice != nil {
+			cloned.CacheCreationPricePerToken = *price.CacheWritePrice
+			cloned.CacheCreation5mPrice = *price.CacheWritePrice
+			cloned.CacheCreation1hPrice = *price.CacheWritePrice
+			cloned.CacheCreationPriceExplicit = true
+		}
+		if price.CacheReadPrice != nil {
+			cloned.CacheReadPricePerToken = *price.CacheReadPrice
+		}
+		out.BasePricing = &cloned
+	}
+	if price.PerRequestPrice != nil {
+		out.DefaultPerRequestPrice = *price.PerRequestPrice
+	}
+	if len(resolved.Intervals) > 0 {
+		intervals := make([]PricingInterval, len(resolved.Intervals))
+		copy(intervals, resolved.Intervals)
+		for i := range intervals {
+			if price.InputPrice != nil {
+				value := *price.InputPrice
+				intervals[i].InputPrice = &value
+				intervals[i].InputMultiplier = nil
+			}
+			if price.OutputPrice != nil {
+				value := *price.OutputPrice
+				intervals[i].OutputPrice = &value
+				intervals[i].OutputMultiplier = nil
+			}
+			if price.CacheWritePrice != nil {
+				value := *price.CacheWritePrice
+				intervals[i].CacheWritePrice = &value
+				intervals[i].CacheWriteMultiplier = nil
+			}
+			if price.CacheReadPrice != nil {
+				value := *price.CacheReadPrice
+				intervals[i].CacheReadPrice = &value
+				intervals[i].CacheReadMultiplier = nil
+			}
+			if price.PerRequestPrice != nil {
+				value := *price.PerRequestPrice
+				intervals[i].PerRequestPrice = &value
+			}
+		}
+		out.Intervals = intervals
+	}
+	return &out
+}

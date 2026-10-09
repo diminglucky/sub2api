@@ -107,24 +107,27 @@ type PriceOverride struct {
 	UpdatedAt       time.Time
 }
 
-// SettlementEntry records the payable difference for one paid recharge order.
-// GrossAmount is what the main site collected; CostAmount is the platform cost
-// attributed to the order; MarginAmount is what the subsite is owed. V1 only
-// writes ledger rows and leaves payout to a manual process.
+// SettlementEntry records the payable difference for one billed API usage
+// request. GrossAmount is the sub-site-price revenue (what the user was
+// charged); CostAmount is the main-site wholesale cost; MarginAmount is what the
+// sub-site is owed. V1 only writes ledger rows and leaves payout to a manual
+// process; it never settles from recharge order amounts.
 type SettlementEntry struct {
-	ID           int64
-	SubsiteID    int64
-	OrderID      *int64
-	UserID       *int64
-	Currency     string
-	GrossAmount  float64
-	CostAmount   float64
-	MarginAmount float64
-	Status       string
-	Notes        string
-	SettledAt    *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID             int64
+	SubsiteID      int64
+	OrderID        *int64
+	UserID         *int64
+	UsageRequestID *string
+	BillingMode    *string
+	Currency       string
+	GrossAmount    float64
+	CostAmount     float64
+	MarginAmount   float64
+	Status         string
+	Notes          string
+	SettledAt      *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // SubsiteUserSummary is the subsite-scoped view of one main-site user. Balance

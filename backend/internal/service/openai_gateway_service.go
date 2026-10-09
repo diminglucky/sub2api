@@ -470,6 +470,10 @@ type OpenAIGatewayService struct {
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
+	// Optional downstream sub-site pricing/settlement. Nil (main site) keeps
+	// the pre-existing billing behavior byte for byte.
+	downstreamPricing    DownstreamPricingRepository
+	downstreamSettlement DownstreamUsageSettlementRecorder
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once

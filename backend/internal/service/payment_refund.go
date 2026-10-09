@@ -606,6 +606,11 @@ func (s *PaymentService) handleGwFail(ctx context.Context, p *RefundPlan, gErr e
 }
 
 func (s *PaymentService) markRefundOk(ctx context.Context, p *RefundPlan) (*RefundResult, error) {
+	// V1 downstream settlement is usage-based (see internal/downstream
+	// RecordUsageSettlement). Refunding a recharge order therefore does not
+	// touch settlement_ledger: order refunds and API-usage revenue are
+	// separate revenue streams. Reversing a usage-ledger row after a refund is
+	// out of V1 scope; it must be handled explicitly before it is attempted.
 	fs := OrderStatusRefunded
 	if p.RefundAmount < p.Order.Amount {
 		fs = OrderStatusPartiallyRefunded

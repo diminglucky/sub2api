@@ -51,6 +51,19 @@ type OpenAIGatewayHandler struct {
 	cfg                        *config.Config
 }
 
+// SetDownstreamPricing wires optional sub-site price resolution and usage-based
+// settlement into the OpenAI gateway service. When unset (main site) billing is
+// unchanged. It is called once at startup after the router's DB is available.
+func (h *OpenAIGatewayHandler) SetDownstreamPricing(
+	pricing service.DownstreamPricingRepository,
+	settlement service.DownstreamUsageSettlementRecorder,
+) {
+	if h == nil || h.gatewayService == nil {
+		return
+	}
+	h.gatewayService.SetDownstreamPricing(pricing, settlement)
+}
+
 type openAIWSTurnChannelMappingSnapshot struct {
 	turn    int
 	mapping service.ChannelMappingResult
