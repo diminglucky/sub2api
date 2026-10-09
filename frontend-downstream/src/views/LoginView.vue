@@ -19,7 +19,7 @@ async function submit() {
     window.dispatchEvent(new CustomEvent('draw-session-change', { detail: true }))
     await router.push(String(route.query.redirect || '/dashboard'))
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Sign in failed'
+    error.value = err instanceof Error ? err.message : '登录失败'
   } finally {
     submitting.value = false
   }
@@ -30,26 +30,26 @@ async function submit() {
   <section class="auth-shell">
     <form class="auth-card" @submit.prevent="submit">
       <p class="eyebrow">{{ site?.name || 'Draw' }}</p>
-      <h1>Sign in</h1>
-      <p class="lede">Use the same account as the main site.</p>
+      <h1>登录子站</h1>
+      <p class="lede">使用主站账号登录，余额、充值和调用数据与主站实时同步。</p>
 
       <p v-if="error" class="form-error">{{ error }}</p>
 
       <div class="field">
-        <label for="email">Email</label>
+        <label for="email">邮箱</label>
         <input id="email" v-model="form.email" type="email" autocomplete="email" required />
       </div>
       <div class="field">
-        <label for="password">Password</label>
+        <label for="password">密码</label>
         <input id="password" v-model="form.password" type="password" autocomplete="current-password" required />
       </div>
 
       <button class="primary-button full-button" type="submit" :disabled="submitting">
-        {{ submitting ? 'Signing in...' : 'Sign in' }}
+        {{ submitting ? '正在登录...' : '登录' }}
       </button>
       <p class="auth-meta">
-        Need an account?
-        <RouterLink to="/register">Register</RouterLink>
+        还没有账号？
+        <RouterLink to="/register">立即注册</RouterLink>
       </p>
     </form>
   </section>

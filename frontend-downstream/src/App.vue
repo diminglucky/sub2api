@@ -25,7 +25,7 @@ onMounted(async () => {
   try {
     site.value = await getSite()
   } catch (error) {
-    siteError.value = error instanceof Error ? error.message : 'Failed to load site'
+    siteError.value = error instanceof Error ? error.message : '子站信息加载失败'
   }
   auth.value = hasSession()
   await refreshAccountState()
@@ -76,11 +76,11 @@ onUnmounted(() => {
         <span class="brand-name">{{ site.name }}</span>
       </RouterLink>
 
-      <nav class="site-nav" aria-label="Primary">
-        <RouterLink v-if="auth" class="nav-link" to="/dashboard">Dashboard</RouterLink>
-        <RouterLink v-if="auth && isAdmin" class="nav-link" to="/admin">Admin</RouterLink>
-        <button v-if="auth" class="text-button" type="button" @click="handleLogout">Sign out</button>
-        <RouterLink v-else class="nav-link" to="/login">Sign in</RouterLink>
+      <nav class="site-nav" aria-label="主导航">
+        <RouterLink v-if="auth" class="nav-link" to="/dashboard">用户中心</RouterLink>
+        <RouterLink v-if="auth && isAdmin" class="nav-link" to="/admin">管理看板</RouterLink>
+        <button v-if="auth" class="text-button" type="button" @click="handleLogout">退出登录</button>
+        <RouterLink v-else class="nav-link" to="/login">登录</RouterLink>
       </nav>
     </header>
 
