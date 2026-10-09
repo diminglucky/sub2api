@@ -36,6 +36,50 @@ func TestApplyDownstreamPriceToResolvedOverridesTokenPrices(t *testing.T) {
 	require.InDelta(t, 15e-6, base.BasePricing.OutputPricePerToken, 1e-12)
 }
 
+func TestApplyDownstreamPriceToResolvedOverridesPriorityPrices(t *testing.T) {
+	baseInputPriority := 10e-6
+	baseOutputPriority := 50e-6
+	base := &ResolvedPricing{
+		Mode:   BillingModeToken,
+		Source: PricingSourceChannel,
+		BasePricing: &ModelPricing{
+			InputPricePerToken:                 5e-6,
+			InputPricePerTokenPriority:         baseInputPriority,
+			OutputPricePerToken:                25e-6,
+			OutputPricePerTokenPriority:        baseOutputPriority,
+			CacheCreationPricePerToken:         6.25e-6,
+			CacheCreationPricePerTokenPriority: 12.5e-6,
+			CacheReadPricePerToken:             0.5e-6,
+			CacheReadPricePerTokenPriority:     1e-6,
+		},
+	}
+	subInput := 8e-6
+	subInputPriority := 16e-6
+	subOutput := 40e-6
+	subOutputPriority := 80e-6
+	subCacheWritePriority := 20e-6
+	subCacheReadPriority := 1.6e-6
+	applied := applyDownstreamPriceToResolved(base, downstream.Price{
+		InputPrice:              &subInput,
+		InputPricePriority:      &subInputPriority,
+		OutputPrice:             &subOutput,
+		OutputPricePriority:     &subOutputPriority,
+		CacheWritePricePriority: &subCacheWritePriority,
+		CacheReadPricePriority:  &subCacheReadPriority,
+	})
+
+	require.InDelta(t, subInput, applied.BasePricing.InputPricePerToken, 1e-12)
+	require.InDelta(t, subInputPriority, applied.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, subOutput, applied.BasePricing.OutputPricePerToken, 1e-12)
+	require.InDelta(t, subOutputPriority, applied.BasePricing.OutputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, subCacheWritePriority, applied.BasePricing.CacheCreationPricePerTokenPriority, 1e-12)
+	require.InDelta(t, subCacheReadPriority, applied.BasePricing.CacheReadPricePerTokenPriority, 1e-12)
+
+	// The wholesale base must not be mutated.
+	require.InDelta(t, baseInputPriority, base.BasePricing.InputPricePerTokenPriority, 1e-12)
+	require.InDelta(t, baseOutputPriority, base.BasePricing.OutputPricePerTokenPriority, 1e-12)
+}
+
 func TestApplyDownstreamPriceToResolvedOverridesIntervals(t *testing.T) {
 	intervalInput := 1e-6
 	base := &ResolvedPricing{

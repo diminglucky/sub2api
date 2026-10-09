@@ -287,9 +287,19 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
+			responseSubsitePricing, responseHasSubsitePricing := s.resolveSubsitePricingForModel(
+				ctx,
+				firstUsageBillingModel(responseModels),
+				apiKey,
+			)
+			var responseSubsitePrice *downstream.Price
+			if responseHasSubsitePricing {
+				price := responseSubsitePricing.Price
+				responseSubsitePrice = &price
+			}
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCostWithSubsite(
 				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
-				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt, subsitePrice,
+				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt, responseSubsitePrice,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
 			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
@@ -300,6 +310,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 					baselineBillingModel, responseModel, cost, responseCost)
 				billingModels = responseModels
 				cost = responseCost
+				subsitePricing = responseSubsitePricing
+				hasSubsitePricing = responseHasSubsitePricing
+				subsitePrice = responseSubsitePrice
 			}
 		}
 	}
@@ -307,7 +320,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Free Fast changes only the customer charge. Keep priority TotalCost and
 	// service_tier for upstream accounting, but evaluate ActualCost once more at
 	// the Standard tier using the same channel, peak, and long-context policy.
+	settlementServiceTier := serviceTier
 	if groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) {
+		settlementServiceTier = ""
 		standardCost, standardErr := s.calculateOpenAIRecordUsageCostWithSubsite(
 			ctx,
 			result,
@@ -361,27 +376,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			requestID = stable
 		}
 	}
-	if hasSubsitePricing && cost != nil {
-		s.recordDownstreamUsageSettlement(
-			ctx,
-			requestID,
-			user.ID,
-			apiKey,
-			result,
-			billingModels,
-			multiplier,
-			imageMultiplier,
-			videoMultiplier,
-			baseMultiplier,
-			tokens,
-			serviceTier,
-			longContextBillingGate,
-			pricingAt,
-			cost,
-			subsitePricing,
-		)
-	}
-
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
 	if input.OriginalModel != "" {
@@ -550,6 +544,26 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.ActualCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		return billingErr
+	}
+	if hasSubsitePricing && cost != nil {
+		s.recordDownstreamUsageSettlement(
+			ctx,
+			requestID,
+			user.ID,
+			apiKey,
+			result,
+			billingModels,
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			tokens,
+			settlementServiceTier,
+			longContextBillingGate,
+			pricingAt,
+			cost,
+			subsitePricing,
+		)
 	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 

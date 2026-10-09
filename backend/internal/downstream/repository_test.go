@@ -120,7 +120,7 @@ func TestDownstreamSubsiteMigration(t *testing.T) {
 		"ALTER TABLE api_keys       ADD COLUMN IF NOT EXISTS subsite_id BIGINT",
 		"REFERENCES subsites(id) ON DELETE CASCADE",
 		"subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE RESTRICT",
-		"currency      VARCHAR(10)   NOT NULL DEFAULT 'CNY'",
+		"currency      VARCHAR(10)   NOT NULL DEFAULT 'USD'",
 		"ADD CONSTRAINT fk_payment_orders_subsite_id",
 		"FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID",
 		"ADD CONSTRAINT fk_api_keys_subsite_id",
@@ -155,6 +155,7 @@ func TestDownstreamUsageSettlementMigration(t *testing.T) {
 	for _, required := range []string{
 		"ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS usage_request_id TEXT",
 		"ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(20)",
+		"ALTER TABLE settlement_ledger ALTER COLUMN currency SET DEFAULT 'USD'",
 		"ON settlement_ledger (subsite_id, usage_request_id)",
 		"WHERE usage_request_id IS NOT NULL",
 	} {

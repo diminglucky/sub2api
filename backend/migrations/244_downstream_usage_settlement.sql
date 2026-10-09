@@ -11,6 +11,7 @@
 
 ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS usage_request_id TEXT;
 ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(20);
+ALTER TABLE settlement_ledger ALTER COLUMN currency SET DEFAULT 'USD';
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_settlement_ledger_usage
     ON settlement_ledger (subsite_id, usage_request_id)

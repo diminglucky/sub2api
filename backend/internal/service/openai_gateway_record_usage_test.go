@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
@@ -37,6 +39,64 @@ type openAIRecordUsageBillingRepoStub struct {
 	calls      int
 	lastCmd    *UsageBillingCommand
 	lastCtxErr error
+}
+
+type openAIRecordUsageDownstreamPricingStub struct {
+	UsageBillingRepository
+
+	factors map[string]float64
+	models  []string
+}
+
+func (s *openAIRecordUsageDownstreamPricingStub) ResolveSubsitePrice(
+	_ context.Context,
+	_ int64,
+	model string,
+	basePrice downstream.Price,
+	_ ...int64,
+) (downstream.Price, error) {
+	s.models = append(s.models, model)
+	factor := s.factors[model]
+	if factor == 0 {
+		factor = 1
+	}
+	return scaleDownstreamPriceForTest(basePrice, factor), nil
+}
+
+type openAIRecordUsageSettlementStub struct {
+	calls     int
+	lastEntry downstream.UsageSettlement
+	err       error
+}
+
+func (s *openAIRecordUsageSettlementStub) RecordUsageSettlement(
+	_ context.Context,
+	entry downstream.UsageSettlement,
+) error {
+	s.calls++
+	s.lastEntry = entry
+	return s.err
+}
+
+func scaleDownstreamPriceForTest(price downstream.Price, factor float64) downstream.Price {
+	scale := func(value *float64) *float64 {
+		if value == nil {
+			return nil
+		}
+		scaled := *value * factor
+		return &scaled
+	}
+	return downstream.Price{
+		InputPrice:              scale(price.InputPrice),
+		InputPricePriority:      scale(price.InputPricePriority),
+		OutputPrice:             scale(price.OutputPrice),
+		OutputPricePriority:     scale(price.OutputPricePriority),
+		CacheWritePrice:         scale(price.CacheWritePrice),
+		CacheWritePricePriority: scale(price.CacheWritePricePriority),
+		CacheReadPrice:          scale(price.CacheReadPrice),
+		CacheReadPricePriority:  scale(price.CacheReadPricePriority),
+		PerRequestPrice:         scale(price.PerRequestPrice),
+	}
 }
 
 type openAIRecordUsageAccountRepoStub struct {
@@ -3253,6 +3313,268 @@ func TestOpenAIGatewayServiceRecordUsage_FreeOpenAIFastMissingPricingRecordsZero
 	require.Equal(t, "priority", *usageRepo.lastLog.ServiceTier)
 	require.Zero(t, usageRepo.lastLog.TotalCost)
 	require.Zero(t, usageRepo.lastLog.ActualCost)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DownstreamSettlementWaitsForBillingSuccess(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{err: errors.New("billing failed")}
+	settlement := &openAIRecordUsageSettlementStub{}
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{"gpt-5.4": 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      100,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, RateMultiplier: 1},
+	}
+
+	err := svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: "resp_downstream_billing_failed",
+				Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+				Model:     "gpt-5.4",
+				Duration:  time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		},
+	)
+
+	require.Error(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Zero(t, settlement.calls, "failed billing must not write a settlement row")
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DownstreamSettlementWritesAfterBillingSuccess(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{"gpt-5.4": 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      101,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, RateMultiplier: 1},
+	}
+
+	err := svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID: "resp_downstream_billing_succeeded",
+				Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+				Model:     "gpt-5.4",
+				Duration:  time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Equal(t, 1, settlement.calls)
+	entry := settlement.lastEntry
+	require.Equal(t, int64(77), entry.SubsiteID)
+	require.Equal(t, int64(200), entry.UserID)
+	require.Equal(t, "resp_downstream_billing_succeeded", entry.UsageRequestID)
+	require.Equal(t, "USD", entry.Currency)
+	require.Equal(t, "token", entry.BillingMode)
+	require.Greater(t, entry.RevenueAmount, entry.CostAmount)
+	require.InDelta(t, entry.RevenueAmount-entry.CostAmount, entry.MarginAmount(), 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_MainSiteSkipsDownstreamPricingAndSettlement(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{"gpt-5.4": 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      102,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, RateMultiplier: 1},
+	}
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_main_site_no_downstream",
+			Usage:     OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+			Model:     "gpt-5.4",
+			Duration:  time.Second,
+		},
+		APIKey:  apiKey,
+		User:    &User{ID: 200},
+		Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, billingRepo.calls)
+	require.Empty(t, pricing.models, "main-site requests must not resolve downstream pricing")
+	require.Zero(t, settlement.calls)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DownstreamSettlementUsesFreeFastEffectiveTier(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{"gpt-5.4": 1.5}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	gid := int64(9)
+	serviceTier := "priority"
+	apiKey := &APIKey{
+		ID:      103,
+		GroupID: &gid,
+		Group: &Group{
+			ID:             gid,
+			Platform:       PlatformOpenAI,
+			RateMultiplier: 1,
+			FreeOpenAIFast: true,
+		},
+	}
+	tokens := UsageTokens{InputTokens: 1000, OutputTokens: 500}
+	standardWholesale, err := svc.billingService.CalculateCostWithServiceTier("gpt-5.4", tokens, 1, "")
+	require.NoError(t, err)
+	fastWholesale, err := svc.billingService.CalculateCostWithServiceTier("gpt-5.4", tokens, 1, serviceTier)
+	require.NoError(t, err)
+	require.Greater(t, fastWholesale.ActualCost, standardWholesale.ActualCost)
+
+	err = svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID:   "resp_downstream_free_fast",
+				ServiceTier: &serviceTier,
+				Usage:       OpenAIUsage{InputTokens: 1000, OutputTokens: 500},
+				Model:       "gpt-5.4",
+				Duration:    time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, settlement.calls)
+	require.InDelta(t, standardWholesale.ActualCost, settlement.lastEntry.CostAmount, 1e-12)
+	require.False(t, math.Abs(fastWholesale.ActualCost-settlement.lastEntry.CostAmount) < 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_DownstreamSettlementUsesAdoptedResponseModelPrice(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	settlement := &openAIRecordUsageSettlementStub{}
+	const (
+		priceyModel = "gpt-5.5"
+		cheapModel  = "gpt-5.4-nano"
+	)
+	pricing := &openAIRecordUsageDownstreamPricingStub{factors: map[string]float64{
+		priceyModel: 2.0,
+		cheapModel:  1.1,
+	}}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+		nil,
+	)
+	svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+	svc.SetDownstreamPricing(pricing, settlement)
+	gid := int64(9)
+	apiKey := &APIKey{
+		ID:      104,
+		GroupID: &gid,
+		Group:   &Group{ID: gid, Platform: PlatformOpenAI, RateMultiplier: 1},
+	}
+	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
+	resolved := svc.resolver.Resolve(context.Background(), PricingInput{
+		Model:   cheapModel,
+		GroupID: &gid,
+		Group:   apiKey.Group,
+	})
+	expectedResponseResolved := applyDownstreamPriceToResolved(
+		resolved,
+		scaleDownstreamPriceForTest(downstreamPriceFromResolved(resolved), 1.1),
+	)
+	expectedRevenue, err := svc.billingService.CalculateCostUnified(CostInput{
+		Ctx:            context.Background(),
+		Model:          cheapModel,
+		GroupID:        &gid,
+		Group:          apiKey.Group,
+		Tokens:         tokens,
+		RateMultiplier: 1,
+		Resolver:       svc.resolver,
+		Resolved:       expectedResponseResolved,
+	})
+	require.NoError(t, err)
+
+	err = svc.RecordUsage(
+		downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 77}),
+		&OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{
+				RequestID:             "resp_downstream_response_model_price",
+				Model:                 priceyModel,
+				UpstreamModel:         priceyModel,
+				UpstreamResponseModel: cheapModel,
+				Usage:                 OpenAIUsage{InputTokens: 20, OutputTokens: 10},
+				Duration:              time.Second,
+			},
+			APIKey:  apiKey,
+			User:    &User{ID: 200},
+			Account: &Account{ID: 300, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+			ChannelUsageFields: ChannelUsageFields{
+				ChannelID:          9,
+				OriginalModel:      priceyModel,
+				ChannelMappedModel: priceyModel,
+				BillingModelSource: BillingModelSourceResponse,
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, settlement.calls)
+	require.Contains(t, pricing.models, cheapModel)
+	require.InDelta(t, expectedRevenue.ActualCost, settlement.lastEntry.RevenueAmount, 1e-12)
 }
 
 func TestGroupBillsOpenAIFastAtStandardRequiresOpenAIAccount(t *testing.T) {

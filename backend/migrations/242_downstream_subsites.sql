@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS settlement_ledger (
     subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE RESTRICT,
     order_id      BIGINT REFERENCES payment_orders(id) ON DELETE SET NULL,
     user_id       BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    currency      VARCHAR(10)   NOT NULL DEFAULT 'CNY',
+    currency      VARCHAR(10)   NOT NULL DEFAULT 'USD',
     gross_amount  DECIMAL(20,8) NOT NULL DEFAULT 0,
     cost_amount   DECIMAL(20,8) NOT NULL DEFAULT 0,
     margin_amount DECIMAL(20,8) NOT NULL DEFAULT 0,

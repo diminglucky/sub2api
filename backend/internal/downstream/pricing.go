@@ -13,30 +13,42 @@ import (
 // callers should preserve that distinction so an explicit zero override can
 // intentionally make a price free.
 type Price struct {
-	InputPrice      *float64
-	OutputPrice     *float64
-	CacheWritePrice *float64
-	CacheReadPrice  *float64
-	PerRequestPrice *float64
+	InputPrice              *float64
+	InputPricePriority      *float64
+	OutputPrice             *float64
+	OutputPricePriority     *float64
+	CacheWritePrice         *float64
+	CacheWritePricePriority *float64
+	CacheReadPrice          *float64
+	CacheReadPricePriority  *float64
+	PerRequestPrice         *float64
 }
 
 // Clone returns a copy with independently allocated numeric pointers.
 func (p Price) Clone() Price {
 	return Price{
-		InputPrice:      cloneFloat64(p.InputPrice),
-		OutputPrice:     cloneFloat64(p.OutputPrice),
-		CacheWritePrice: cloneFloat64(p.CacheWritePrice),
-		CacheReadPrice:  cloneFloat64(p.CacheReadPrice),
-		PerRequestPrice: cloneFloat64(p.PerRequestPrice),
+		InputPrice:              cloneFloat64(p.InputPrice),
+		InputPricePriority:      cloneFloat64(p.InputPricePriority),
+		OutputPrice:             cloneFloat64(p.OutputPrice),
+		OutputPricePriority:     cloneFloat64(p.OutputPricePriority),
+		CacheWritePrice:         cloneFloat64(p.CacheWritePrice),
+		CacheWritePricePriority: cloneFloat64(p.CacheWritePricePriority),
+		CacheReadPrice:          cloneFloat64(p.CacheReadPrice),
+		CacheReadPricePriority:  cloneFloat64(p.CacheReadPricePriority),
+		PerRequestPrice:         cloneFloat64(p.PerRequestPrice),
 	}
 }
 
 // IsZero reports whether every price field is unset.
 func (p Price) IsZero() bool {
 	return p.InputPrice == nil &&
+		p.InputPricePriority == nil &&
 		p.OutputPrice == nil &&
+		p.OutputPricePriority == nil &&
 		p.CacheWritePrice == nil &&
+		p.CacheWritePricePriority == nil &&
 		p.CacheReadPrice == nil &&
+		p.CacheReadPricePriority == nil &&
 		p.PerRequestPrice == nil
 }
 
@@ -44,9 +56,13 @@ func (p Price) IsZero() bool {
 // compared by value, so callers can detect a no-op override.
 func (p Price) Equal(other Price) bool {
 	return priceFieldEqual(p.InputPrice, other.InputPrice) &&
+		priceFieldEqual(p.InputPricePriority, other.InputPricePriority) &&
 		priceFieldEqual(p.OutputPrice, other.OutputPrice) &&
+		priceFieldEqual(p.OutputPricePriority, other.OutputPricePriority) &&
 		priceFieldEqual(p.CacheWritePrice, other.CacheWritePrice) &&
+		priceFieldEqual(p.CacheWritePricePriority, other.CacheWritePricePriority) &&
 		priceFieldEqual(p.CacheReadPrice, other.CacheReadPrice) &&
+		priceFieldEqual(p.CacheReadPricePriority, other.CacheReadPricePriority) &&
 		priceFieldEqual(p.PerRequestPrice, other.PerRequestPrice)
 }
 
@@ -185,10 +201,42 @@ func applyPriceOverride(base Price, override *PriceOverride) Price {
 	if math.IsNaN(multiplier) || math.IsInf(multiplier, 0) || multiplier < 0 {
 		multiplier = 1
 	}
+	baseInputPrice := out.InputPrice
+	baseInputPricePriority := out.InputPricePriority
+	baseOutputPrice := out.OutputPrice
+	baseOutputPricePriority := out.OutputPricePriority
+	baseCacheWritePrice := out.CacheWritePrice
+	baseCacheWritePricePriority := out.CacheWritePricePriority
+	baseCacheReadPrice := out.CacheReadPrice
+	baseCacheReadPricePriority := out.CacheReadPricePriority
 	out.InputPrice = applyPriceField(out.InputPrice, override.InputPrice, multiplier)
+	out.InputPricePriority = applyPriorityOverrideField(
+		baseInputPrice,
+		baseInputPricePriority,
+		override.InputPrice,
+		multiplier,
+	)
 	out.OutputPrice = applyPriceField(out.OutputPrice, override.OutputPrice, multiplier)
+	out.OutputPricePriority = applyPriorityOverrideField(
+		baseOutputPrice,
+		baseOutputPricePriority,
+		override.OutputPrice,
+		multiplier,
+	)
 	out.CacheWritePrice = applyPriceField(out.CacheWritePrice, override.CacheWritePrice, multiplier)
+	out.CacheWritePricePriority = applyPriorityOverrideField(
+		baseCacheWritePrice,
+		baseCacheWritePricePriority,
+		override.CacheWritePrice,
+		multiplier,
+	)
 	out.CacheReadPrice = applyPriceField(out.CacheReadPrice, override.CacheReadPrice, multiplier)
+	out.CacheReadPricePriority = applyPriorityOverrideField(
+		baseCacheReadPrice,
+		baseCacheReadPricePriority,
+		override.CacheReadPrice,
+		multiplier,
+	)
 	out.PerRequestPrice = applyPriceField(out.PerRequestPrice, override.PerRequestPrice, multiplier)
 	return out
 }
@@ -201,6 +249,22 @@ func applyPriceField(base *float64, explicit *float64, multiplier float64) *floa
 		return nil
 	}
 	value := *base * multiplier
+	return &value
+}
+
+func applyPriorityOverrideField(
+	base *float64,
+	basePriority *float64,
+	explicit *float64,
+	multiplier float64,
+) *float64 {
+	if explicit == nil {
+		return applyPriceField(basePriority, nil, multiplier)
+	}
+	if base == nil || basePriority == nil || *base == 0 || *basePriority == 0 {
+		return nil
+	}
+	value := *explicit * (*basePriority / *base)
 	return &value
 }
 

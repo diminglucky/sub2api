@@ -96,6 +96,9 @@ func (s *OpenAIGatewayService) resolveSubsitePricingForModel(
 		apiKey == nil || apiKey.Group == nil {
 		return subsitePricingResolution{}, false
 	}
+	if _, ok := downstream.SubsiteIDFromContext(ctx); !ok {
+		return subsitePricingResolution{}, false
+	}
 	gid := apiKey.Group.ID
 	base := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &gid, Group: apiKey.Group})
 	return s.resolveSubsitePricing(ctx, model, apiKey, base)
@@ -151,6 +154,7 @@ func (s *OpenAIGatewayService) recordDownstreamUsageSettlement(
 		UserID:         userID,
 		UsageRequestID: requestID,
 		BillingMode:    strings.TrimSpace(revenue.BillingMode),
+		Currency:       "USD",
 		RevenueAmount:  revenue.ActualCost,
 		CostAmount:     wholesaleCost.ActualCost,
 	}
@@ -175,15 +179,31 @@ func downstreamPriceFromResolved(resolved *ResolvedPricing) downstream.Price {
 	var price downstream.Price
 	if resolved.BasePricing != nil {
 		input := resolved.BasePricing.InputPricePerToken
+		inputPriority := resolved.BasePricing.InputPricePerTokenPriority
 		output := resolved.BasePricing.OutputPricePerToken
+		outputPriority := resolved.BasePricing.OutputPricePerTokenPriority
 		cacheWrite := resolved.BasePricing.CacheCreationPricePerToken
+		cacheWritePriority := resolved.BasePricing.CacheCreationPricePerTokenPriority
 		cacheRead := resolved.BasePricing.CacheReadPricePerToken
+		cacheReadPriority := resolved.BasePricing.CacheReadPricePerTokenPriority
 		price.InputPrice = &input
+		if inputPriority > 0 {
+			price.InputPricePriority = &inputPriority
+		}
 		price.OutputPrice = &output
+		if outputPriority > 0 {
+			price.OutputPricePriority = &outputPriority
+		}
 		if resolved.BasePricing.CacheCreationPriceExplicit || cacheWrite > 0 {
 			price.CacheWritePrice = &cacheWrite
+			if cacheWritePriority > 0 {
+				price.CacheWritePricePriority = &cacheWritePriority
+			}
 		}
 		price.CacheReadPrice = &cacheRead
+		if cacheReadPriority > 0 {
+			price.CacheReadPricePriority = &cacheReadPriority
+		}
 	}
 	if resolved.DefaultPerRequestPrice > 0 {
 		perRequest := resolved.DefaultPerRequestPrice
@@ -213,8 +233,14 @@ func applyDownstreamPriceToResolved(resolved *ResolvedPricing, price downstream.
 		if price.InputPrice != nil {
 			cloned.InputPricePerToken = *price.InputPrice
 		}
+		if price.InputPricePriority != nil {
+			cloned.InputPricePerTokenPriority = *price.InputPricePriority
+		}
 		if price.OutputPrice != nil {
 			cloned.OutputPricePerToken = *price.OutputPrice
+		}
+		if price.OutputPricePriority != nil {
+			cloned.OutputPricePerTokenPriority = *price.OutputPricePriority
 		}
 		if price.CacheWritePrice != nil {
 			cloned.CacheCreationPricePerToken = *price.CacheWritePrice
@@ -222,8 +248,14 @@ func applyDownstreamPriceToResolved(resolved *ResolvedPricing, price downstream.
 			cloned.CacheCreation1hPrice = *price.CacheWritePrice
 			cloned.CacheCreationPriceExplicit = true
 		}
+		if price.CacheWritePricePriority != nil {
+			cloned.CacheCreationPricePerTokenPriority = *price.CacheWritePricePriority
+		}
 		if price.CacheReadPrice != nil {
 			cloned.CacheReadPricePerToken = *price.CacheReadPrice
+		}
+		if price.CacheReadPricePriority != nil {
+			cloned.CacheReadPricePerTokenPriority = *price.CacheReadPricePriority
 		}
 		out.BasePricing = &cloned
 	}

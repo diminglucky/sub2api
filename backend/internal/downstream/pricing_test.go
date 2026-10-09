@@ -65,6 +65,63 @@ func TestRepositoryResolveSubsitePriceGroupOverrideFallsBackFromModel(t *testing
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestRepositoryResolveSubsitePriceScalesPriorityFields(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	input := 1.0
+	inputPriority := 2.0
+	output := 4.0
+	outputPriority := 8.0
+	mock.ExpectQuery(`(?s)FROM subsite_prices\s+WHERE subsite_id = \$1\s+AND scope = 'model'\s+AND model = \$2`).
+		WithArgs(int64(7), "gpt-4o").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"rate_multiplier", "input_price", "output_price",
+			"cache_write_price", "cache_read_price", "per_request_price",
+		}).AddRow(1.5, nil, nil, nil, nil, nil))
+
+	repo := NewRepository(db)
+	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{
+		InputPrice:          &input,
+		InputPricePriority:  &inputPriority,
+		OutputPrice:         &output,
+		OutputPricePriority: &outputPriority,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 1.5, *got.InputPrice, 1e-12)
+	require.InDelta(t, 3.0, *got.InputPricePriority, 1e-12)
+	require.InDelta(t, 6.0, *got.OutputPrice, 1e-12)
+	require.InDelta(t, 12.0, *got.OutputPricePriority, 1e-12)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRepositoryResolveSubsitePricePreservesPriorityRatioForExplicitPrice(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	input := 1.0
+	inputPriority := 2.0
+	explicitInput := 0.5
+	mock.ExpectQuery(`(?s)FROM subsite_prices\s+WHERE subsite_id = \$1\s+AND scope = 'model'\s+AND model = \$2`).
+		WithArgs(int64(7), "gpt-4o").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"rate_multiplier", "input_price", "output_price",
+			"cache_write_price", "cache_read_price", "per_request_price",
+		}).AddRow(2.0, explicitInput, nil, nil, nil, nil))
+
+	repo := NewRepository(db)
+	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{
+		InputPrice:         &input,
+		InputPricePriority: &inputPriority,
+	})
+	require.NoError(t, err)
+	require.InDelta(t, 0.5, *got.InputPrice, 1e-12)
+	require.InDelta(t, 1.0, *got.InputPricePriority, 1e-12)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestRepositoryResolveSubsitePriceFallsBackToBaseForMainSite(t *testing.T) {
 	input := 1.25
 	base := Price{InputPrice: &input}
