@@ -10,11 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// DownstreamSlugHeader is the trusted, edge-provided header naming the resolved
-// subsite slug. The edge layer must strip any client-supplied value before
-// forwarding, so the backend only ever sees the authoritative slug.
-const DownstreamSlugHeader = "X-Downstream-Slug"
-
 // DownstreamSubsiteResolver resolves a registered subsite from its slug.
 // *downstream.Repository satisfies it through GetSubsiteBySlug.
 type DownstreamSubsiteResolver interface {
@@ -22,9 +17,9 @@ type DownstreamSubsiteResolver interface {
 }
 
 // DownstreamSubsite resolves the subsite context for requests that arrive on a
-// "<slug>.<baseDomain>" host, or that carry the trusted DownstreamSlugHeader.
-// The resolved *downstream.Subsite is attached to the gin context so handlers
-// and the gateway can read it with downstream.FromGin.
+// "<slug>.<baseDomain>" host. The resolved *downstream.Subsite is attached to
+// the gin context so handlers and the gateway can read it with
+// downstream.FromGin.
 //
 // Resolution is context only: it never rewrites paths, bodies or headers, so
 // OpenAI-compatible /v1 requests keep the current gateway behavior. Requests
@@ -67,16 +62,12 @@ func DownstreamSubsite(resolver DownstreamSubsiteResolver, baseDomain string) gi
 	}
 }
 
-// downstreamSlugForRequest picks the subsite slug from the request. The trusted
-// edge header wins; otherwise the first label of a "<label>.<baseDomain>" host
-// is used. Hosts outside the base domain (apex, localhost, unrelated domains)
-// are not subsite-scoped.
+// downstreamSlugForRequest picks the subsite slug from the request host. Only
+// a direct "<label>.<baseDomain>" host produces a slug. Apex hosts, www,
+// nested hosts, and unrelated domains are not subsite-scoped.
 func downstreamSlugForRequest(req *http.Request, baseDomain string) (string, bool) {
 	if req == nil {
 		return "", false
-	}
-	if headerSlug := downstream.NormalizeSlug(req.Header.Get(DownstreamSlugHeader)); headerSlug != "" {
-		return headerSlug, true
 	}
 
 	host := normalizeRequestHost(requestHost(req))
@@ -88,10 +79,10 @@ func downstreamSlugForRequest(req *http.Request, baseDomain string) (string, boo
 		return "", false
 	}
 
-	// "first host label": draw.superai.sbs -> draw, a.b.superai.sbs -> a.
+	// V1 only serves direct subdomains: draw.superai.sbs -> draw.
 	label := strings.TrimSuffix(host, suffix)
-	if idx := strings.Index(label, "."); idx >= 0 {
-		label = label[:idx]
+	if label == "" || strings.Contains(label, ".") || label == "www" {
+		return "", false
 	}
 	label = downstream.NormalizeSlug(label)
 	if label == "" {
@@ -113,6 +104,16 @@ func abortDownstreamSubsiteNotFound(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	if isOpenAIV1Path(c) {
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
+			"error": gin.H{
+				"message": "Unknown downstream subsite.",
+				"type":    "invalid_request_error",
+				"code":    "subsite_not_found",
+			},
+		})
+		return
+	}
 	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
 		"error": gin.H{
 			"code":    "SUBSITE_NOT_FOUND",
@@ -128,10 +129,28 @@ func abortDownstreamSubsiteResolutionFailed(c *gin.Context) {
 		c.Abort()
 		return
 	}
+	if isOpenAIV1Path(c) {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+			"error": gin.H{
+				"message": "Failed to resolve downstream subsite.",
+				"type":    "server_error",
+				"code":    "subsite_resolution_failed",
+			},
+		})
+		return
+	}
 	c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 		"error": gin.H{
 			"code":    "SUBSITE_RESOLUTION_FAILED",
 			"message": "Failed to resolve downstream subsite.",
 		},
 	})
+}
+
+func isOpenAIV1Path(c *gin.Context) bool {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return false
+	}
+	path := c.Request.URL.Path
+	return path == "/v1" || strings.HasPrefix(path, "/v1/")
 }

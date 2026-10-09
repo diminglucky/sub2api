@@ -89,22 +89,31 @@ func TestDownstreamSubsiteMiddlewareResolvesDraw(t *testing.T) {
 	require.JSONEq(t, `{"scoped":true,"slug":"draw","id":7}`, w.Body.String())
 }
 
-func TestDownstreamSubsiteMiddlewarePrefersTrustedSlugHeader(t *testing.T) {
+func TestDownstreamSubsiteMiddlewareIgnoresClientSuppliedSlugHeaderOnApex(t *testing.T) {
 	r := newDownstreamSubsiteTestRouter(newDrawResolver())
 
-	// The edge sets X-Downstream-Slug; it must win over the host label.
+	// V1 resolves strictly from Host; a client-supplied slug header is ignored.
 	w := serveDraw(r, http.MethodGet, "/home", "superai.sbs", map[string]string{
-		DownstreamSlugHeader: " DRAW ",
+		"X-Downstream-Slug": "draw",
 	})
 
 	require.Equal(t, http.StatusOK, w.Code)
-	require.JSONEq(t, `{"scoped":true,"slug":"draw","id":7}`, w.Body.String())
+	require.JSONEq(t, `{"scoped":false}`, w.Body.String())
 }
 
 func TestDownstreamSubsiteMiddlewareIgnoresApexHost(t *testing.T) {
 	r := newDownstreamSubsiteTestRouter(newDrawResolver())
 
 	w := serveDraw(r, http.MethodGet, "/home", "superai.sbs", nil)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.JSONEq(t, `{"scoped":false}`, w.Body.String())
+}
+
+func TestDownstreamSubsiteMiddlewareIgnoresWwwHost(t *testing.T) {
+	r := newDownstreamSubsiteTestRouter(newDrawResolver())
+
+	w := serveDraw(r, http.MethodGet, "/home", "www.superai.sbs", nil)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.JSONEq(t, `{"scoped":false}`, w.Body.String())
@@ -119,6 +128,15 @@ func TestDownstreamSubsiteMiddlewareReturns404ForUnknownSlug(t *testing.T) {
 	require.Contains(t, w.Body.String(), "SUBSITE_NOT_FOUND")
 }
 
+func TestDownstreamSubsiteMiddlewareReturnsOpenAIErrorForUnknownSubsiteOnV1(t *testing.T) {
+	r := newDownstreamSubsiteTestRouter(newDrawResolver())
+
+	w := serveDraw(r, http.MethodGet, "/v1/models", "missing.superai.sbs", nil)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.JSONEq(t, `{"error":{"message":"Unknown downstream subsite.","type":"invalid_request_error","code":"subsite_not_found"}}`, w.Body.String())
+}
+
 func TestDownstreamSubsiteMiddlewareReturns404ForDisabledSubsite(t *testing.T) {
 	disabled := drawSubsite()
 	disabled.Status = downstream.SubsiteStatusDisabled
@@ -129,6 +147,18 @@ func TestDownstreamSubsiteMiddlewareReturns404ForDisabledSubsite(t *testing.T) {
 
 	require.Equal(t, http.StatusNotFound, w.Code)
 	require.Contains(t, w.Body.String(), "SUBSITE_NOT_FOUND")
+}
+
+func TestDownstreamSubsiteMiddlewareReturnsOpenAIErrorForDisabledSubsiteOnV1(t *testing.T) {
+	disabled := drawSubsite()
+	disabled.Status = downstream.SubsiteStatusDisabled
+	resolver := &stubSubsiteResolver{subsites: map[string]*downstream.Subsite{"draw": disabled}}
+	r := newDownstreamSubsiteTestRouter(resolver)
+
+	w := serveDraw(r, http.MethodGet, "/v1/models", "draw.superai.sbs", nil)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	require.JSONEq(t, `{"error":{"message":"Unknown downstream subsite.","type":"invalid_request_error","code":"subsite_not_found"}}`, w.Body.String())
 }
 
 // TestDownstreamSubsiteMiddlewareKeepsV1GatewayBehavior pins that resolution
@@ -188,4 +218,14 @@ func TestDownstreamSubsiteMiddlewareResolverFailureIs500(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, w.Code)
 	require.Contains(t, w.Body.String(), "SUBSITE_RESOLUTION_FAILED")
+}
+
+func TestDownstreamSubsiteMiddlewareResolverFailureOnV1UsesOpenAIError(t *testing.T) {
+	resolver := &stubSubsiteResolver{err: sql.ErrConnDone}
+	r := newDownstreamSubsiteTestRouter(resolver)
+
+	w := serveDraw(r, http.MethodGet, "/v1/models", "draw.superai.sbs", nil)
+
+	require.Equal(t, http.StatusInternalServerError, w.Code)
+	require.JSONEq(t, `{"error":{"message":"Failed to resolve downstream subsite.","type":"server_error","code":"subsite_resolution_failed"}}`, w.Body.String())
 }
