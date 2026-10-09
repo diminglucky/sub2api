@@ -83,10 +83,10 @@ COMMENT ON COLUMN subsite_prices.scope IS 'group 按分组覆盖，model 按模�
 -- V1 只记录应付台账，不自动打款。
 CREATE TABLE IF NOT EXISTS settlement_ledger (
     id            BIGSERIAL PRIMARY KEY,
-    subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE CASCADE,
+    subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE RESTRICT,
     order_id      BIGINT REFERENCES payment_orders(id) ON DELETE SET NULL,
     user_id       BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    currency      VARCHAR(10)   NOT NULL DEFAULT 'USD',
+    currency      VARCHAR(10)   NOT NULL DEFAULT 'CNY',
     gross_amount  DECIMAL(20,8) NOT NULL DEFAULT 0,
     cost_amount   DECIMAL(20,8) NOT NULL DEFAULT 0,
     margin_amount DECIMAL(20,8) NOT NULL DEFAULT 0,
@@ -115,9 +115,44 @@ ALTER TABLE api_keys       ADD COLUMN IF NOT EXISTS subsite_id BIGINT;
 CREATE INDEX IF NOT EXISTS idx_payment_orders_subsite_id ON payment_orders(subsite_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_subsite_id ON api_keys(subsite_id);
 
--- usage_logs 是最大的表，按仓库既有约定必须用 `CREATE INDEX CONCURRENTLY`
--- 且放在单独的 `_notx.sql` 迁移里，避免启动迁移时长时间持锁。
--- 该索引由后续用量归属任务（Task 4）以并发方式补充。
+-- 子站删除时保留订单、Key 和用量行，只把归属清空，避免悬空 subsite_id。
+-- payment_orders / api_keys 使用 NOT VALID 添加约束以避免启动时全表校验；
+-- 新写入仍会被 PostgreSQL 强制校验，存量行由本节新增列保证无历史脏数据。
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_payment_orders_subsite_id'
+          AND conrelid = 'payment_orders'::regclass
+    ) THEN
+        ALTER TABLE payment_orders
+            ADD CONSTRAINT fk_payment_orders_subsite_id
+            FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_api_keys_subsite_id'
+          AND conrelid = 'api_keys'::regclass
+    ) THEN
+        ALTER TABLE api_keys
+            ADD CONSTRAINT fk_api_keys_subsite_id
+            FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'fk_usage_logs_subsite_id'
+          AND conrelid = 'usage_logs'::regclass
+    ) THEN
+        ALTER TABLE usage_logs
+            ADD CONSTRAINT fk_usage_logs_subsite_id
+            FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID;
+    END IF;
+END $$;
+
+-- usage_logs 是最大的表，按仓库既有约定索引放在单独的 `_notx.sql` 迁移里，
+-- 使用 `CREATE INDEX CONCURRENTLY` 避免启动迁移时长时间持锁。
 
 COMMENT ON COLUMN payment_orders.subsite_id IS '充值订单归属子站；NULL 表示主站订单';
 COMMENT ON COLUMN usage_logs.subsite_id IS '调用用量归属子站；NULL 表示主站用量';

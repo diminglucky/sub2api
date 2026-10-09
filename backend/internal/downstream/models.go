@@ -114,8 +114,8 @@ type PriceOverride struct {
 type SettlementEntry struct {
 	ID           int64
 	SubsiteID    int64
-	OrderID      int64
-	UserID       int64
+	OrderID      *int64
+	UserID       *int64
 	Currency     string
 	GrossAmount  float64
 	CostAmount   float64

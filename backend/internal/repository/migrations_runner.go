@@ -62,6 +62,8 @@ const usageLogsUpstreamModelMismatchIndex = "idx_usage_logs_upstream_model_misma
 const usageLogsEffectiveModelIndexesMigration = "226_add_usage_log_effective_model_indexes_notx.sql"
 const usageLogsEffectiveRequestedModelIndex = "idx_usage_logs_effective_requested_model_created"
 const usageLogsEffectiveUpstreamModelIndex = "idx_usage_logs_effective_upstream_model_created"
+const downstreamUsageLogsSubsiteIDIndexMigration = "243_downstream_usage_logs_subsite_id_index_notx.sql"
+const downstreamUsageLogsSubsiteIDIndex = "idx_usage_logs_subsite_id"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -305,6 +307,8 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 			}
 		}
 		return nil
+	case downstreamUsageLogsSubsiteIDIndexMigration:
+		return dropInvalidIndexIfPresent(ctx, db, downstreamUsageLogsSubsiteIDIndex)
 	default:
 		return nil
 	}

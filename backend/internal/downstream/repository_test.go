@@ -119,6 +119,12 @@ func TestDownstreamSubsiteMigration(t *testing.T) {
 		"ALTER TABLE usage_logs     ADD COLUMN IF NOT EXISTS subsite_id BIGINT",
 		"ALTER TABLE api_keys       ADD COLUMN IF NOT EXISTS subsite_id BIGINT",
 		"REFERENCES subsites(id) ON DELETE CASCADE",
+		"subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE RESTRICT",
+		"currency      VARCHAR(10)   NOT NULL DEFAULT 'CNY'",
+		"ADD CONSTRAINT fk_payment_orders_subsite_id",
+		"FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID",
+		"ADD CONSTRAINT fk_api_keys_subsite_id",
+		"ADD CONSTRAINT fk_usage_logs_subsite_id",
 	} {
 		require.Contains(t, sqlText, required)
 	}
@@ -131,6 +137,27 @@ func TestDownstreamSubsiteMigration(t *testing.T) {
 	// usage_logs indexes belong in a separate _notx.sql migration.
 	require.NotContains(t, strings.ToUpper(stripSQLLineComments(sqlText)), "CONCURRENTLY")
 	require.NotContains(t, sqlText, "idx_usage_logs_subsite_id")
+
+	indexContent, err := migrations.FS.ReadFile("243_downstream_usage_logs_subsite_id_index_notx.sql")
+	require.NoError(t, err)
+	indexSQL := string(indexContent)
+	require.Contains(t, indexSQL, "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_subsite_id")
+	require.Contains(t, indexSQL, "WHERE subsite_id IS NOT NULL")
+}
+
+// TestSettlementEntryNullableReferences pins that nullable settlement_ledger
+// references scan into pointer fields instead of failing on NULL.
+func TestSettlementEntryNullableReferences(t *testing.T) {
+	var entry SettlementEntry
+	require.Nil(t, entry.OrderID)
+	require.Nil(t, entry.UserID)
+
+	orderID := int64(1001)
+	userID := int64(42)
+	entry.OrderID = &orderID
+	entry.UserID = &userID
+	require.Equal(t, int64(1001), *entry.OrderID)
+	require.Equal(t, int64(42), *entry.UserID)
 }
 
 // stripSQLLineComments removes `--` comment lines so structural assertions do
