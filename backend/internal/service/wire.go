@@ -49,8 +49,11 @@ func ProvideUpdateService(cache UpdateCache, githubClient GitHubReleaseClient, b
 }
 
 // ProvideEmailQueueService creates EmailQueueService with default worker count
-func ProvideEmailQueueService(emailService *EmailService) *EmailQueueService {
-	return NewEmailQueueService(emailService, 3)
+// It must use the persistent constructor: the announcement email worker only
+// starts when the batch repository is present, otherwise queued announcement
+// campaigns are written to the database and never delivered.
+func ProvideEmailQueueService(emailService *EmailService, batchRepo AnnouncementEmailBatchRepository) *EmailQueueService {
+	return NewPersistentEmailQueueService(emailService, batchRepo, 3)
 }
 
 // ProvideAuthService wires the optional captcha providers into AuthService while
