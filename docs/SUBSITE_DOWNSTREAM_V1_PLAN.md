@@ -60,7 +60,7 @@
 
 - [ ] Write failing middleware test for `Host: draw.superai.sbs`.
 - [ ] Run `go test ./internal/server/middleware -run TestDownstreamSubsiteMiddlewareResolvesDraw -v` and expect failure.
-- [ ] Parse the trusted `X-Downstream-Slug` header first, then the first host label.
+- [ ] Resolve the subsite slug from Host only. Do not trust client-supplied `X-Downstream-Slug` or equivalent headers in V1.
 - [ ] Return 404 for unknown slugs; do not resolve `/v1/*` differently from current gateway behavior.
 - [ ] Run the middleware test and expect PASS.
 - [ ] Commit with `feat: resolve downstream subsite context`.
