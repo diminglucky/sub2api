@@ -447,6 +447,16 @@ export const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/subsite-settings',
+    name: 'SubsiteSettings',
+    component: () => import('@/views/subsite/SubsiteSettingsView.vue'),
+    meta: {
+      requiresAuth: true,
+      title: '子站设置',
+      titleKey: 'nav.downstream'
+    }
+  },
+  {
     path: '/admin/dashboard',
     name: 'AdminDashboard',
     component: () => import('@/views/admin/DashboardView.vue'),

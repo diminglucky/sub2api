@@ -31,6 +31,8 @@ func RegisterRoutes(r *gin.Engine, repo SummaryRepository, jwtAuth gin.HandlerFu
 	if scopedRepo, ok := repo.(ScopedPriceRepository); ok && scopedRepo != nil {
 		scoped := NewScopedAdminHandler(scopedRepo)
 		admin := auth.Group("/admin")
+		admin.GET("/settings", scoped.GetSettings)
+		admin.PUT("/settings", scoped.UpdateSettings)
 		admin.GET("/channels", scoped.ListChannels)
 		admin.GET("/prices", scoped.ListPrices)
 		admin.POST("/prices", scoped.CreatePrice)

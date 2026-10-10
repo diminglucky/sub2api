@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
@@ -53,12 +54,25 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 // by main-site admin role, so a sub-site owner manages only its own prices.
 type ScopedPriceRepository interface {
 	GetSubsiteUserSummary(ctx context.Context, subsiteID, userID int64) (*SubsiteUserSummary, error)
+	GetSubsiteByID(ctx context.Context, id int64) (*Subsite, error)
+	UpdateSubsite(ctx context.Context, id int64, input SubsiteUpsert) (*Subsite, error)
 	ListSubsiteChannels(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
 	ListSubsitePrices(ctx context.Context, subsiteID int64) ([]PriceOverride, error)
 	CreateSubsitePrice(ctx context.Context, subsiteID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	UpdateSubsitePrice(ctx context.Context, subsiteID, priceID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	DeleteSubsitePrice(ctx context.Context, subsiteID, priceID int64) error
 	GroupRateMultiplier(ctx context.Context, groupID int64) (float64, error)
+}
+
+// SubsiteSettings is the display/branding settings a sub-site admin may edit.
+// Slug, domain and status stay under main-site control.
+type SubsiteSettings struct {
+	Slug       string `json:"slug"`
+	Domain     string `json:"domain"`
+	Name       string `json:"name"`
+	LogoURL    string `json:"logo_url"`
+	ThemeColor string `json:"theme_color"`
+	Status     string `json:"status"`
 }
 
 // ScopedAdminHandler serves price management for the current sub-site only.
@@ -98,6 +112,76 @@ func (h *ScopedAdminHandler) ListChannels(c *gin.Context) {
 		return
 	}
 	response.Success(c, channels)
+}
+
+// GetSettings returns the editable branding settings of the current sub-site.
+func (h *ScopedAdminHandler) GetSettings(c *gin.Context) {
+	subsiteID, ok := h.authorize(c)
+	if !ok {
+		return
+	}
+	subsite, err := h.repo.GetSubsiteByID(c.Request.Context(), subsiteID)
+	if err != nil {
+		writeAdminError(c, err, "failed to load subsite settings")
+		return
+	}
+	response.Success(c, SubsiteSettings{
+		Slug:       subsite.Slug,
+		Domain:     subsite.Domain,
+		Name:       subsite.Name,
+		LogoURL:    subsite.LogoURL,
+		ThemeColor: subsite.ThemeColor,
+		Status:     subsite.Status,
+	})
+}
+
+// UpdateSettings updates the branding fields a sub-site admin owns. Slug,
+// domain, status and owner are preserved from the stored record so a sub-site
+// admin can never change its own routing or lifecycle.
+func (h *ScopedAdminHandler) UpdateSettings(c *gin.Context) {
+	subsiteID, ok := h.authorize(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name       string `json:"name"`
+		LogoURL    string `json:"logo_url"`
+		ThemeColor string `json:"theme_color"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "invalid subsite settings payload")
+		return
+	}
+	current, err := h.repo.GetSubsiteByID(c.Request.Context(), subsiteID)
+	if err != nil {
+		writeAdminError(c, err, "failed to load subsite settings")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = current.Name
+	}
+	updated, err := h.repo.UpdateSubsite(c.Request.Context(), subsiteID, SubsiteUpsert{
+		Slug:        current.Slug,
+		Domain:      current.Domain,
+		Name:        name,
+		LogoURL:     strings.TrimSpace(req.LogoURL),
+		ThemeColor:  strings.TrimSpace(req.ThemeColor),
+		Status:      current.Status,
+		AdminUserID: current.AdminUserID,
+	})
+	if err != nil {
+		writeAdminError(c, err, "failed to update subsite settings")
+		return
+	}
+	response.Success(c, SubsiteSettings{
+		Slug:       updated.Slug,
+		Domain:     updated.Domain,
+		Name:       updated.Name,
+		LogoURL:    updated.LogoURL,
+		ThemeColor: updated.ThemeColor,
+		Status:     updated.Status,
+	})
 }
 
 // CreatePrice adds a price override to the current sub-site.

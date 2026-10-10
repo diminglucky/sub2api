@@ -784,7 +784,11 @@ const userNavItems = computed((): NavItem[] => {
   // Sub-site hosts hide the main admin console; sub-site admins get a single
   // scoped entry instead.
   if (isSubsite.value && subsiteAdmin.value) {
-    return [{ path: '/subsite-admin', label: t('nav.downstream'), icon: GlobeIcon }, ...items]
+    return [
+      { path: '/subsite-admin', label: t('nav.downstream'), icon: GlobeIcon },
+      { path: '/subsite-settings', label: '子站设置', icon: CogIcon },
+      ...items
+    ]
   }
   return items
 })
