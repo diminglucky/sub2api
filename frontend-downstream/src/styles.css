@@ -474,17 +474,60 @@ h1 {
 }
 
 .auth-shell {
+  position: relative;
+  isolation: isolate;
   background:
     radial-gradient(circle at 20% 10%, rgba(20, 184, 166, 0.16), transparent 24rem),
     linear-gradient(180deg, #f8fbfa, #eef3f2);
 }
 
+.auth-app-shell {
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(20, 184, 166, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 184, 166, 0.055) 1px, transparent 1px),
+    radial-gradient(circle at 50% -10%, rgba(20, 184, 166, 0.24), transparent 34rem),
+    linear-gradient(180deg, #f8fbfa, #eef5f3);
+  background-size:
+    48px 48px,
+    48px 48px,
+    auto,
+    auto;
+}
+
+.auth-shell {
+  min-height: 100vh;
+}
+
+.auth-notice {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 30;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+}
+
 .auth-card {
-  padding: 34px;
+  width: min(100%, 440px);
+  border-radius: 12px;
+  padding: 38px 36px;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.12);
 }
 
 .auth-card h1 {
-  font-size: 32px;
+  margin-bottom: 10px;
+  font-size: 30px;
+  text-align: center;
+}
+
+.auth-card .eyebrow,
+.auth-card .lede {
+  text-align: center;
+}
+
+.auth-card .eyebrow {
+  margin-bottom: 14px;
 }
 
 .field input {
@@ -496,6 +539,15 @@ h1 {
 .primary-button {
   min-height: 46px;
   box-shadow: 0 12px 28px color-mix(in srgb, var(--site-color, #0f766e) 24%, transparent);
+}
+
+.auth-card .field {
+  gap: 8px;
+}
+
+.auth-card .field input {
+  border-radius: 10px;
+  padding-inline: 14px;
 }
 
 @media (max-width: 920px) {

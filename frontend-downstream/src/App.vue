@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getMeSummary, getSite, hasSession, logout, type SiteConfig } from './api'
 
 const router = useRouter()
+const route = useRoute()
 const site = ref<SiteConfig>({
   id: 0,
   slug: 'draw',
@@ -20,6 +21,7 @@ const siteError = ref('')
 const themeStyle = computed(() => ({
   '--site-color': site.value.theme_color || '#0f766e'
 }))
+const isAuthRoute = computed(() => route.name === 'login' || route.name === 'register')
 
 onMounted(async () => {
   try {
@@ -68,7 +70,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" :style="themeStyle">
+  <div v-if="isAuthRoute" class="auth-app-shell" :style="themeStyle">
+    <div v-if="siteError" class="notice auth-notice">{{ siteError }}</div>
+    <RouterView v-slot="{ Component }">
+      <component :is="Component" :site="site" />
+    </RouterView>
+  </div>
+
+  <div v-else class="app-shell" :style="themeStyle">
     <header class="site-header">
       <RouterLink class="brand" to="/">
         <img v-if="site.logo_url" :src="site.logo_url" alt="" width="38" height="38" />
