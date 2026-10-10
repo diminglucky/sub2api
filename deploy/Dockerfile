@@ -18,7 +18,9 @@ ARG GOSUMDB=sum.golang.google.cn
 FROM ${NODE_IMAGE} AS frontend-builder
 
 WORKDIR /app/frontend
-ENV NODE_OPTIONS=--max-old-space-size=1536
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
 
 # Install pnpm. Keep this pinned to the lockfile-compatible version so Docker
 # builds remain reproducible when pnpm changes config validation rules.
@@ -43,7 +45,9 @@ RUN pnpm run build
 FROM ${NODE_IMAGE} AS downstream-frontend-builder
 
 WORKDIR /app/frontend-downstream
-ENV NODE_OPTIONS=--max-old-space-size=1536
+ENV NODE_OPTIONS=--max-old-space-size=4096
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
+ENV npm_config_registry=https://registry.npmmirror.com
 
 RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 
