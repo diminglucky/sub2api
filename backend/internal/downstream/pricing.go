@@ -129,6 +129,44 @@ func (r *Repository) ResolveSubsitePrice(
 	return basePrice.Clone(), nil
 }
 
+// ResolveSubsiteOverride returns the winning sub-site price override for a
+// model/group (model scope wins over group scope), or nil when none exists.
+// Callers use it to distinguish a same-scale multiplier override from an
+// explicit absolute price override.
+func (r *Repository) ResolveSubsiteOverride(
+	ctx context.Context,
+	subsiteID int64,
+	model string,
+	groupID ...int64,
+) (*PriceOverride, error) {
+	if subsiteID <= 0 {
+		return nil, nil
+	}
+	if r == nil || r.db == nil {
+		return nil, errors.New("downstream: nil repository database")
+	}
+	model = strings.TrimSpace(model)
+	if model != "" {
+		override, err := r.lookupPriceOverride(ctx, subsiteID, PriceOverrideScopeModel, model, 0)
+		if err == nil {
+			return override, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+	if len(groupID) > 0 && groupID[0] > 0 {
+		override, err := r.lookupPriceOverride(ctx, subsiteID, PriceOverrideScopeGroup, "", groupID[0])
+		if err == nil {
+			return override, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+	}
+	return nil, nil
+}
+
 func (r *Repository) lookupPriceOverride(
 	ctx context.Context,
 	subsiteID int64,

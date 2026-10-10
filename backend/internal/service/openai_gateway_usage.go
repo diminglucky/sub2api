@@ -247,18 +247,28 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		subsitePricing, hasSubsitePricing = mediaPricing, true
 	}
 	var subsitePrice *downstream.Price
+	revenueMultiplier := multiplier
+	revenueImageMultiplier := imageMultiplier
+	revenueVideoMultiplier := videoMultiplier
 	if hasSubsitePricing {
-		price := subsitePricing.Price
-		subsitePrice = &price
+		if subsitePricing.Multiplier != nil {
+			// 同刻度替换：子站倍率直接替换主站分组/用户倍率，基础价不再缩放。
+			revenueMultiplier = *subsitePricing.Multiplier
+			revenueImageMultiplier = *subsitePricing.Multiplier
+			revenueVideoMultiplier = *subsitePricing.Multiplier
+		} else {
+			price := subsitePricing.Price
+			subsitePrice = &price
+		}
 	}
 	cost, err = s.calculateOpenAIRecordUsageCostWithSubsite(
 		ctx,
 		result,
 		apiKey,
 		billingModels,
-		multiplier,
-		imageMultiplier,
-		videoMultiplier,
+		revenueMultiplier,
+		revenueImageMultiplier,
+		revenueVideoMultiplier,
 		baseMultiplier,
 		tokens,
 		serviceTier,

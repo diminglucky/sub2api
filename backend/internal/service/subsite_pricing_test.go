@@ -106,6 +106,36 @@ func TestApplyDownstreamPriceToResolvedNoOpWhenPriceUnset(t *testing.T) {
 	require.Same(t, base, applyDownstreamPriceToResolved(base, downstream.Price{}))
 }
 
+// A same-scale sub-site multiplier replaces the main-site group multiplier:
+// main 0.1 -> sub-site 0.1 means the same price, and the base price is not
+// scaled on top of it.
+func TestResolveSubsitePricingSameScaleReplacement(t *testing.T) {
+	stub := &openAIRecordUsageDownstreamPricingStub{
+		overrides: map[string]*downstream.PriceOverride{
+			"claude-sonnet-4": {
+				Scope:          downstream.PriceOverrideScopeModel,
+				RateMultiplier: 0.12,
+			},
+		},
+	}
+	svc := &OpenAIGatewayService{downstreamPricing: stub}
+
+	groupID := int64(1)
+	apiKey := &APIKey{GroupID: &groupID, Group: &Group{ID: 1, RateMultiplier: 0.1}}
+	base := &ResolvedPricing{
+		Mode:        BillingModeToken,
+		BasePricing: &ModelPricing{InputPricePerToken: 3e-6, OutputPricePerToken: 15e-6},
+	}
+	ctx := downstream.WithSubsite(context.Background(), &downstream.Subsite{ID: 7})
+
+	res, ok := svc.resolveSubsitePricing(ctx, "claude-sonnet-4", apiKey, base)
+	require.True(t, ok)
+	require.NotNil(t, res.Multiplier)
+	require.InDelta(t, 0.12, *res.Multiplier, 1e-12)
+	require.NotNil(t, res.Price.InputPrice)
+	require.InDelta(t, 3e-6, *res.Price.InputPrice, 1e-12)
+}
+
 // The sub-site price is the user-facing charge (revenue); the main-site price
 // is the wholesale cost used for the settlement margin.
 func TestSubsitePriceChargesRevenueWhileMainPriceIsWholesaleCost(t *testing.T) {

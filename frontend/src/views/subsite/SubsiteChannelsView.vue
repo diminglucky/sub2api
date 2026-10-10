@@ -44,7 +44,7 @@
 
         <div class="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div>
-            <p class="text-xs font-medium text-gray-500">加价倍率（token 模型，1 = 与主站同价）</p>
+            <p class="text-xs font-medium text-gray-500">倍率（token 模型，与主站同刻度）</p>
             <div class="mt-2 flex items-center gap-2 text-sm">
               <span class="text-gray-500">主站</span>
               <span class="rounded bg-gray-100 px-2 py-1 font-mono text-gray-600 dark:bg-dark-800 dark:text-gray-300">
@@ -58,13 +58,13 @@
                 class="input w-24"
                 type="number"
                 step="0.01"
-                :min="1"
+                :min="row.mainRate"
                 :disabled="!row.enabled"
-                :class="{ 'input-error': row.enabled && row.subRate < 1 }"
+                :class="{ 'input-error': row.enabled && row.subRate < row.mainRate }"
               />
             </label>
-            <p v-if="row.enabled && row.subRate < 1" class="mt-1 text-xs text-red-500">
-              不能低于 1（低于 1 会低于主站价格）
+            <p v-if="row.enabled && row.subRate < row.mainRate" class="mt-1 text-xs text-red-500">
+              不能低于主站倍率
             </p>
           </div>
 
@@ -203,7 +203,7 @@ function imageRowValid(row: ChannelRow): boolean {
 
 function rowValid(row: ChannelRow): boolean {
   if (!row.enabled) return true
-  return row.subRate + 1e-9 >= 1 && imageRowValid(row)
+  return row.subRate + 1e-9 >= row.mainRate && imageRowValid(row)
 }
 
 function formatPrice(value: number | null): string {
@@ -266,7 +266,7 @@ async function saveChannel(row: ChannelRow) {
       const payload = {
         scope: 'group' as const,
         group_id: row.groupId,
-        rate_multiplier: Number(row.subRate) || 1,
+        rate_multiplier: Number(row.subRate) || row.mainRate,
         image_price_1k: row.sub['1k'],
         image_price_2k: row.sub['2k'],
         image_price_4k: row.sub['4k']

@@ -46,6 +46,8 @@ type openAIRecordUsageDownstreamPricingStub struct {
 
 	factors map[string]float64
 	models  []string
+	// overrides, when set, drives the same-scale multiplier replacement path.
+	overrides map[string]*downstream.PriceOverride
 }
 
 func (s *openAIRecordUsageDownstreamPricingStub) ResolveSubsitePrice(
@@ -61,6 +63,18 @@ func (s *openAIRecordUsageDownstreamPricingStub) ResolveSubsitePrice(
 		factor = 1
 	}
 	return scaleDownstreamPriceForTest(basePrice, factor), nil
+}
+
+func (s *openAIRecordUsageDownstreamPricingStub) ResolveSubsiteOverride(
+	_ context.Context,
+	_ int64,
+	model string,
+	_ ...int64,
+) (*downstream.PriceOverride, error) {
+	if s.overrides == nil {
+		return nil, nil
+	}
+	return s.overrides[model], nil
 }
 
 type openAIRecordUsageSettlementStub struct {

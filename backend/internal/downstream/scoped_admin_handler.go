@@ -28,9 +28,8 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			response.BadRequest(c, "group_id is required for a group price override")
 			return false
 		}
-		// 主站倍率仅用于确认分组存在；子站倍率是叠加在主站价格之上的因子，
-		// 下限为 1（1 = 与主站同价），低于 1 就会低于主站成本。
-		_, err := h.repo.GroupRateMultiplier(c.Request.Context(), *req.GroupID)
+		// 同刻度替换：子站倍率与主站分组倍率同一刻度，下限即主站倍率。
+		mainRate, err := h.repo.GroupRateMultiplier(c.Request.Context(), *req.GroupID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				response.BadRequest(c, "unknown group")
@@ -39,7 +38,7 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			response.InternalError(c, "failed to load main-site group price")
 			return false
 		}
-		if rate+priceFloorEpsilon < 1 {
+		if rate+priceFloorEpsilon < mainRate {
 			response.BadRequest(c, "子站价格不能低于主站价格")
 			return false
 		}
