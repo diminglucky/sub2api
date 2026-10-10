@@ -2,6 +2,8 @@
 package routes
 
 import (
+	"context"
+
 	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -138,8 +140,35 @@ func RegisterAdminRoutes(
 
 		// 下游子站管理（主站控制面）
 		if len(downstreamRepos) > 0 {
-			downstream.RegisterAdminRoutes(admin, downstreamRepos[0])
+			downstream.RegisterAdminRoutes(admin, downstreamRepos[0], adminModelCatalog(h))
 		}
+	}
+}
+
+// adminModelCatalog exposes the main-site pricing catalog to the sub-site group
+// assignment APIs so stale model price overrides can be cleaned up.
+func adminModelCatalog(h *handler.Handlers) downstream.ModelCatalogProvider {
+	return func(ctx context.Context) ([]downstream.ModelCatalogEntry, error) {
+		if h == nil || h.ModelPlaza == nil {
+			return nil, nil
+		}
+		groups, err := h.ModelPlaza.ListGroups(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]downstream.ModelCatalogEntry, 0)
+		for _, group := range groups {
+			for _, model := range group.Models {
+				out = append(out, downstream.ModelCatalogEntry{
+					GroupID:        group.ID,
+					GroupName:      group.Name,
+					MainMultiplier: group.RateMultiplier,
+					Model:          model.Name,
+					Platform:       model.Platform,
+				})
+			}
+		}
+		return out, nil
 	}
 }
 

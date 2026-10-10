@@ -25,15 +25,17 @@ type AdminManagementRepository interface {
 	ListSubsiteGroupAssignments(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
 	AddSubsiteGroup(ctx context.Context, subsiteID, groupID int64) error
 	RemoveSubsiteGroup(ctx context.Context, subsiteID, groupID int64) error
+	DeleteSubsiteModelPricesExcept(ctx context.Context, subsiteID int64, keep []string) error
 }
 
 // AdminHandler serves main-site admin provisioning for downstream subsites.
 type AdminHandler struct {
-	repo AdminManagementRepository
+	repo    AdminManagementRepository
+	catalog ModelCatalogProvider
 }
 
-func NewAdminHandler(repo AdminManagementRepository) *AdminHandler {
-	return &AdminHandler{repo: repo}
+func NewAdminHandler(repo AdminManagementRepository, catalog ModelCatalogProvider) *AdminHandler {
+	return &AdminHandler{repo: repo, catalog: catalog}
 }
 
 type subsiteRequest struct {
@@ -278,6 +280,26 @@ func (h *AdminHandler) UnassignSubsiteGroup(c *gin.Context) {
 	if err := h.repo.RemoveSubsiteGroup(c.Request.Context(), id, groupID); err != nil {
 		writeAdminError(c, err, "failed to unassign group")
 		return
+	}
+	// 清理该分组移除后不再开放的模型级覆盖价（惰性数据）。
+	if h.catalog != nil {
+		if catalog, err := h.catalog(c.Request.Context()); err == nil {
+			assigned := map[int64]struct{}{}
+			if groups, err := h.repo.ListSubsiteGroupAssignments(c.Request.Context(), id); err == nil {
+				for _, group := range groups {
+					if group.Assigned {
+						assigned[group.GroupID] = struct{}{}
+					}
+				}
+			}
+			keep := make([]string, 0, len(catalog))
+			for _, entry := range catalog {
+				if _, ok := assigned[entry.GroupID]; ok {
+					keep = append(keep, entry.Model)
+				}
+			}
+			_ = h.repo.DeleteSubsiteModelPricesExcept(c.Request.Context(), id, keep)
+		}
 	}
 	response.Success(c, gin.H{"assigned": false})
 }

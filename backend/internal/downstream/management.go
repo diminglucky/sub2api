@@ -362,6 +362,35 @@ func (r *Repository) UpdateSubsitePrice(ctx context.Context, subsiteID, priceID 
 	return scanPriceOverride(row)
 }
 
+// DeleteSubsiteModelPricesExcept removes model-scoped overrides whose model is
+// no longer offered (used after a group is unassigned).
+func (r *Repository) DeleteSubsiteModelPricesExcept(ctx context.Context, subsiteID int64, keep []string) error {
+	if r == nil || r.db == nil {
+		return errors.New("downstream: nil repository database")
+	}
+	if subsiteID <= 0 {
+		return ErrSubsiteNotFound
+	}
+	if len(keep) == 0 {
+		_, err := r.db.ExecContext(ctx,
+			`DELETE FROM subsite_prices WHERE subsite_id = $1 AND scope = 'model'`,
+			subsiteID,
+		)
+		return err
+	}
+	placeholders := make([]string, 0, len(keep))
+	args := make([]any, 0, len(keep)+1)
+	args = append(args, subsiteID)
+	for i, model := range keep {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+2))
+		args = append(args, model)
+	}
+	query := `DELETE FROM subsite_prices WHERE subsite_id = $1 AND scope = 'model' AND model NOT IN (` +
+		strings.Join(placeholders, ", ") + `)`
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
+}
+
 // DeleteSubsitePrice deletes one price override only inside subsiteID.
 func (r *Repository) DeleteSubsitePrice(ctx context.Context, subsiteID, priceID int64) error {
 	if r == nil || r.db == nil {

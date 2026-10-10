@@ -212,6 +212,14 @@ func scaleUserSupportedModelPricing(pricing *userSupportedModelPricing, factor f
 	pricing.ImageInputPrice = scale(pricing.ImageInputPrice)
 	pricing.ImageOutputPrice = scale(pricing.ImageOutputPrice)
 	pricing.PerRequestPrice = scale(pricing.PerRequestPrice)
+	for i := range pricing.Intervals {
+		interval := &pricing.Intervals[i]
+		interval.InputPrice = scale(interval.InputPrice)
+		interval.OutputPrice = scale(interval.OutputPrice)
+		interval.CacheWritePrice = scale(interval.CacheWritePrice)
+		interval.CacheWrite1hPrice = scale(interval.CacheWrite1hPrice)
+		interval.CacheReadPrice = scale(interval.CacheReadPrice)
+	}
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。

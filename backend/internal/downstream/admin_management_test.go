@@ -36,6 +36,10 @@ func (s *adminManagementRepoStub) RemoveSubsiteGroup(context.Context, int64, int
 	return nil
 }
 
+func (s *adminManagementRepoStub) DeleteSubsiteModelPricesExcept(context.Context, int64, []string) error {
+	return nil
+}
+
 func (s *adminManagementRepoStub) GetSubsiteByID(_ context.Context, id int64) (*Subsite, error) {
 	return &Subsite{ID: id, Slug: "draw", Domain: "draw.superai.sbs", Name: "Draw", Status: SubsiteStatusActive}, nil
 }
@@ -91,7 +95,7 @@ func TestDownstreamAdminRoutesRequireAdminAuth(t *testing.T) {
 		}
 		c.Next()
 	})
-	RegisterAdminRoutes(adminGroup, &adminManagementRepoStub{})
+	RegisterAdminRoutes(adminGroup, &adminManagementRepoStub{}, nil)
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/downstream/subsites", nil)
@@ -111,7 +115,7 @@ func TestDownstreamAdminCreatesAndUpdatesSubsiteAndPrice(t *testing.T) {
 	router := gin.New()
 	adminGroup := router.Group("/api/v1/admin")
 	adminGroup.Use(func(c *gin.Context) { c.Next() })
-	RegisterAdminRoutes(adminGroup, repo)
+	RegisterAdminRoutes(adminGroup, repo, nil)
 
 	body := `{"slug":"draw","domain":"draw.superai.sbs","name":"Draw","logo_url":"https://cdn.example/logo.png","theme_color":"#0ea5e9","status":"active","admin_user_id":42}`
 	rec := httptest.NewRecorder()

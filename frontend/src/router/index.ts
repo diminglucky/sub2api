@@ -897,6 +897,13 @@ router.beforeEach(async (to, _from, next) => {
     next('/subsite-admin')
     return
   }
+  // On a sub-site the marketing home belongs to the sub-site entry page, which
+  // is a separate build. Redirect the reused main app home to the dashboard so
+  // navigating to '/' inside the SPA never shows the main-site landing.
+  if (appStore.isSubsite && (to.path === '/home' || to.path === '/')) {
+    next('/dashboard')
+    return
+  }
 
   if (to.path === '/setup') {
     try {
