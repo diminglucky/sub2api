@@ -30,8 +30,8 @@ async function submit() {
   <section class="auth-shell">
     <form class="auth-card" @submit.prevent="submit">
       <p class="eyebrow">{{ site?.name || 'Draw' }}</p>
-      <h1>登录子站</h1>
-      <p class="lede">使用主站账号登录，余额、充值和调用数据与主站实时同步。</p>
+      <h1>欢迎回来</h1>
+      <p class="lede">登录你的账号，继续管理余额、充值和 API 调用。</p>
 
       <p v-if="error" class="form-error">{{ error }}</p>
 

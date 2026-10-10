@@ -65,7 +65,7 @@ function money(value: number | undefined): string {
       <div class="panel-heading">
         <div>
           <h2>结算口径</h2>
-          <p>主站价格为成本价，子站售价超过成本的部分按实际 API 用量形成结算差额。</p>
+          <p>平台价格为成本价，售价超过成本的部分按实际 API 用量形成结算差额。</p>
         </div>
         <span class="status-chip">只读台账</span>
       </div>

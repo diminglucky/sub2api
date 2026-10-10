@@ -29,8 +29,8 @@ async function submit() {
   <section class="auth-shell">
     <form class="auth-card" @submit.prevent="submit">
       <p class="eyebrow">{{ site?.name || 'Draw' }}</p>
-      <h1>注册子站账号</h1>
-      <p class="lede">注册后可直接登录主站，账号与主站共享余额、充值和 API 调用数据。</p>
+      <h1>创建账号</h1>
+      <p class="lede">注册后即可使用统一的余额、充值和 API 调用服务。</p>
 
       <p v-if="error" class="form-error">{{ error }}</p>
 

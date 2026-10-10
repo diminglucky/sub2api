@@ -65,7 +65,7 @@ function money(value: number | undefined): string {
       <div class="panel-heading">
         <div>
           <h2>OpenAI 兼容接入</h2>
-          <p>API Key 仍在主站统一管理，子站只展示当前子站可用的接口地址。</p>
+          <p>API Key 在统一控制台管理，这里展示可直接使用的接口地址。</p>
         </div>
         <span class="status-chip">与主站同步</span>
       </div>
@@ -75,7 +75,7 @@ export OPENAI_API_KEY=&lt;主站创建的 API Key&gt;</pre>
 
     <section class="panel muted-panel">
       <h2>数据说明</h2>
-      <p>本页仅展示归属于 {{ site?.name || '当前子站' }} 的余额、充值和调用统计，不会显示主站或其他子站数据。</p>
+      <p>本页仅展示归属于 {{ site?.name || '当前账号' }} 的余额、充值和调用统计。</p>
     </section>
   </section>
 </template>

@@ -11,7 +11,7 @@ const site = ref<SiteConfig>({
   domain: 'draw.superai.sbs',
   name: 'Draw',
   logo_url: '',
-  theme_color: '#0f766e',
+  theme_color: '#fb6415',
   api_base_url: 'https://draw.superai.sbs/v1'
 })
 const auth = ref(hasSession())
@@ -19,7 +19,7 @@ const isAdmin = ref(false)
 const siteError = ref('')
 
 const themeStyle = computed(() => ({
-  '--site-color': site.value.theme_color || '#0f766e'
+  '--site-color': site.value.theme_color || '#fb6415'
 }))
 const isAuthRoute = computed(() => route.name === 'login' || route.name === 'register')
 
@@ -27,7 +27,7 @@ onMounted(async () => {
   try {
     site.value = await getSite()
   } catch (error) {
-    siteError.value = error instanceof Error ? error.message : '子站信息加载失败'
+    siteError.value = error instanceof Error ? error.message : '站点信息加载失败'
   }
   auth.value = hasSession()
   await refreshAccountState()
