@@ -58,8 +58,34 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			return false
 		}
 	case PriceOverrideScopeModel:
-		if rate+priceFloorEpsilon < 1 {
-			response.BadRequest(c, "子站价格不能低于主站价格")
+		model := ""
+		if req.Model != nil {
+			model = strings.TrimSpace(*req.Model)
+		}
+		if model == "" {
+			response.BadRequest(c, "model is required for a model price override")
+			return false
+		}
+		// 同刻度替换：模型级下限是主站上该模型的倍率。同一模型可能出现在多个
+		// 分组，取其中最高的分组倍率，保证任何时候都不低于主站。
+		mainRate := 1.0
+		matched := false
+		if h.catalog != nil {
+			if catalog, err := h.catalog(c.Request.Context()); err == nil {
+				for _, entry := range catalog {
+					if entry.Model != model {
+						continue
+					}
+					if !matched || entry.MainMultiplier > mainRate {
+						mainRate = entry.MainMultiplier
+					}
+					matched = true
+				}
+			}
+		}
+		// 目录里查不到该模型时无法确定主站倍率，放行（由主站配置兜底）。
+		if matched && rate+priceFloorEpsilon < mainRate {
+			response.BadRequest(c, "子站倍率不能低于主站倍率")
 			return false
 		}
 	}
