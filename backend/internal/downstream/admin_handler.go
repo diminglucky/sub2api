@@ -53,6 +53,9 @@ type priceOverrideRequest struct {
 	CacheWritePrice *float64 `json:"cache_write_price"`
 	CacheReadPrice  *float64 `json:"cache_read_price"`
 	PerRequestPrice *float64 `json:"per_request_price"`
+	ImagePrice1K    *float64 `json:"image_price_1k"`
+	ImagePrice2K    *float64 `json:"image_price_2k"`
+	ImagePrice4K    *float64 `json:"image_price_4k"`
 	Status          string   `json:"status"`
 }
 
@@ -250,6 +253,9 @@ func (r priceOverrideRequest) toUpsert() PriceOverrideUpsert {
 		CacheWritePrice: r.CacheWritePrice,
 		CacheReadPrice:  r.CacheReadPrice,
 		PerRequestPrice: r.PerRequestPrice,
+		ImagePrice1K:    r.ImagePrice1K,
+		ImagePrice2K:    r.ImagePrice2K,
+		ImagePrice4K:    r.ImagePrice4K,
 		Status:          r.Status,
 	}
 }

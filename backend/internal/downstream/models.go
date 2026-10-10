@@ -102,6 +102,9 @@ type PriceOverride struct {
 	CacheWritePrice *float64  `json:"cache_write_price"`
 	CacheReadPrice  *float64  `json:"cache_read_price"`
 	PerRequestPrice *float64  `json:"per_request_price"`
+	ImagePrice1K    *float64  `json:"image_price_1k"`
+	ImagePrice2K    *float64  `json:"image_price_2k"`
+	ImagePrice4K    *float64  `json:"image_price_4k"`
 	Status          string    `json:"status"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`

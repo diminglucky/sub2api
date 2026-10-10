@@ -22,7 +22,8 @@ func TestRepositoryResolveSubsitePriceModelOverridePrecedence(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"rate_multiplier", "input_price", "output_price",
 			"cache_write_price", "cache_read_price", "per_request_price",
-		}).AddRow(2.0, explicitInput, nil, nil, nil, nil))
+			"image_price_1k", "image_price_2k", "image_price_4k",
+		}).AddRow(2.0, explicitInput, nil, nil, nil, nil, nil, nil, nil))
 
 	repo := NewRepository(db)
 	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{
@@ -52,7 +53,8 @@ func TestRepositoryResolveSubsitePriceGroupOverrideFallsBackFromModel(t *testing
 		WillReturnRows(sqlmock.NewRows([]string{
 			"rate_multiplier", "input_price", "output_price",
 			"cache_write_price", "cache_read_price", "per_request_price",
-		}).AddRow(1.5, nil, nil, nil, nil, nil))
+			"image_price_1k", "image_price_2k", "image_price_4k",
+		}).AddRow(1.5, nil, nil, nil, nil, nil, nil, nil, nil))
 
 	repo := NewRepository(db)
 	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{
@@ -79,7 +81,8 @@ func TestRepositoryResolveSubsitePriceScalesPriorityFields(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"rate_multiplier", "input_price", "output_price",
 			"cache_write_price", "cache_read_price", "per_request_price",
-		}).AddRow(1.5, nil, nil, nil, nil, nil))
+			"image_price_1k", "image_price_2k", "image_price_4k",
+		}).AddRow(1.5, nil, nil, nil, nil, nil, nil, nil, nil))
 
 	repo := NewRepository(db)
 	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{
@@ -109,7 +112,8 @@ func TestRepositoryResolveSubsitePricePreservesPriorityRatioForExplicitPrice(t *
 		WillReturnRows(sqlmock.NewRows([]string{
 			"rate_multiplier", "input_price", "output_price",
 			"cache_write_price", "cache_read_price", "per_request_price",
-		}).AddRow(2.0, explicitInput, nil, nil, nil, nil))
+			"image_price_1k", "image_price_2k", "image_price_4k",
+		}).AddRow(2.0, explicitInput, nil, nil, nil, nil, nil, nil, nil))
 
 	repo := NewRepository(db)
 	got, err := repo.ResolveSubsitePrice(context.Background(), 7, "gpt-4o", Price{

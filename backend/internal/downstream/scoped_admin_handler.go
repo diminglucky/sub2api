@@ -28,7 +28,9 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			response.BadRequest(c, "group_id is required for a group price override")
 			return false
 		}
-		mainRate, err := h.repo.GroupRateMultiplier(c.Request.Context(), *req.GroupID)
+		// 主站倍率仅用于确认分组存在；子站倍率是叠加在主站价格之上的因子，
+		// 下限为 1（1 = 与主站同价），低于 1 就会低于主站成本。
+		_, err := h.repo.GroupRateMultiplier(c.Request.Context(), *req.GroupID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				response.BadRequest(c, "unknown group")
@@ -37,8 +39,23 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			response.InternalError(c, "failed to load main-site group price")
 			return false
 		}
-		if rate+priceFloorEpsilon < mainRate {
+		if rate+priceFloorEpsilon < 1 {
 			response.BadRequest(c, "子站价格不能低于主站价格")
+			return false
+		}
+		mainImages, err := h.repo.GroupImagePrices(c.Request.Context(), *req.GroupID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				response.BadRequest(c, "unknown group")
+				return false
+			}
+			response.InternalError(c, "failed to load main-site image price")
+			return false
+		}
+		if !imagePriceAtLeast(req.ImagePrice1K, mainImages.Price1K) ||
+			!imagePriceAtLeast(req.ImagePrice2K, mainImages.Price2K) ||
+			!imagePriceAtLeast(req.ImagePrice4K, mainImages.Price4K) {
+			response.BadRequest(c, "子站生图价格不能低于主站价格")
 			return false
 		}
 	case PriceOverrideScopeModel:
@@ -48,6 +65,15 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 		}
 	}
 	return true
+}
+
+// imagePriceAtLeast reports whether the sub-site image price is unset or not
+// below the main-site price.
+func imagePriceAtLeast(subsite, main *float64) bool {
+	if subsite == nil || main == nil {
+		return true
+	}
+	return *subsite+priceFloorEpsilon >= *main
 }
 
 // ScopedPriceRepository is the sub-site-scoped control-plane contract. It is
@@ -64,6 +90,7 @@ type ScopedPriceRepository interface {
 	UpdateSubsitePrice(ctx context.Context, subsiteID, priceID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	DeleteSubsitePrice(ctx context.Context, subsiteID, priceID int64) error
 	GroupRateMultiplier(ctx context.Context, groupID int64) (float64, error)
+	GroupImagePrices(ctx context.Context, groupID int64) (ImagePriceTiers, error)
 }
 
 // SubsiteSettings is the display/branding settings a sub-site admin may edit.

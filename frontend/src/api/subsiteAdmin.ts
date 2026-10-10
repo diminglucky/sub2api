@@ -30,6 +30,9 @@ export interface SubsitePriceOverride {
   cache_write_price: number | null
   cache_read_price: number | null
   per_request_price: number | null
+  image_price_1k: number | null
+  image_price_2k: number | null
+  image_price_4k: number | null
   status: string
 }
 
@@ -38,6 +41,9 @@ export interface SubsitePriceInput {
   group_id?: number | null
   model?: string | null
   rate_multiplier: number
+  image_price_1k?: number | null
+  image_price_2k?: number | null
+  image_price_4k?: number | null
   status?: string
 }
 
@@ -47,6 +53,12 @@ export interface SubsiteChannel {
   platform: string
   main_rate_multiplier: number
   subsite_rate_multiplier: number | null
+  main_image_price_1k: number | null
+  main_image_price_2k: number | null
+  main_image_price_4k: number | null
+  subsite_image_price_1k: number | null
+  subsite_image_price_2k: number | null
+  subsite_image_price_4k: number | null
   enabled: boolean
 }
 

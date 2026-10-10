@@ -5,7 +5,7 @@
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">上游管理</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            管理主站同步过来的上游渠道。主站价格只读，子站价格不能低于主站价格。
+            管理主站同步过来的渠道。主站倍率与生图一口价只读，子站价格不能低于主站价格。
           </p>
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="reload">
@@ -18,73 +18,89 @@
         {{ error }}
       </p>
 
-      <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900">
-        <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">渠道价格</h2>
-        <p class="mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
-          勾选要开放给本站的渠道并填写子站价格。主站价格由主站维护，不能修改；子站价格不能低于主站价格。
-        </p>
+      <div v-if="!rows.length && !loading" class="rounded-xl border border-gray-200 bg-white py-12 text-center text-sm text-gray-400 dark:border-dark-700 dark:bg-dark-900">
+        主站还没有可用的渠道
+      </div>
 
-        <div v-if="!rows.length && !loading" class="py-10 text-center text-sm text-gray-400">
-          主站还没有可用的渠道
+      <section
+        v-for="row in rows"
+        :key="row.groupId"
+        class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <label class="flex items-center gap-2">
+            <input v-model="row.enabled" type="checkbox" />
+            <span class="text-base font-semibold text-gray-900 dark:text-white">{{ row.name }}</span>
+            <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-dark-800">{{ row.platform }}</span>
+          </label>
+          <button
+            class="btn btn-primary"
+            :disabled="saving || !rowValid(row)"
+            @click="saveChannel(row)"
+          >
+            保存
+          </button>
         </div>
 
-        <div v-else class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
-          <table class="min-w-full text-sm">
-            <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-dark-800">
-              <tr>
-                <th class="px-3 py-2">开放</th>
-                <th class="px-3 py-2">渠道</th>
-                <th class="px-3 py-2">平台</th>
-                <th class="px-3 py-2">主站价格</th>
-                <th class="px-3 py-2">子站价格</th>
-                <th class="px-3 py-2 text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="row in rows" :key="row.groupId" class="border-t border-gray-100 dark:border-dark-700">
-                <td class="px-3 py-2">
-                  <input v-model="row.enabled" type="checkbox" />
-                </td>
-                <td class="px-3 py-2">{{ row.name }}</td>
-                <td class="px-3 py-2 text-gray-500">{{ row.platform }}</td>
-                <td class="px-3 py-2">
-                  <span class="rounded bg-gray-100 px-2 py-1 font-mono text-gray-600 dark:bg-dark-800 dark:text-gray-300">
-                    {{ row.main }}
+        <div class="mt-4 grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <div>
+            <p class="text-xs font-medium text-gray-500">加价倍率（token 模型，1 = 与主站同价）</p>
+            <div class="mt-2 flex items-center gap-2 text-sm">
+              <span class="text-gray-500">主站</span>
+              <span class="rounded bg-gray-100 px-2 py-1 font-mono text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                ×{{ row.mainRate }}
+              </span>
+            </div>
+            <label class="mt-2 flex items-center gap-2 text-sm">
+              <span class="text-gray-500">子站</span>
+              <input
+                v-model.number="row.subRate"
+                class="input w-24"
+                type="number"
+                step="0.01"
+                :min="1"
+                :disabled="!row.enabled"
+                :class="{ 'input-error': row.enabled && row.subRate < 1 }"
+              />
+            </label>
+            <p v-if="row.enabled && row.subRate < 1" class="mt-1 text-xs text-red-500">
+              不能低于 1（低于 1 会低于主站价格）
+            </p>
+          </div>
+
+          <div>
+            <p class="text-xs font-medium text-gray-500">生图一口价（USD / 张）</p>
+            <div class="mt-2 grid gap-3 sm:grid-cols-3">
+              <div v-for="tier in tiers" :key="tier.key">
+                <span class="text-xs text-gray-500">{{ tier.label }}</span>
+                <div class="mt-1 flex items-center gap-2">
+                  <span class="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-600 dark:bg-dark-800 dark:text-gray-300">
+                    {{ formatPrice(row.main[tier.key]) }}
                   </span>
-                </td>
-                <td class="px-3 py-2">
+                  <span class="text-gray-400">→</span>
                   <input
-                    v-model.number="row.sub"
-                    class="input w-28"
+                    v-model.number="row.sub[tier.key]"
+                    class="input w-24"
                     type="number"
                     step="0.01"
-                    :min="row.main"
+                    :min="row.main[tier.key] ?? 0"
                     :disabled="!row.enabled"
-                    :class="{ 'input-error': row.enabled && row.sub < row.main }"
+                    :class="{ 'input-error': row.enabled && belowFloor(row.sub[tier.key], row.main[tier.key]) }"
                   />
-                  <p v-if="row.enabled && row.sub < row.main" class="mt-1 text-xs text-red-500">
-                    不能低于主站价格
-                  </p>
-                </td>
-                <td class="px-3 py-2 text-right">
-                  <button
-                    class="text-primary-600 hover:underline disabled:opacity-40"
-                    :disabled="saving || (row.enabled && row.sub < row.main)"
-                    @click="saveChannel(row)"
-                  >
-                    保存
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </div>
+              </div>
+            </div>
+            <p v-if="row.enabled && !imageRowValid(row)" class="mt-1 text-xs text-red-500">
+              子站生图价格不能低于主站价格
+            </p>
+          </div>
         </div>
       </section>
 
       <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900">
         <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200">模型价格（可选）</h2>
         <p class="mt-1 mb-3 text-xs text-gray-500 dark:text-gray-400">
-          针对单个模型设置更细的价格，优先于渠道价格，同样不能低于主站价格。
+          针对单个模型覆盖倍率，优先于渠道倍率，同样不能低于主站价格。
         </p>
 
         <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
@@ -92,7 +108,7 @@
             <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-dark-800">
               <tr>
                 <th class="px-3 py-2">模型</th>
-                <th class="px-3 py-2">子站价格</th>
+                <th class="px-3 py-2">子站倍率</th>
                 <th class="px-3 py-2 text-right">操作</th>
               </tr>
             </thead>
@@ -109,11 +125,7 @@
                   <button class="text-primary-600 hover:underline" :disabled="saving" @click="saveModelPrice(price)">
                     保存
                   </button>
-                  <button
-                    class="ml-3 text-red-500 hover:underline"
-                    :disabled="saving"
-                    @click="removeModelPrice(price)"
-                  >
+                  <button class="ml-3 text-red-500 hover:underline" :disabled="saving" @click="removeModelPrice(price)">
                     删除
                   </button>
                 </td>
@@ -123,10 +135,10 @@
         </div>
 
         <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px_auto]">
-          <input v-model="newModel" class="input" placeholder="新增模型价格，例如 gpt-image-1" />
-          <input v-model.number="newMultiplier" class="input" type="number" step="0.01" min="1" placeholder="价格" />
+          <input v-model="newModel" class="input" placeholder="新增模型，例如 gpt-image-1" />
+          <input v-model.number="newMultiplier" class="input" type="number" step="0.01" min="1" placeholder="倍率" />
           <button class="btn btn-primary" :disabled="saving || !newModel.trim() || newMultiplier < 1" @click="addModelPrice">
-            添加模型价格
+            添加模型
           </button>
         </div>
       </section>
@@ -147,15 +159,25 @@ import {
   type SubsitePriceOverride
 } from '@/api/subsiteAdmin'
 
+type TierKey = '1k' | '2k' | '4k'
+
 interface ChannelRow {
   groupId: number
   name: string
   platform: string
-  main: number
-  sub: number
+  mainRate: number
+  subRate: number
+  main: Record<TierKey, number | null>
+  sub: Record<TierKey, number | null>
   enabled: boolean
   overrideId: number | null
 }
+
+const tiers: Array<{ key: TierKey; label: string }> = [
+  { key: '1k', label: '1K' },
+  { key: '2k', label: '2K' },
+  { key: '4k', label: '4K' }
+]
 
 const rows = ref<ChannelRow[]>([])
 const prices = ref<SubsitePriceOverride[]>([])
@@ -169,6 +191,25 @@ const newMultiplier = ref(1)
 const modelOverrides = computed(() => prices.value.filter((price) => price.scope === 'model'))
 
 onMounted(reload)
+
+function belowFloor(sub: number | null, main: number | null): boolean {
+  if (sub === null || main === null) return false
+  return sub + 1e-9 < main
+}
+
+function imageRowValid(row: ChannelRow): boolean {
+  return tiers.every((tier) => !belowFloor(row.sub[tier.key], row.main[tier.key]))
+}
+
+function rowValid(row: ChannelRow): boolean {
+  if (!row.enabled) return true
+  return row.subRate + 1e-9 >= 1 && imageRowValid(row)
+}
+
+function formatPrice(value: number | null): string {
+  if (value === null || value === undefined) return '—'
+  return `$${Number(value).toFixed(4)}`
+}
 
 async function reload() {
   loading.value = true
@@ -187,8 +228,18 @@ async function reload() {
         groupId: channel.group_id,
         name: channel.name,
         platform: channel.platform,
-        main: channel.main_rate_multiplier,
-        sub: override?.rate_multiplier ?? channel.main_rate_multiplier,
+        mainRate: channel.main_rate_multiplier,
+        subRate: override?.rate_multiplier ?? channel.main_rate_multiplier,
+        main: {
+          '1k': channel.main_image_price_1k,
+          '2k': channel.main_image_price_2k,
+          '4k': channel.main_image_price_4k
+        },
+        sub: {
+          '1k': override?.image_price_1k ?? channel.main_image_price_1k,
+          '2k': override?.image_price_2k ?? channel.main_image_price_2k,
+          '4k': override?.image_price_4k ?? channel.main_image_price_4k
+        },
         enabled: Boolean(override),
         overrideId: override?.id ?? null
       }
@@ -204,7 +255,7 @@ async function reload() {
 }
 
 async function saveChannel(row: ChannelRow) {
-  if (row.enabled && row.sub < row.main) {
+  if (!rowValid(row)) {
     error.value = '子站价格不能低于主站价格'
     return
   }
@@ -215,7 +266,10 @@ async function saveChannel(row: ChannelRow) {
       const payload = {
         scope: 'group' as const,
         group_id: row.groupId,
-        rate_multiplier: Number(row.sub) || row.main
+        rate_multiplier: Number(row.subRate) || 1,
+        image_price_1k: row.sub['1k'],
+        image_price_2k: row.sub['2k'],
+        image_price_4k: row.sub['4k']
       }
       if (row.overrideId) {
         await updateSubsitePrice(row.overrideId, payload)

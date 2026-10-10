@@ -830,10 +830,10 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	multiplier float64,
 	subsitePrice *downstream.Price,
 ) *CostBreakdown {
-	if cost := downstreamMediaOverrideCost(subsitePrice, result.ImageCount, multiplier, BillingModeImage); cost != nil {
+	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
+	if cost := downstreamImageOverrideCost(subsitePrice, result.ImageCount, sizeTier, BillingModeImage); cost != nil {
 		return cost
 	}
-	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
 	if subsitePrice != nil {
 		resolved = applyDownstreamPriceToResolved(resolved, *subsitePrice)
@@ -980,6 +980,44 @@ func downstreamMediaOverrideCost(
 	return &CostBreakdown{
 		TotalCost:   totalCost,
 		ActualCost:  totalCost * multiplier,
+		BillingMode: string(mode),
+	}
+}
+
+// downstreamImageOverrideCost returns the sub-site image cost when the override
+// carries a per-size (or fallback per-request) flat price. Image prices are
+// absolute one-off prices, so the main-site rate multiplier is not applied.
+func downstreamImageOverrideCost(
+	price *downstream.Price,
+	count int,
+	sizeTier string,
+	mode BillingMode,
+) *CostBreakdown {
+	if price == nil {
+		return nil
+	}
+	var unit *float64
+	switch sizeTier {
+	case "1k":
+		unit = price.ImagePrice1K
+	case "2k":
+		unit = price.ImagePrice2K
+	case "4k":
+		unit = price.ImagePrice4K
+	}
+	if unit == nil {
+		unit = price.PerRequestPrice
+	}
+	if unit == nil {
+		return nil
+	}
+	if count <= 0 {
+		return &CostBreakdown{BillingMode: string(mode)}
+	}
+	totalCost := *unit * float64(count)
+	return &CostBreakdown{
+		TotalCost:   totalCost,
+		ActualCost:  totalCost,
 		BillingMode: string(mode),
 	}
 }

@@ -152,7 +152,11 @@ func (s *OpenAIGatewayService) resolveDownstreamMediaPricing(
 	if err != nil {
 		return subsitePricingResolution{}, false
 	}
-	if !downstreamPriceFieldChanged(price.PerRequestPrice, base.PerRequestPrice) {
+	changed := downstreamPriceFieldChanged(price.PerRequestPrice, base.PerRequestPrice) ||
+		downstreamPriceFieldChanged(price.ImagePrice1K, base.ImagePrice1K) ||
+		downstreamPriceFieldChanged(price.ImagePrice2K, base.ImagePrice2K) ||
+		downstreamPriceFieldChanged(price.ImagePrice4K, base.ImagePrice4K)
+	if !changed {
 		return subsitePricingResolution{}, false
 	}
 	return subsitePricingResolution{SubsiteID: subsiteID, Price: price, Applied: true}, true

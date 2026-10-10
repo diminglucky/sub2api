@@ -22,6 +22,9 @@ type Price struct {
 	CacheReadPrice          *float64
 	CacheReadPricePriority  *float64
 	PerRequestPrice         *float64
+	ImagePrice1K            *float64
+	ImagePrice2K            *float64
+	ImagePrice4K            *float64
 }
 
 // Clone returns a copy with independently allocated numeric pointers.
@@ -36,6 +39,9 @@ func (p Price) Clone() Price {
 		CacheReadPrice:          cloneFloat64(p.CacheReadPrice),
 		CacheReadPricePriority:  cloneFloat64(p.CacheReadPricePriority),
 		PerRequestPrice:         cloneFloat64(p.PerRequestPrice),
+		ImagePrice1K:            cloneFloat64(p.ImagePrice1K),
+		ImagePrice2K:            cloneFloat64(p.ImagePrice2K),
+		ImagePrice4K:            cloneFloat64(p.ImagePrice4K),
 	}
 }
 
@@ -49,7 +55,10 @@ func (p Price) IsZero() bool {
 		p.CacheWritePricePriority == nil &&
 		p.CacheReadPrice == nil &&
 		p.CacheReadPricePriority == nil &&
-		p.PerRequestPrice == nil
+		p.PerRequestPrice == nil &&
+		p.ImagePrice1K == nil &&
+		p.ImagePrice2K == nil &&
+		p.ImagePrice4K == nil
 }
 
 // Equal reports whether two prices carry the same set of values. Pointers are
@@ -63,7 +72,10 @@ func (p Price) Equal(other Price) bool {
 		priceFieldEqual(p.CacheWritePricePriority, other.CacheWritePricePriority) &&
 		priceFieldEqual(p.CacheReadPrice, other.CacheReadPrice) &&
 		priceFieldEqual(p.CacheReadPricePriority, other.CacheReadPricePriority) &&
-		priceFieldEqual(p.PerRequestPrice, other.PerRequestPrice)
+		priceFieldEqual(p.PerRequestPrice, other.PerRequestPrice) &&
+		priceFieldEqual(p.ImagePrice1K, other.ImagePrice1K) &&
+		priceFieldEqual(p.ImagePrice2K, other.ImagePrice2K) &&
+		priceFieldEqual(p.ImagePrice4K, other.ImagePrice4K)
 }
 
 func priceFieldEqual(a, b *float64) bool {
@@ -132,7 +144,8 @@ func (r *Repository) lookupPriceOverride(
 	case PriceOverrideScopeModel:
 		query = `
 			SELECT rate_multiplier, input_price, output_price,
-			       cache_write_price, cache_read_price, per_request_price
+			       cache_write_price, cache_read_price, per_request_price,
+			       image_price_1k, image_price_2k, image_price_4k
 			FROM subsite_prices
 			WHERE subsite_id = $1
 			  AND scope = 'model'
@@ -144,7 +157,8 @@ func (r *Repository) lookupPriceOverride(
 	case PriceOverrideScopeGroup:
 		query = `
 			SELECT rate_multiplier, input_price, output_price,
-			       cache_write_price, cache_read_price, per_request_price
+			       cache_write_price, cache_read_price, per_request_price,
+			       image_price_1k, image_price_2k, image_price_4k
 			FROM subsite_prices
 			WHERE subsite_id = $1
 			  AND scope = 'group'
@@ -164,6 +178,9 @@ func (r *Repository) lookupPriceOverride(
 		cacheWritePrice sql.NullFloat64
 		cacheReadPrice  sql.NullFloat64
 		perRequestPrice sql.NullFloat64
+		imagePrice1K    sql.NullFloat64
+		imagePrice2K    sql.NullFloat64
+		imagePrice4K    sql.NullFloat64
 	)
 	if err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&multiplier,
@@ -172,6 +189,9 @@ func (r *Repository) lookupPriceOverride(
 		&cacheWritePrice,
 		&cacheReadPrice,
 		&perRequestPrice,
+		&imagePrice1K,
+		&imagePrice2K,
+		&imagePrice4K,
 	); err != nil {
 		return nil, err
 	}
@@ -188,6 +208,9 @@ func (r *Repository) lookupPriceOverride(
 		CacheWritePrice: nullableFloat64(cacheWritePrice),
 		CacheReadPrice:  nullableFloat64(cacheReadPrice),
 		PerRequestPrice: nullableFloat64(perRequestPrice),
+		ImagePrice1K:    nullableFloat64(imagePrice1K),
+		ImagePrice2K:    nullableFloat64(imagePrice2K),
+		ImagePrice4K:    nullableFloat64(imagePrice4K),
 		Status:          SubsiteStatusActive,
 	}, nil
 }
@@ -238,6 +261,16 @@ func applyPriceOverride(base Price, override *PriceOverride) Price {
 		multiplier,
 	)
 	out.PerRequestPrice = applyPriceField(out.PerRequestPrice, override.PerRequestPrice, multiplier)
+	// 生图一口价是绝对价格（不随倍率缩放），直接覆盖。
+	if override.ImagePrice1K != nil {
+		out.ImagePrice1K = cloneFloat64(override.ImagePrice1K)
+	}
+	if override.ImagePrice2K != nil {
+		out.ImagePrice2K = cloneFloat64(override.ImagePrice2K)
+	}
+	if override.ImagePrice4K != nil {
+		out.ImagePrice4K = cloneFloat64(override.ImagePrice4K)
+	}
 	return out
 }
 

@@ -38,6 +38,9 @@ type PriceOverrideUpsert struct {
 	CacheWritePrice *float64
 	CacheReadPrice  *float64
 	PerRequestPrice *float64
+	ImagePrice1K    *float64
+	ImagePrice2K    *float64
+	ImagePrice4K    *float64
 	Status          string
 }
 
@@ -105,6 +108,9 @@ func NormalizePriceOverrideUpsert(input PriceOverrideUpsert) (PriceOverrideUpser
 		input.CacheWritePrice,
 		input.CacheReadPrice,
 		input.PerRequestPrice,
+		input.ImagePrice1K,
+		input.ImagePrice2K,
+		input.ImagePrice4K,
 	} {
 		if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0) {
 			return PriceOverrideUpsert{}, fmt.Errorf("price values must be non-negative")
@@ -232,7 +238,8 @@ func (r *Repository) DisableSubsite(ctx context.Context, id int64) (*Subsite, er
 const priceOverrideColumns = `
 	id, subsite_id, scope, group_id, model, rate_multiplier,
 	input_price, output_price, cache_write_price, cache_read_price,
-	per_request_price, status, created_at, updated_at`
+	per_request_price, image_price_1k, image_price_2k, image_price_4k,
+	status, created_at, updated_at`
 
 // ListSubsitePrices returns only price overrides owned by subsiteID.
 func (r *Repository) ListSubsitePrices(ctx context.Context, subsiteID int64) ([]PriceOverride, error) {
@@ -284,9 +291,9 @@ func (r *Repository) CreateSubsitePrice(ctx context.Context, subsiteID int64, in
 		INSERT INTO subsite_prices (
 			subsite_id, scope, group_id, model, rate_multiplier,
 			input_price, output_price, cache_write_price, cache_read_price,
-			per_request_price, status
+			per_request_price, image_price_1k, image_price_2k, image_price_4k, status
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING `+priceOverrideColumns,
 		subsiteID,
 		normalized.Scope,
@@ -298,6 +305,9 @@ func (r *Repository) CreateSubsitePrice(ctx context.Context, subsiteID int64, in
 		nullableFloat64Ptr(normalized.CacheWritePrice),
 		nullableFloat64Ptr(normalized.CacheReadPrice),
 		nullableFloat64Ptr(normalized.PerRequestPrice),
+		nullableFloat64Ptr(normalized.ImagePrice1K),
+		nullableFloat64Ptr(normalized.ImagePrice2K),
+		nullableFloat64Ptr(normalized.ImagePrice4K),
 		normalized.Status,
 	)
 	return scanPriceOverride(row)
@@ -326,7 +336,10 @@ func (r *Repository) UpdateSubsitePrice(ctx context.Context, subsiteID, priceID 
 		    cache_write_price = $9,
 		    cache_read_price = $10,
 		    per_request_price = $11,
-		    status = $12,
+		    image_price_1k = $12,
+		    image_price_2k = $13,
+		    image_price_4k = $14,
+		    status = $15,
 		    updated_at = NOW()
 		WHERE id = $2 AND subsite_id = $1
 		RETURNING `+priceOverrideColumns,
@@ -341,6 +354,9 @@ func (r *Repository) UpdateSubsitePrice(ctx context.Context, subsiteID, priceID 
 		nullableFloat64Ptr(normalized.CacheWritePrice),
 		nullableFloat64Ptr(normalized.CacheReadPrice),
 		nullableFloat64Ptr(normalized.PerRequestPrice),
+		nullableFloat64Ptr(normalized.ImagePrice1K),
+		nullableFloat64Ptr(normalized.ImagePrice2K),
+		nullableFloat64Ptr(normalized.ImagePrice4K),
 		normalized.Status,
 	)
 	return scanPriceOverride(row)
@@ -383,6 +399,9 @@ func scanPriceOverride(row rowScanner) (*PriceOverride, error) {
 		cacheWritePrice sql.NullFloat64
 		cacheReadPrice  sql.NullFloat64
 		perRequestPrice sql.NullFloat64
+		imagePrice1K    sql.NullFloat64
+		imagePrice2K    sql.NullFloat64
+		imagePrice4K    sql.NullFloat64
 	)
 	if err := row.Scan(
 		&price.ID,
@@ -396,6 +415,9 @@ func scanPriceOverride(row rowScanner) (*PriceOverride, error) {
 		&cacheWritePrice,
 		&cacheReadPrice,
 		&perRequestPrice,
+		&imagePrice1K,
+		&imagePrice2K,
+		&imagePrice4K,
 		&price.Status,
 		&price.CreatedAt,
 		&price.UpdatedAt,
@@ -418,6 +440,9 @@ func scanPriceOverride(row rowScanner) (*PriceOverride, error) {
 	price.CacheWritePrice = nullableFloat64(cacheWritePrice)
 	price.CacheReadPrice = nullableFloat64(cacheReadPrice)
 	price.PerRequestPrice = nullableFloat64(perRequestPrice)
+	price.ImagePrice1K = nullableFloat64(imagePrice1K)
+	price.ImagePrice2K = nullableFloat64(imagePrice2K)
+	price.ImagePrice4K = nullableFloat64(imagePrice4K)
 	return &price, nil
 }
 
