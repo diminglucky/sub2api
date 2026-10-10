@@ -2,21 +2,63 @@ package downstream
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/gin-gonic/gin"
 )
 
+// priceFloorEpsilon absorbs float noise when comparing multipliers.
+const priceFloorEpsilon = 1e-9
+
+// validateFloor rejects a sub-site price that would undercut the main site.
+// Group overrides must be >= the group's main multiplier; model overrides must
+// be >= 1 because the base price already includes the main-site pricing.
+func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequest) bool {
+	rate := 1.0
+	if req.RateMultiplier != nil {
+		rate = *req.RateMultiplier
+	}
+	switch req.Scope {
+	case PriceOverrideScopeGroup:
+		if req.GroupID == nil || *req.GroupID <= 0 {
+			response.BadRequest(c, "group_id is required for a group price override")
+			return false
+		}
+		mainRate, err := h.repo.GroupRateMultiplier(c.Request.Context(), *req.GroupID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				response.BadRequest(c, "unknown group")
+				return false
+			}
+			response.InternalError(c, "failed to load main-site group price")
+			return false
+		}
+		if rate+priceFloorEpsilon < mainRate {
+			response.BadRequest(c, "子站价格不能低于主站价格")
+			return false
+		}
+	case PriceOverrideScopeModel:
+		if rate+priceFloorEpsilon < 1 {
+			response.BadRequest(c, "子站价格不能低于主站价格")
+			return false
+		}
+	}
+	return true
+}
+
 // ScopedPriceRepository is the sub-site-scoped control-plane contract. It is
 // satisfied by *Repository. Authorization is by sub-site membership role, not
 // by main-site admin role, so a sub-site owner manages only its own prices.
 type ScopedPriceRepository interface {
 	GetSubsiteUserSummary(ctx context.Context, subsiteID, userID int64) (*SubsiteUserSummary, error)
+	ListSubsiteChannels(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
 	ListSubsitePrices(ctx context.Context, subsiteID int64) ([]PriceOverride, error)
 	CreateSubsitePrice(ctx context.Context, subsiteID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	UpdateSubsitePrice(ctx context.Context, subsiteID, priceID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	DeleteSubsitePrice(ctx context.Context, subsiteID, priceID int64) error
+	GroupRateMultiplier(ctx context.Context, groupID int64) (float64, error)
 }
 
 // ScopedAdminHandler serves price management for the current sub-site only.
@@ -43,6 +85,21 @@ func (h *ScopedAdminHandler) ListPrices(c *gin.Context) {
 	response.Success(c, prices)
 }
 
+// ListChannels returns the main-site channels available to the current sub-site
+// together with the sub-site's own override, if any.
+func (h *ScopedAdminHandler) ListChannels(c *gin.Context) {
+	subsiteID, ok := h.authorize(c)
+	if !ok {
+		return
+	}
+	channels, err := h.repo.ListSubsiteChannels(c.Request.Context(), subsiteID)
+	if err != nil {
+		response.InternalError(c, "failed to list subsite channels")
+		return
+	}
+	response.Success(c, channels)
+}
+
 // CreatePrice adds a price override to the current sub-site.
 func (h *ScopedAdminHandler) CreatePrice(c *gin.Context) {
 	subsiteID, ok := h.authorize(c)
@@ -52,6 +109,9 @@ func (h *ScopedAdminHandler) CreatePrice(c *gin.Context) {
 	var req priceOverrideRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid price override payload")
+		return
+	}
+	if !h.validateFloor(c, req) {
 		return
 	}
 	price, err := h.repo.CreateSubsitePrice(c.Request.Context(), subsiteID, req.toUpsert())
@@ -75,6 +135,9 @@ func (h *ScopedAdminHandler) UpdatePrice(c *gin.Context) {
 	var req priceOverrideRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "invalid price override payload")
+		return
+	}
+	if !h.validateFloor(c, req) {
 		return
 	}
 	price, err := h.repo.UpdateSubsitePrice(c.Request.Context(), subsiteID, priceID, req.toUpsert())

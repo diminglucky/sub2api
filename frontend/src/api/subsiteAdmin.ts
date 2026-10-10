@@ -41,6 +41,15 @@ export interface SubsitePriceInput {
   status?: string
 }
 
+export interface SubsiteChannel {
+  group_id: number
+  name: string
+  platform: string
+  main_rate_multiplier: number
+  subsite_rate_multiplier: number | null
+  enabled: boolean
+}
+
 // The shared apiClient prefixes /api/v1, so sub-site endpoints use absolute
 // URLs to bypass that base and hit /api/internal/... directly.
 function subsiteURL(path: string): string {
@@ -58,6 +67,13 @@ export async function getSubsiteAdminSummary(): Promise<SubsiteAdminSummary> {
 export async function listSubsitePrices(): Promise<SubsitePriceOverride[]> {
   const { data } = await apiClient.get<SubsitePriceOverride[]>(
     subsiteURL('/api/internal/downstream/v1/admin/prices')
+  )
+  return data
+}
+
+export async function listSubsiteChannels(): Promise<SubsiteChannel[]> {
+  const { data } = await apiClient.get<SubsiteChannel[]>(
+    subsiteURL('/api/internal/downstream/v1/admin/channels')
   )
   return data
 }
@@ -87,6 +103,7 @@ export async function deleteSubsitePrice(id: number): Promise<void> {
 
 export const subsiteAdminAPI = {
   getSummary: getSubsiteAdminSummary,
+  listChannels: listSubsiteChannels,
   listPrices: listSubsitePrices,
   createPrice: createSubsitePrice,
   updatePrice: updateSubsitePrice,
