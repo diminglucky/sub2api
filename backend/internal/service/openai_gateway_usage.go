@@ -251,15 +251,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	revenueImageMultiplier := imageMultiplier
 	revenueVideoMultiplier := videoMultiplier
 	if hasSubsitePricing {
-		if subsitePricing.Multiplier != nil {
-			// 同刻度替换：子站倍率直接替换主站分组/用户倍率，基础价不再缩放。
-			revenueMultiplier = *subsitePricing.Multiplier
-			revenueImageMultiplier = *subsitePricing.Multiplier
-			revenueVideoMultiplier = *subsitePricing.Multiplier
-		} else {
-			price := subsitePricing.Price
-			subsitePrice = &price
-		}
+		price := subsitePricing.Price
+		subsitePrice = &price
+		// 子站价已经是最终价（分组倍率已折算进价格，或为按模型的绝对价），
+		// 对子站收入不再叠加主站的分组/用户倍率。
+		revenueMultiplier = 1
+		revenueImageMultiplier = 1
+		revenueVideoMultiplier = 1
 	}
 	cost, err = s.calculateOpenAIRecordUsageCostWithSubsite(
 		ctx,

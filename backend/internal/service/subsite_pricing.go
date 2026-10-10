@@ -45,11 +45,7 @@ func (s *OpenAIGatewayService) SetDownstreamPricing(
 type subsitePricingResolution struct {
 	SubsiteID int64
 	Price     downstream.Price
-	// Multiplier, when set, is the same-scale replacement multiplier: the
-	// sub-site's rate multiplier replaces the main-site group/user multiplier
-	// instead of scaling on top of it (main 0.1 -> sub-site 0.1 means same price).
-	Multiplier *float64
-	Applied    bool
+	Applied   bool
 }
 
 // resolveSubsitePricing resolves the sub-site price override for the current
@@ -80,19 +76,6 @@ func (s *OpenAIGatewayService) resolveSubsitePricing(
 	if apiKey != nil && apiKey.GroupID != nil && *apiKey.GroupID > 0 {
 		groupID = []int64{*apiKey.GroupID}
 	}
-	// Same-scale multiplier override: the sub-site multiplier replaces the
-	// main-site group multiplier, so the base price is left untouched and the
-	// effective multiplier is handed back to the billing caller.
-	if override, err := s.downstreamPricing.ResolveSubsiteOverride(ctx, subsiteID, model, groupID...); err == nil &&
-		override != nil && subsiteOverrideUsesTokenMultiplier(override) {
-		multiplier := override.RateMultiplier
-		return subsitePricingResolution{
-			SubsiteID:  subsiteID,
-			Price:      basePrice.Clone(),
-			Multiplier: &multiplier,
-			Applied:    true,
-		}, true
-	}
 	price, err := s.downstreamPricing.ResolveSubsitePrice(ctx, subsiteID, model, basePrice, groupID...)
 	if err != nil {
 		return subsitePricingResolution{}, false
@@ -101,19 +84,6 @@ func (s *OpenAIGatewayService) resolveSubsitePricing(
 		return subsitePricingResolution{SubsiteID: subsiteID, Price: price}, false
 	}
 	return subsitePricingResolution{SubsiteID: subsiteID, Price: price, Applied: true}, true
-}
-
-// subsiteOverrideUsesTokenMultiplier reports whether the override is a
-// same-scale multiplier for token models (no explicit per-token prices).
-// Per-request and image prices are absolute and handled by the media path.
-func subsiteOverrideUsesTokenMultiplier(override *downstream.PriceOverride) bool {
-	if override == nil {
-		return false
-	}
-	return override.InputPrice == nil &&
-		override.OutputPrice == nil &&
-		override.CacheWritePrice == nil &&
-		override.CacheReadPrice == nil
 }
 
 // resolveSubsitePricingForModel resolves the main-site base pricing for a model
