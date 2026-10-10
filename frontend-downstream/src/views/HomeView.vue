@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { hasSession, type SiteConfig } from '../api'
+import type { SiteConfig } from '../api'
 
 const props = defineProps<{ site?: SiteConfig }>()
 
 const brand = computed(() => props.site?.name || 'Draw')
 const apiBase = computed(() => props.site?.api_base_url || 'https://draw.superai.sbs/v1')
-const signedIn = computed(() => hasSession())
-const startTarget = computed(() => (signedIn.value ? '/studio' : '/register'))
 
 // 每一项都对应站点已经实现的绘图能力，避免展示不存在的功能。
 const features = computed(() => [
@@ -47,10 +45,10 @@ const features = computed(() => [
           支持文生图与图生图，在同一处选择模型、生成图片并下载结果，账户余额与调用数据实时可见。
         </p>
         <div class="landing-actions">
-          <RouterLink class="landing-primary" :to="startTarget">开始绘图</RouterLink>
+          <a class="landing-primary" href="/image-studio">开始绘图</a>
           <a class="landing-secondary" href="#features">查看能力</a>
         </div>
-        <RouterLink class="landing-text-link" to="/login">已有账号，进入控制台</RouterLink>
+        <a class="landing-text-link" href="/login">已有账号，进入控制台</a>
       </div>
 
       <div class="landing-visual" aria-hidden="true">
@@ -74,7 +72,7 @@ const features = computed(() => [
           <h2>从提示词到成图，一站完成</h2>
           <p>登录后进入绘图工作台，选择模型、填写提示词即可生成图片。</p>
         </div>
-        <RouterLink class="landing-secondary" :to="startTarget">打开工作台</RouterLink>
+        <a class="landing-secondary" href="/image-studio">打开工作台</a>
       </div>
 
       <div class="feature-grid">
@@ -93,7 +91,7 @@ const features = computed(() => [
         <p>
           沿用现有 OpenAI 兼容客户端，只需要修改接口地址即可调用图片生成接口，计费口径与平台保持一致。
         </p>
-        <RouterLink class="landing-primary" :to="startTarget">开始使用</RouterLink>
+        <a class="landing-primary" href="/image-studio">开始使用</a>
       </div>
       <div class="landing-integrate__code">
         <div class="code-window__head">
@@ -112,9 +110,8 @@ export OPENAI_API_KEY=&lt;你的 API Key&gt;</pre>
       <h2>把想法变成图片</h2>
       <p>一个账号，一套余额，一处生成与查看。</p>
       <div class="landing-actions">
-        <RouterLink class="landing-primary" :to="startTarget">开始绘图</RouterLink>
-        <RouterLink v-if="!signedIn" class="landing-secondary" to="/login">进入控制台</RouterLink>
-        <RouterLink v-else class="landing-secondary" to="/dashboard">查看账户</RouterLink>
+        <a class="landing-primary" href="/image-studio">开始绘图</a>
+        <a class="landing-secondary" href="/dashboard">进入控制台</a>
       </div>
     </section>
   </div>

@@ -23,13 +23,16 @@ func TestFrontendMiddlewareServesDownstreamForResolvedSubsite(t *testing.T) {
 		"index.html": &fstest.MapFile{Data: []byte("draw-index")},
 		"robots.txt": &fstest.MapFile{Data: []byte("User-agent: *\nAllow: /\n")},
 	}
+	cache := NewHTMLCache()
+	cache.SetBaseHTML([]byte("main-index"))
+	cache.Set([]byte("main-index"), []byte("{}"))
 	server := &FrontendServer{
 		distFS:               mainFS,
 		fileServer:           http.FileServer(http.FS(mainFS)),
 		downstreamDistFS:     downstreamFS,
 		downstreamFileServer: http.FileServer(http.FS(downstreamFS)),
 		baseHTML:             []byte("main-index"),
-		cache:                NewHTMLCache(),
+		cache:                cache,
 	}
 
 	router := gin.New()
@@ -52,6 +55,12 @@ func TestFrontendMiddlewareServesDownstreamForResolvedSubsite(t *testing.T) {
 		w := performDownstreamFrontendRequest(router, "/")
 		require.Equal(t, http.StatusOK, w.Code)
 		require.Equal(t, "draw-index", w.Body.String())
+	})
+
+	t.Run("app routes reuse the main frontend", func(t *testing.T) {
+		w := performDownstreamFrontendRequest(router, "/dashboard")
+		require.Equal(t, http.StatusOK, w.Code)
+		require.Contains(t, w.Body.String(), "main-index")
 	})
 
 	t.Run("robots serves downstream static file", func(t *testing.T) {

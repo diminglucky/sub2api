@@ -128,46 +128,59 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 		}
 
 		if _, ok := downstream.FromGin(c); ok {
-			s.serveDownstreamFrontend(c)
+			s.serveDownstreamEntry(c)
 			return
 		}
 
-		cleanPath := strings.TrimPrefix(path, "/")
-		if cleanPath == "" {
-			cleanPath = "index.html"
-		}
-
-		// For index.html or SPA routes, serve with injected settings
-		if cleanPath == "index.html" || !s.fileExists(cleanPath) {
-			s.serveIndexHTML(c)
-			return
-		}
-
-		// Try local override first
-		if s.tryServeOverride(c, cleanPath) {
-			return
-		}
-
-		// Serve static files normally (hashed assets get long-lived cache headers)
-		applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
-		s.fileServer.ServeHTTP(c.Writer, c.Request)
-		c.Abort()
+		s.serveMainFrontend(c)
 	}
 }
 
-func (s *FrontendServer) serveDownstreamFrontend(c *gin.Context) {
-	if s.downstreamDistFS == nil || s.downstreamFileServer == nil {
-		c.String(http.StatusServiceUnavailable, "Downstream frontend not embedded")
-		c.Abort()
-		return
-	}
-
-	path := c.Request.URL.Path
-	cleanPath := strings.TrimPrefix(path, "/")
+// serveMainFrontend serves the main application shell and its static assets.
+func (s *FrontendServer) serveMainFrontend(c *gin.Context) {
+	cleanPath := strings.TrimPrefix(c.Request.URL.Path, "/")
 	if cleanPath == "" {
 		cleanPath = "index.html"
 	}
-	if cleanPath == "index.html" || !fileExists(s.downstreamDistFS, cleanPath) {
+
+	// For index.html or SPA routes, serve with injected settings
+	if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		s.serveIndexHTML(c)
+		return
+	}
+
+	// Try local override first
+	if s.tryServeOverride(c, cleanPath) {
+		return
+	}
+
+	// Serve static files normally (hashed assets get long-lived cache headers)
+	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
+	s.fileServer.ServeHTTP(c.Writer, c.Request)
+	c.Abort()
+}
+
+// serveDownstreamEntry serves the branded drawing landing for a resolved
+// subsite. Only the entry page and its own static assets come from the
+// downstream build; every other route falls back to the main frontend so the
+// signed-in user pages stay identical to the main site.
+func (s *FrontendServer) serveDownstreamEntry(c *gin.Context) {
+	cleanPath := strings.TrimPrefix(c.Request.URL.Path, "/")
+	if cleanPath == "" {
+		cleanPath = "index.html"
+	}
+
+	if cleanPath != "index.html" && !s.downstreamFileExists(cleanPath) {
+		s.serveMainFrontend(c)
+		return
+	}
+
+	if s.downstreamDistFS == nil || s.downstreamFileServer == nil {
+		s.serveMainFrontend(c)
+		return
+	}
+
+	if cleanPath == "index.html" {
 		serveIndexHTML(c, s.downstreamDistFS)
 		return
 	}
@@ -175,6 +188,10 @@ func (s *FrontendServer) serveDownstreamFrontend(c *gin.Context) {
 	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
 	s.downstreamFileServer.ServeHTTP(c.Writer, c.Request)
 	c.Abort()
+}
+
+func (s *FrontendServer) downstreamFileExists(path string) bool {
+	return fileExists(s.downstreamDistFS, path)
 }
 
 func (s *FrontendServer) fileExists(path string) bool {
