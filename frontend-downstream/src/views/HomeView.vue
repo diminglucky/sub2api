@@ -1,33 +1,35 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { SiteConfig } from '../api'
+import { hasSession, type SiteConfig } from '../api'
 
 const props = defineProps<{ site?: SiteConfig }>()
 
 const brand = computed(() => props.site?.name || 'Draw')
 const apiBase = computed(() => props.site?.api_base_url || 'https://draw.superai.sbs/v1')
+const signedIn = computed(() => hasSession())
+const startTarget = computed(() => (signedIn.value ? '/studio' : '/register'))
 
-// 每一项都对应站点已经实现的能力，避免展示不存在的功能。
+// 每一项都对应站点已经实现的绘图能力，避免展示不存在的功能。
 const features = computed(() => [
   {
-    tag: 'ACCOUNT',
-    title: '统一账号',
-    desc: '注册或登录后即可使用，账号、余额与平台保持一致。'
+    tag: 'TEXT',
+    title: '文生图',
+    desc: '输入自然语言提示词即可生成图片，支持自定义尺寸与画质。'
   },
   {
-    tag: 'OVERVIEW',
-    title: '账户概览',
-    desc: '在一个页面查看余额、充值记录与调用消费，数据只读展示。'
+    tag: 'IMAGE',
+    title: '图生图',
+    desc: '上传参考图后按提示词生成新的图片，保持主体与构图。'
   },
   {
-    tag: 'USAGE',
-    title: '调用统计',
-    desc: '按当前账号汇总调用次数与消费金额，方便对账。'
+    tag: 'MODEL',
+    title: '多模型可选',
+    desc: '在工作台中直接选择账号可用的图片模型。'
   },
   {
-    tag: 'ADMIN',
-    title: '管理看板',
-    desc: '管理员可查看成员、充值、调用与待结算汇总。'
+    tag: 'API',
+    title: 'OpenAI 兼容接口',
+    desc: '用标准 OpenAI 格式的地址直接调用图片生成接口。'
   }
 ])
 </script>
@@ -36,16 +38,16 @@ const features = computed(() => [
   <div class="landing">
     <section class="landing-hero">
       <div class="landing-hero__copy">
-        <p class="landing-kicker">{{ brand }} · OpenAI 兼容接口</p>
+        <p class="landing-kicker">{{ brand }} · AI 绘图工作台</p>
         <h1>
-          <span>一个账号</span>
-          <span class="landing-gradient">接入 AI 工作流</span>
+          <span>一句话</span>
+          <span class="landing-gradient">生成你想要的图片</span>
         </h1>
         <p class="landing-lede">
-          使用标准 OpenAI 格式的接口地址，统一管理账号余额、充值与调用数据。
+          支持文生图与图生图，在同一处选择模型、生成图片并下载结果，账户余额与调用数据实时可见。
         </p>
         <div class="landing-actions">
-          <RouterLink class="landing-primary" to="/register">开始使用</RouterLink>
+          <RouterLink class="landing-primary" :to="startTarget">开始绘图</RouterLink>
           <a class="landing-secondary" href="#features">查看能力</a>
         </div>
         <RouterLink class="landing-text-link" to="/login">已有账号，进入控制台</RouterLink>
@@ -55,24 +57,24 @@ const features = computed(() => [
         <div class="orbital-sphere">
           <span class="orbital-grid"></span>
         </div>
+        <div class="prompt-float prompt-float--one">戴着宇航头盔的橘猫</div>
+        <div class="prompt-float prompt-float--two">赛博朋克城市夜景</div>
+        <div class="prompt-float prompt-float--three">水彩风山间小屋</div>
         <div class="endpoint-card">
-          <span class="endpoint-card__label">BASE URL</span>
+          <span class="endpoint-card__label">OPENAI 兼容</span>
           <code>{{ apiBase }}</code>
         </div>
-        <span class="model-node model-node--compat">OpenAI 格式</span>
-        <span class="model-node model-node--stream">流式响应</span>
-        <span class="model-node model-node--key">API Key 鉴权</span>
       </div>
     </section>
 
     <section id="features" class="landing-section">
       <div class="landing-section__head">
         <div>
-          <p class="section-kicker">账户能力</p>
-          <h2>账户数据，清晰可控</h2>
-          <p>登录后即可查看属于当前账号的余额、充值与调用数据。</p>
+          <p class="section-kicker">绘图能力</p>
+          <h2>从提示词到成图，一站完成</h2>
+          <p>登录后进入绘图工作台，选择模型、填写提示词即可生成图片。</p>
         </div>
-        <RouterLink class="landing-secondary" to="/login">进入控制台</RouterLink>
+        <RouterLink class="landing-secondary" :to="startTarget">打开工作台</RouterLink>
       </div>
 
       <div class="feature-grid">
@@ -86,12 +88,12 @@ const features = computed(() => [
 
     <section class="landing-section landing-integrate">
       <div class="landing-integrate__copy">
-        <p class="section-kicker">快速接入</p>
-        <h2>保持 OpenAI 格式，直接替换地址</h2>
+        <p class="section-kicker">接口调用</p>
+        <h2>也可以用自己的客户端生成图片</h2>
         <p>
-          沿用现有的 OpenAI 兼容客户端，只需要修改接口地址即可。模型与计费口径与平台保持一致。
+          沿用现有 OpenAI 兼容客户端，只需要修改接口地址即可调用图片生成接口，计费口径与平台保持一致。
         </p>
-        <RouterLink class="landing-primary" to="/register">创建账号</RouterLink>
+        <RouterLink class="landing-primary" :to="startTarget">开始使用</RouterLink>
       </div>
       <div class="landing-integrate__code">
         <div class="code-window__head">
@@ -107,11 +109,12 @@ export OPENAI_API_KEY=&lt;你的 API Key&gt;</pre>
 
     <section class="landing-cta">
       <p class="section-kicker">现在开始</p>
-      <h2>用统一入口连接你的 AI 工作流</h2>
-      <p>一个账号，一套数据，一处查看余额与调用。</p>
+      <h2>把想法变成图片</h2>
+      <p>一个账号，一套余额，一处生成与查看。</p>
       <div class="landing-actions">
-        <RouterLink class="landing-primary" to="/register">创建账号</RouterLink>
-        <RouterLink class="landing-secondary" to="/login">进入控制台</RouterLink>
+        <RouterLink class="landing-primary" :to="startTarget">开始绘图</RouterLink>
+        <RouterLink v-if="!signedIn" class="landing-secondary" to="/login">进入控制台</RouterLink>
+        <RouterLink v-else class="landing-secondary" to="/dashboard">查看账户</RouterLink>
       </div>
     </section>
   </div>

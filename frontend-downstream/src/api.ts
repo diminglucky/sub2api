@@ -46,6 +46,24 @@ export interface AuthResponse {
   user: AuthUser
 }
 
+export interface ApiKeyInfo {
+  id: number
+  key: string
+  name: string
+  status: string
+  group?: {
+    allow_image_generation?: boolean
+  } | null
+}
+
+export interface ApiKeyPage {
+  items: ApiKeyInfo[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
 interface ApiEnvelope<T> {
   code: number
   message: string
@@ -129,6 +147,12 @@ export async function getMeSummary(): Promise<UserSummary> {
 
 export async function getAdminSummary(): Promise<AdminSummary> {
   return request<AdminSummary>('/api/internal/downstream/v1/admin/summary')
+}
+
+// List the signed-in user's own API keys. The workbench needs a key to call
+// the image endpoints, which always authenticate with an API key.
+export async function listApiKeys(pageSize = 100): Promise<ApiKeyPage> {
+  return request<ApiKeyPage>(`/api/v1/keys?page=1&page_size=${pageSize}`)
 }
 
 export async function login(email: string, password: string): Promise<AuthResponse> {

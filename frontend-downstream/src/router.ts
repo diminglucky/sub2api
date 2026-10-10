@@ -5,11 +5,13 @@ import RegisterView from './views/RegisterView.vue'
 import UserDashboardView from './views/UserDashboardView.vue'
 import AdminDashboardView from './views/AdminDashboardView.vue'
 import HomeView from './views/HomeView.vue'
+import StudioView from './views/StudioView.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/', name: 'home', component: HomeView },
   { path: '/login', name: 'login', component: LoginView },
   { path: '/register', name: 'register', component: RegisterView },
+  { path: '/studio', name: 'studio', component: StudioView, meta: { requiresAuth: true } },
   { path: '/dashboard', name: 'dashboard', component: UserDashboardView, meta: { requiresAuth: true } },
   { path: '/admin', name: 'admin', component: AdminDashboardView, meta: { requiresAuth: true } }
 ]
