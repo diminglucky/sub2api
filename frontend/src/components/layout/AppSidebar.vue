@@ -780,12 +780,18 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 
 // User navigation items (for regular users)
 const userNavItems = computed((): NavItem[] => {
-  const items = finalizeNav(buildSelfNavItems(true))
+  let items = finalizeNav(buildSelfNavItems(true))
+  // 渠道状态依赖主站上游，子站无法独立管理，因此在子站隐藏该入口。
+  if (isSubsite.value) {
+    items = items.filter((item) => item.path !== '/monitor')
+  }
   // Sub-site hosts hide the main admin console; sub-site admins get a single
   // scoped entry instead.
   if (isSubsite.value && subsiteAdmin.value) {
     return [
       { path: '/subsite-admin', label: t('nav.downstream'), icon: GlobeIcon },
+      { path: '/subsite-users', label: t('nav.users'), icon: UsersIcon },
+      { path: '/subsite-channels', label: '上游管理', icon: ChannelIcon },
       { path: '/subsite-settings', label: '子站设置', icon: CogIcon },
       ...items
     ]

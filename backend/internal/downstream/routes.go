@@ -33,6 +33,7 @@ func RegisterRoutes(r *gin.Engine, repo SummaryRepository, jwtAuth gin.HandlerFu
 		admin := auth.Group("/admin")
 		admin.GET("/settings", scoped.GetSettings)
 		admin.PUT("/settings", scoped.UpdateSettings)
+		admin.GET("/users", scoped.ListUsers)
 		admin.GET("/channels", scoped.ListChannels)
 		admin.GET("/prices", scoped.ListPrices)
 		admin.POST("/prices", scoped.CreatePrice)

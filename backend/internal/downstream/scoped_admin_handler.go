@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -56,6 +57,7 @@ type ScopedPriceRepository interface {
 	GetSubsiteUserSummary(ctx context.Context, subsiteID, userID int64) (*SubsiteUserSummary, error)
 	GetSubsiteByID(ctx context.Context, id int64) (*Subsite, error)
 	UpdateSubsite(ctx context.Context, id int64, input SubsiteUpsert) (*Subsite, error)
+	ListSubsiteMembers(ctx context.Context, subsiteID int64, limit, offset int) ([]SubsiteMemberSummary, error)
 	ListSubsiteChannels(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
 	ListSubsitePrices(ctx context.Context, subsiteID int64) ([]PriceOverride, error)
 	CreateSubsitePrice(ctx context.Context, subsiteID int64, input PriceOverrideUpsert) (*PriceOverride, error)
@@ -112,6 +114,41 @@ func (h *ScopedAdminHandler) ListChannels(c *gin.Context) {
 		return
 	}
 	response.Success(c, channels)
+}
+
+// ListUsers returns the members of the current sub-site with scoped totals.
+func (h *ScopedAdminHandler) ListUsers(c *gin.Context) {
+	subsiteID, ok := h.authorize(c)
+	if !ok {
+		return
+	}
+	page, pageSize := parsePageQuery(c, 50, 200)
+	users, err := h.repo.ListSubsiteMembers(c.Request.Context(), subsiteID, pageSize, (page-1)*pageSize)
+	if err != nil {
+		response.InternalError(c, "failed to list subsite members")
+		return
+	}
+	response.Success(c, gin.H{"items": users, "page": page, "page_size": pageSize})
+}
+
+// parsePageQuery reads page/page_size with sane bounds.
+func parsePageQuery(c *gin.Context, defaultSize, maxSize int) (int, int) {
+	page := 1
+	size := defaultSize
+	if raw := strings.TrimSpace(c.Query("page")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if raw := strings.TrimSpace(c.Query("page_size")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			size = parsed
+		}
+	}
+	if size > maxSize {
+		size = maxSize
+	}
+	return page, size
 }
 
 // GetSettings returns the editable branding settings of the current sub-site.

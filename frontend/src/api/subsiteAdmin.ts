@@ -65,6 +65,25 @@ export interface SubsiteSettingsInput {
   theme_color: string
 }
 
+export interface SubsiteMember {
+  user_id: number
+  email: string
+  role: string
+  source: string
+  balance: number
+  usage_count: number
+  usage_cost: number
+  recharge_count: number
+  recharge_amount: number
+  joined_at: string
+}
+
+export interface SubsiteMemberPage {
+  items: SubsiteMember[]
+  page: number
+  page_size: number
+}
+
 // The shared apiClient prefixes /api/v1, so sub-site endpoints use absolute
 // URLs to bypass that base and hit /api/internal/... directly.
 function subsiteURL(path: string): string {
@@ -96,6 +115,13 @@ export async function listSubsiteChannels(): Promise<SubsiteChannel[]> {
 export async function getSubsiteSettings(): Promise<SubsiteSettings> {
   const { data } = await apiClient.get<SubsiteSettings>(
     subsiteURL('/api/internal/downstream/v1/admin/settings')
+  )
+  return data
+}
+
+export async function listSubsiteUsers(page = 1, pageSize = 50): Promise<SubsiteMemberPage> {
+  const { data } = await apiClient.get<SubsiteMemberPage>(
+    subsiteURL(`/api/internal/downstream/v1/admin/users?page=${page}&page_size=${pageSize}`)
   )
   return data
 }
@@ -135,6 +161,7 @@ export const subsiteAdminAPI = {
   getSummary: getSubsiteAdminSummary,
   getSettings: getSubsiteSettings,
   updateSettings: updateSubsiteSettings,
+  listUsers: listSubsiteUsers,
   listChannels: listSubsiteChannels,
   listPrices: listSubsitePrices,
   createPrice: createSubsitePrice,
