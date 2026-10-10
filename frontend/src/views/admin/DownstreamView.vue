@@ -62,6 +62,7 @@
               <input v-model="createForm.slug" class="input" placeholder="slug，例如 draw" />
               <input v-model="createForm.domain" class="input" placeholder="域名，例如 draw.superai.sbs" />
               <input v-model="createForm.name" class="input" placeholder="名称，例如 Draw" />
+              <input v-model="createForm.logo_url" class="input" placeholder="Logo 地址，例如 /draw-logo.svg" />
               <input v-model="createForm.theme_color" class="input" placeholder="主题色，例如 #fb6415" />
               <button class="btn btn-primary w-full" :disabled="saving" @click="createSubsite">
                 创建子站
@@ -226,7 +227,7 @@ const saving = ref(false)
 const error = ref('')
 const showCreate = ref(false)
 
-const createForm = reactive({ slug: '', domain: '', name: '', theme_color: '#fb6415' })
+const createForm = reactive({ slug: '', domain: '', name: '', logo_url: '', theme_color: '#fb6415' })
 const modelForm = reactive({ model: '', rate_multiplier: 1 })
 
 const modelOverrides = computed(() => overrides.value.filter((item) => item.scope === 'model'))
@@ -365,6 +366,7 @@ async function createSubsite() {
     createForm.slug = ''
     createForm.domain = ''
     createForm.name = ''
+    createForm.logo_url = ''
     showCreate.value = false
     await reload()
   } catch (err) {
