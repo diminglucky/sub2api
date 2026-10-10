@@ -5,7 +5,7 @@
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">上游管理</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            本站开放模型的倍率。主站倍率只读，子站倍率不能低于主站倍率；模型基础价由主站统一维护。
+            本站开放的分组与模型。主站倍率只读，子站倍率不能低于主站倍率，模型基础价由主站统一维护。
           </p>
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="reload">
@@ -18,21 +18,26 @@
         {{ error }}
       </p>
 
-      <div v-if="!rows.length && !loading" class="rounded-xl border border-gray-200 bg-white py-12 text-center text-sm text-gray-400 dark:border-dark-700 dark:bg-dark-900">
-        主站还没有给本站分配分组或模型
+      <div v-if="!groups.length && !loading" class="rounded-xl border border-gray-200 bg-white py-12 text-center text-sm text-gray-400 dark:border-dark-700 dark:bg-dark-900">
+        主站还没有给本站分配分组
       </div>
 
       <section
-        v-for="group in grouped"
+        v-for="group in groups"
         :key="group.id"
         class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900"
       >
-        <div class="mb-3 flex items-center gap-2">
+        <div class="flex flex-wrap items-center gap-2">
           <span class="text-base font-semibold text-gray-900 dark:text-white">{{ group.name }}</span>
+          <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-dark-800">{{ group.platform }}</span>
           <span class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-dark-800">主站倍率 ×{{ group.mainMultiplier }}</span>
         </div>
 
-        <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
+        <div v-if="!group.rows.length" class="mt-3 rounded-lg border border-dashed border-gray-200 py-6 text-center text-xs text-gray-400 dark:border-dark-700">
+          该分组暂无可用模型（主站尚未配置渠道/模型）
+        </div>
+
+        <div v-else class="mt-3 overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
           <table class="min-w-full text-sm">
             <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-dark-800">
               <tr>
@@ -83,11 +88,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
   createSubsitePrice,
+  listSubsiteChannels,
   listSubsiteModels,
   listSubsitePrices,
   updateSubsitePrice,
@@ -97,29 +103,17 @@ import {
 interface GroupRows {
   id: number
   name: string
+  platform: string
   mainMultiplier: number
   rows: SubsiteModelPrice[]
 }
 
-const rows = ref<SubsiteModelPrice[]>([])
+const groups = ref<GroupRows[]>([])
 const overrideIds = ref<Record<string, number>>({})
 const draft = reactive<Record<string, number>>({})
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
-
-const grouped = computed<GroupRows[]>(() => {
-  const map = new Map<number, GroupRows>()
-  for (const row of rows.value) {
-    let group = map.get(row.group_id)
-    if (!group) {
-      group = { id: row.group_id, name: row.group_name, mainMultiplier: row.main_multiplier, rows: [] }
-      map.set(row.group_id, group)
-    }
-    group.rows.push(row)
-  }
-  return Array.from(map.values())
-})
 
 onMounted(reload)
 
@@ -134,19 +128,29 @@ async function reload() {
   loading.value = true
   error.value = ''
   try {
-    const [models, prices] = await Promise.all([listSubsiteModels(), listSubsitePrices()])
-    rows.value = models
+    const [channels, models, prices] = await Promise.all([
+      listSubsiteChannels(),
+      listSubsiteModels(),
+      listSubsitePrices()
+    ])
     overrideIds.value = {}
     for (const price of prices) {
       if (price.scope === 'model' && price.model) {
         overrideIds.value[price.model] = price.id
       }
     }
-    for (const row of models) {
-      draft[row.model] = row.subsite_multiplier ?? row.main_multiplier
+    groups.value = channels.map((channel) => ({
+      id: channel.group_id,
+      name: channel.name,
+      platform: channel.platform,
+      mainMultiplier: channel.main_rate_multiplier,
+      rows: models.filter((model) => model.group_id === channel.group_id)
+    }))
+    for (const model of models) {
+      draft[model.model] = model.subsite_multiplier ?? model.main_multiplier
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载模型失败'
+    error.value = err instanceof Error ? err.message : '加载失败'
   } finally {
     loading.value = false
   }
