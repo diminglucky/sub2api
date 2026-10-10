@@ -81,6 +81,12 @@ export const useAppStore = defineStore('app', () => {
     return subsiteAdminRequest
   }
 
+  // Called on logout so the next account does not inherit the cached menu.
+  function resetSubsiteAdmin(): void {
+    subsiteAdmin.value = null
+    subsiteAdminRequest = null
+  }
+
   // Version cache state
   const versionLoaded = ref<boolean>(false)
   const versionLoading = ref<boolean>(false)
@@ -523,6 +529,7 @@ export const useAppStore = defineStore('app', () => {
     backendModeEnabled,
     isSubsite,
     ensureSubsiteAdmin,
+    resetSubsiteAdmin,
 
     // Actions
     toggleSidebar,

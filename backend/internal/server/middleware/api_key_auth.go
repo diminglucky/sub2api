@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -16,6 +17,15 @@ import (
 )
 
 const maxAPIKeyAuthorizationHeaderBytes = service.MaxAPIKeyCredentialBytes + 128
+
+// subsiteGroupGuard reports whether a group is open to a sub-site. It is wired
+// at startup; a nil guard means "no restriction".
+var subsiteGroupGuard func(ctx context.Context, subsiteID, groupID int64) bool
+
+// SetSubsiteGroupGuard wires the sub-site group guard.
+func SetSubsiteGroupGuard(fn func(ctx context.Context, subsiteID, groupID int64) bool) {
+	subsiteGroupGuard = fn
+}
 
 // NewAPIKeyAuthMiddleware 创建 API Key 认证中间件
 func NewAPIKeyAuthMiddleware(apiKeyService *service.APIKeyService, subscriptionService *service.SubscriptionService, cfg *config.Config) APIKeyAuthMiddleware {
@@ -117,6 +127,15 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		// apiKey 已加载（含 User/Group）。即便后续因分组停用/Key 停用/用户停用/
 		// IP 限制等早退中断，也让 Ops 错误日志能回退取到 user/group/platform。
 		SetOpsFallbackAPIKey(c, apiKey)
+
+		// 子站：Key 所属分组必须开放给当前子站，否则请求不得走主站价。
+		if subsite, ok := downstream.FromGin(c); ok && subsite != nil && apiKey.GroupID != nil {
+			if guard := subsiteGroupGuard; guard != nil && !guard(c.Request.Context(), subsite.ID, *apiKey.GroupID) {
+				MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+				AbortWithError(c, http.StatusForbidden, "SUBSITE_GROUP_NOT_ALLOWED", "This API key's group is not available on this subsite")
+				return
+			}
+		}
 
 		// ── 3. 基础鉴权（始终执行） ─────────────────────────────────
 

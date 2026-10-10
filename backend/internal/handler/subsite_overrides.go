@@ -10,6 +10,19 @@ type SubsitePriceOverrides struct {
 	GroupRates map[int64]float64
 	// ModelRates maps model -> sub-site model multiplier.
 	ModelRates map[string]float64
+	// AssignedGroups is the set of groups open to the sub-site. When non-nil it
+	// restricts what a sub-site user may see or bind.
+	AssignedGroups map[int64]struct{}
+}
+
+// GroupAssigned reports whether a group is open to the sub-site. A nil
+// AssignedGroups set means "no restriction".
+func (o *SubsitePriceOverrides) GroupAssigned(groupID int64) bool {
+	if o == nil || o.AssignedGroups == nil {
+		return true
+	}
+	_, ok := o.AssignedGroups[groupID]
+	return ok
 }
 
 // SubsitePriceOverrideProvider loads the overrides for one sub-site.

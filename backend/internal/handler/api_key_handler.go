@@ -196,6 +196,14 @@ func (h *APIKeyHandler) Create(c *gin.Context) {
 		response.BadRequest(c, "Invalid request: numeric limits must be finite and non-negative, and expires_in_days must be greater than zero")
 		return
 	}
+	// 子站只能绑定开放给本站的分组。
+	if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
+		if overrides := LoadSubsitePriceOverrides(c.Request.Context(), subsite.ID); overrides != nil &&
+			req.GroupID != nil && !overrides.GroupAssigned(*req.GroupID) {
+			response.Forbidden(c, "该分组未开放给当前子站")
+			return
+		}
+	}
 
 	svcReq := service.CreateAPIKeyRequest{
 		Name:          req.Name,
@@ -340,6 +348,16 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 	// 子站用户看到的是子站倍率：分组级覆盖优先于主站分组倍率。
 	if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
 		if overrides := LoadSubsitePriceOverrides(c.Request.Context(), subsite.ID); overrides != nil {
+			// 只保留开放给该子站的分组。
+			if overrides.AssignedGroups != nil {
+				filtered := out[:0]
+				for i := range out {
+					if overrides.GroupAssigned(out[i].ID) {
+						filtered = append(filtered, out[i])
+					}
+				}
+				out = filtered
+			}
 			for i := range out {
 				if rate, ok := overrides.GroupRates[out[i].ID]; ok {
 					out[i].RateMultiplier = rate

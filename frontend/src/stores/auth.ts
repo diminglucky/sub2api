@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
 import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
+import { useAppStore } from './app'
 import type {
   User,
   LoginRequest,
@@ -423,6 +424,12 @@ export const useAuthStore = defineStore('auth', () => {
     } finally {
       // Always clear local state (tokens, user data, refresh timers)
       clearAuth()
+      // Drop the cached sub-site admin menu so the next account starts clean.
+      try {
+        useAppStore().resetSubsiteAdmin()
+      } catch {
+        // Store may be unavailable (SSR / tests); safe to ignore.
+      }
     }
   }
 

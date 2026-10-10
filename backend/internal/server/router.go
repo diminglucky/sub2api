@@ -160,8 +160,16 @@ func registerRoutes(
 			return nil, err
 		}
 		overrides := &handler.SubsitePriceOverrides{
-			GroupRates: map[int64]float64{},
-			ModelRates: map[string]float64{},
+			GroupRates:     map[int64]float64{},
+			ModelRates:     map[string]float64{},
+			AssignedGroups: map[int64]struct{}{},
+		}
+		if groups, err := downstreamRepo.ListSubsiteGroupAssignments(ctx, subsiteID); err == nil {
+			for _, group := range groups {
+				if group.Assigned {
+					overrides.AssignedGroups[group.GroupID] = struct{}{}
+				}
+			}
 		}
 		for _, price := range prices {
 			switch price.Scope {
@@ -176,6 +184,19 @@ func registerRoutes(
 			}
 		}
 		return overrides, nil
+	})
+	// Sub-site API keys may only use groups open to that sub-site.
+	middleware2.SetSubsiteGroupGuard(func(ctx context.Context, subsiteID, groupID int64) bool {
+		groups, err := downstreamRepo.ListSubsiteGroupAssignments(ctx, subsiteID)
+		if err != nil {
+			return false
+		}
+		for _, group := range groups {
+			if group.GroupID == groupID {
+				return group.Assigned
+			}
+		}
+		return false
 	})
 	downstream.RegisterRoutes(r, downstreamRepo, gin.HandlerFunc(jwtAuth), downstreamUserContext(), subsiteModelCatalog(h))
 

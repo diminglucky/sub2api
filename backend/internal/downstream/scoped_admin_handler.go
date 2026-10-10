@@ -17,7 +17,7 @@ const priceFloorEpsilon = 1e-9
 // validateFloor rejects a sub-site price that would undercut the main site.
 // Group overrides must be >= the group's main multiplier; model overrides must
 // be >= 1 because the base price already includes the main-site pricing.
-func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequest) bool {
+func (h *ScopedAdminHandler) validateFloor(c *gin.Context, subsiteID int64, req priceOverrideRequest) bool {
 	rate := 1.0
 	if req.RateMultiplier != nil {
 		rate = *req.RateMultiplier
@@ -66,14 +66,23 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 			response.BadRequest(c, "model is required for a model price override")
 			return false
 		}
-		// 同刻度替换：模型级下限是主站上该模型的倍率。同一模型可能出现在多个
-		// 分组，取其中最高的分组倍率，保证任何时候都不低于主站。
-		mainRate := 1.0
+		// 同刻度替换：模型级下限是主站上该模型的倍率，且该模型必须落在本站
+		// 开放的分组里。同一模型可能出现在多个分组，取其中最高的分组倍率。
+		assigned := map[int64]struct{}{}
+		if channels, err := h.repo.ListSubsiteChannels(c.Request.Context(), subsiteID); err == nil {
+			for _, channel := range channels {
+				assigned[channel.GroupID] = struct{}{}
+			}
+		}
+		mainRate := 0.0
 		matched := false
 		if h.catalog != nil {
 			if catalog, err := h.catalog(c.Request.Context()); err == nil {
 				for _, entry := range catalog {
 					if entry.Model != model {
+						continue
+					}
+					if _, ok := assigned[entry.GroupID]; !ok {
 						continue
 					}
 					if !matched || entry.MainMultiplier > mainRate {
@@ -83,8 +92,11 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, req priceOverrideRequ
 				}
 			}
 		}
-		// 目录里查不到该模型时无法确定主站倍率，放行（由主站配置兜底）。
-		if matched && rate+priceFloorEpsilon < mainRate {
+		if !matched {
+			response.BadRequest(c, "该模型未开放给当前子站")
+			return false
+		}
+		if rate+priceFloorEpsilon < mainRate {
 			response.BadRequest(c, "子站倍率不能低于主站倍率")
 			return false
 		}
@@ -310,7 +322,7 @@ func (h *ScopedAdminHandler) CreatePrice(c *gin.Context) {
 		response.BadRequest(c, "invalid price override payload")
 		return
 	}
-	if !h.validateFloor(c, req) {
+	if !h.validateFloor(c, subsiteID, req) {
 		return
 	}
 	price, err := h.repo.CreateSubsitePrice(c.Request.Context(), subsiteID, req.toUpsert())
@@ -336,7 +348,7 @@ func (h *ScopedAdminHandler) UpdatePrice(c *gin.Context) {
 		response.BadRequest(c, "invalid price override payload")
 		return
 	}
-	if !h.validateFloor(c, req) {
+	if !h.validateFloor(c, subsiteID, req) {
 		return
 	}
 	price, err := h.repo.UpdateSubsitePrice(c.Request.Context(), subsiteID, priceID, req.toUpsert())
