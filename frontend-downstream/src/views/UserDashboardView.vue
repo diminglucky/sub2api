@@ -28,7 +28,7 @@ function money(value: number | undefined): string {
       <div>
         <p class="eyebrow">{{ site?.name || 'Draw' }}</p>
         <h1>用户中心</h1>
-        <p class="lede">查看账户余额、充值记录和 API 调用情况，所有数据与主站保持一致。</p>
+        <p class="lede">查看账户余额、充值记录和调用情况，数据来自当前账号的统一账本。</p>
       </div>
     </header>
 
@@ -65,17 +65,17 @@ function money(value: number | undefined): string {
       <div class="panel-heading">
         <div>
           <h2>OpenAI 兼容接入</h2>
-          <p>API Key 在统一控制台管理，这里展示可直接使用的接口地址。</p>
+          <p>使用标准 OpenAI 格式的接口地址，通过 API Key 完成鉴权。</p>
         </div>
-        <span class="status-chip">与主站同步</span>
+        <span class="status-chip">已启用</span>
       </div>
       <pre class="code-block">export OPENAI_BASE_URL={{ apiBase }}
-export OPENAI_API_KEY=&lt;主站创建的 API Key&gt;</pre>
+export OPENAI_API_KEY=&lt;你的 API Key&gt;</pre>
     </section>
 
     <section class="panel muted-panel">
       <h2>数据说明</h2>
-      <p>本页仅展示归属于 {{ site?.name || '当前账号' }} 的余额、充值和调用统计。</p>
+      <p>本页展示归属于 {{ site?.name || '当前账号' }} 的余额、充值和调用统计，均为只读数据。</p>
     </section>
   </section>
 </template>

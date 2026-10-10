@@ -30,7 +30,7 @@ async function submit() {
     <form class="auth-card" @submit.prevent="submit">
       <p class="eyebrow">{{ site?.name || 'Draw' }}</p>
       <h1>创建账号</h1>
-      <p class="lede">注册后即可使用统一的余额、充值和 API 调用服务。</p>
+      <p class="lede">注册后即可进入控制台，查看账号余额、充值与调用数据。</p>
 
       <p v-if="error" class="form-error">{{ error }}</p>
 

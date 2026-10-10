@@ -86,10 +86,12 @@ onUnmounted(() => {
       </RouterLink>
 
       <nav class="site-nav" aria-label="主导航">
+        <RouterLink v-if="!auth" class="nav-link" to="/">首页</RouterLink>
+        <a v-if="!auth" class="nav-link" href="/#features">账户能力</a>
         <RouterLink v-if="auth" class="nav-link" to="/dashboard">用户中心</RouterLink>
         <RouterLink v-if="auth && isAdmin" class="nav-link" to="/admin">管理看板</RouterLink>
         <button v-if="auth" class="text-button" type="button" @click="handleLogout">退出登录</button>
-        <RouterLink v-else class="nav-link" to="/login">登录</RouterLink>
+        <RouterLink v-else class="nav-link nav-link--primary" to="/login">控制台</RouterLink>
       </nav>
     </header>
 
