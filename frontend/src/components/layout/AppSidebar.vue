@@ -789,8 +789,6 @@ const userNavItems = computed((): NavItem[] => {
   if (isSubsite.value && subsiteAdmin.value) {
     return [
       { path: '/subsite-admin', label: t('nav.downstream'), icon: GlobeIcon },
-      { path: '/subsite-users', label: t('nav.users'), icon: UsersIcon },
-      { path: '/subsite-channels', label: '上游管理', icon: ChannelIcon },
       { path: '/subsite-settings', label: '子站设置', icon: CogIcon },
       ...items
     ]
