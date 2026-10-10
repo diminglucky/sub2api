@@ -22,6 +22,9 @@ type AdminManagementRepository interface {
 	CreateSubsitePrice(ctx context.Context, subsiteID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	UpdateSubsitePrice(ctx context.Context, subsiteID, priceID int64, input PriceOverrideUpsert) (*PriceOverride, error)
 	DeleteSubsitePrice(ctx context.Context, subsiteID, priceID int64) error
+	ListSubsiteGroupAssignments(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
+	AddSubsiteGroup(ctx context.Context, subsiteID, groupID int64) error
+	RemoveSubsiteGroup(ctx context.Context, subsiteID, groupID int64) error
 }
 
 // AdminHandler serves main-site admin provisioning for downstream subsites.
@@ -220,6 +223,63 @@ func (h *AdminHandler) DeletePrice(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"deleted": true})
+}
+
+// ListSubsiteGroups returns every active group with its assignment state.
+func (h *AdminHandler) ListSubsiteGroups(c *gin.Context) {
+	if !h.requireRepo(c) {
+		return
+	}
+	id, ok := parsePositiveID(c, "id")
+	if !ok {
+		return
+	}
+	groups, err := h.repo.ListSubsiteGroupAssignments(c.Request.Context(), id)
+	if err != nil {
+		writeAdminError(c, err, "failed to list subsite groups")
+		return
+	}
+	response.Success(c, groups)
+}
+
+// AssignSubsiteGroup opens a group to the sub-site.
+func (h *AdminHandler) AssignSubsiteGroup(c *gin.Context) {
+	if !h.requireRepo(c) {
+		return
+	}
+	id, ok := parsePositiveID(c, "id")
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id")
+	if !ok {
+		return
+	}
+	if err := h.repo.AddSubsiteGroup(c.Request.Context(), id, groupID); err != nil {
+		writeAdminError(c, err, "failed to assign group")
+		return
+	}
+	response.Success(c, gin.H{"assigned": true})
+}
+
+// UnassignSubsiteGroup closes a group for the sub-site.
+func (h *AdminHandler) UnassignSubsiteGroup(c *gin.Context) {
+	if !h.requireRepo(c) {
+		return
+	}
+	id, ok := parsePositiveID(c, "id")
+	if !ok {
+		return
+	}
+	groupID, ok := parsePositiveID(c, "group_id")
+	if !ok {
+		return
+	}
+	if err := h.repo.RemoveSubsiteGroup(c.Request.Context(), id, groupID); err != nil {
+		writeAdminError(c, err, "failed to unassign group")
+		return
+	}
+	response.Success(c, gin.H{"assigned": false})
 }
 
 func (h *AdminHandler) requireRepo(c *gin.Context) bool {

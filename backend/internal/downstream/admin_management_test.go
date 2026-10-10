@@ -24,6 +24,18 @@ func (s *adminManagementRepoStub) ListSubsites(context.Context) ([]Subsite, erro
 	return s.subsites, nil
 }
 
+func (s *adminManagementRepoStub) ListSubsiteGroupAssignments(context.Context, int64) ([]SubsiteChannel, error) {
+	return nil, nil
+}
+
+func (s *adminManagementRepoStub) AddSubsiteGroup(context.Context, int64, int64) error {
+	return nil
+}
+
+func (s *adminManagementRepoStub) RemoveSubsiteGroup(context.Context, int64, int64) error {
+	return nil
+}
+
 func (s *adminManagementRepoStub) GetSubsiteByID(_ context.Context, id int64) (*Subsite, error) {
 	return &Subsite{ID: id, Slug: "draw", Domain: "draw.superai.sbs", Name: "Draw", Status: SubsiteStatusActive}, nil
 }

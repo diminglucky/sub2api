@@ -20,5 +20,8 @@ func RegisterAdminRoutes(adminGroup *gin.RouterGroup, repo AdminManagementReposi
 		subsites.POST("/:id/prices", h.CreatePrice)
 		subsites.PUT("/:id/prices/:price_id", h.UpdatePrice)
 		subsites.DELETE("/:id/prices/:price_id", h.DeletePrice)
+		subsites.GET("/:id/groups", h.ListSubsiteGroups)
+		subsites.POST("/:id/groups/:group_id", h.AssignSubsiteGroup)
+		subsites.DELETE("/:id/groups/:group_id", h.UnassignSubsiteGroup)
 	}
 }

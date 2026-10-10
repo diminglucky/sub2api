@@ -53,6 +53,17 @@ export interface DownstreamPriceOverrideInput {
   status?: string
 }
 
+export interface DownstreamGroupAssignment {
+  group_id: number
+  name: string
+  platform: string
+  main_rate_multiplier: number
+  main_image_price_1k: number | null
+  main_image_price_2k: number | null
+  main_image_price_4k: number | null
+  assigned: boolean
+}
+
 export async function listSubsites(): Promise<DownstreamSubsite[]> {
   const { data } = await apiClient.get<DownstreamSubsite[]>('/admin/downstream/subsites')
   return data
@@ -112,6 +123,21 @@ export async function deletePrice(subsiteId: number, priceId: number): Promise<v
   await apiClient.delete(`/admin/downstream/subsites/${subsiteId}/prices/${priceId}`)
 }
 
+export async function listSubsiteGroups(subsiteId: number): Promise<DownstreamGroupAssignment[]> {
+  const { data } = await apiClient.get<DownstreamGroupAssignment[]>(
+    `/admin/downstream/subsites/${subsiteId}/groups`
+  )
+  return data
+}
+
+export async function assignSubsiteGroup(subsiteId: number, groupId: number): Promise<void> {
+  await apiClient.post(`/admin/downstream/subsites/${subsiteId}/groups/${groupId}`)
+}
+
+export async function unassignSubsiteGroup(subsiteId: number, groupId: number): Promise<void> {
+  await apiClient.delete(`/admin/downstream/subsites/${subsiteId}/groups/${groupId}`)
+}
+
 export const downstreamAdminAPI = {
   listSubsites,
   createSubsite,
@@ -120,7 +146,10 @@ export const downstreamAdminAPI = {
   listPrices,
   createPrice,
   updatePrice,
-  deletePrice
+  deletePrice,
+  listGroups: listSubsiteGroups,
+  assignGroup: assignSubsiteGroup,
+  unassignGroup: unassignSubsiteGroup
 }
 
 export default downstreamAdminAPI
