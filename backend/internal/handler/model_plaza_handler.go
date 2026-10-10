@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -103,6 +104,15 @@ type modelPlazaGroup struct {
 type modelPlazaResponse struct {
 	Description string            `json:"description"`
 	Groups      []modelPlazaGroup `json:"groups"`
+}
+
+// ListGroups exposes the main-site pricing catalog to the sub-site price
+// management endpoint, independent of the public model-plaza switch.
+func (h *ModelPlazaHandler) ListGroups(ctx context.Context) ([]service.PlazaGroup, error) {
+	if h == nil || h.plazaService == nil {
+		return nil, nil
+	}
+	return h.plazaService.ListGroups(ctx)
 }
 
 // Get 返回模型广场数据。

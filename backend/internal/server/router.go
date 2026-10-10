@@ -100,6 +100,38 @@ func SetupRouter(
 	return r
 }
 
+// subsiteModelCatalog exposes the main-site pricing catalog (group, multiplier,
+// model, billing mode) to the sub-site price management endpoint.
+func subsiteModelCatalog(h *handler.Handlers) downstream.ModelCatalogProvider {
+	return func(ctx context.Context) ([]downstream.ModelCatalogEntry, error) {
+		if h == nil || h.ModelPlaza == nil {
+			return nil, nil
+		}
+		groups, err := h.ModelPlaza.ListGroups(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]downstream.ModelCatalogEntry, 0)
+		for _, group := range groups {
+			for _, model := range group.Models {
+				billingMode := ""
+				if model.Pricing != nil {
+					billingMode = string(model.Pricing.BillingMode)
+				}
+				out = append(out, downstream.ModelCatalogEntry{
+					GroupID:        group.ID,
+					GroupName:      group.Name,
+					MainMultiplier: group.RateMultiplier,
+					Model:          model.Name,
+					Platform:       model.Platform,
+					BillingMode:    billingMode,
+				})
+			}
+		}
+		return out, nil
+	}
+}
+
 // registerRoutes 注册所有 HTTP 路由
 func registerRoutes(
 	r *gin.Engine,
@@ -121,7 +153,7 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
-	downstream.RegisterRoutes(r, downstreamRepo, gin.HandlerFunc(jwtAuth), downstreamUserContext())
+	downstream.RegisterRoutes(r, downstreamRepo, gin.HandlerFunc(jwtAuth), downstreamUserContext(), subsiteModelCatalog(h))
 
 	// API v1
 	v1 := r.Group("/api/v1")

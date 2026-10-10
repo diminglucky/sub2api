@@ -83,6 +83,7 @@ type ScopedPriceRepository interface {
 	GetSubsiteByID(ctx context.Context, id int64) (*Subsite, error)
 	UpdateSubsite(ctx context.Context, id int64, input SubsiteUpsert) (*Subsite, error)
 	ListSubsiteMembers(ctx context.Context, subsiteID int64, limit, offset int) ([]SubsiteMemberSummary, error)
+	ListSubsiteModelPrices(ctx context.Context, subsiteID int64, catalog []ModelCatalogEntry) ([]SubsiteModelPrice, error)
 	ListSubsiteChannels(ctx context.Context, subsiteID int64) ([]SubsiteChannel, error)
 	ListSubsitePrices(ctx context.Context, subsiteID int64) ([]PriceOverride, error)
 	CreateSubsitePrice(ctx context.Context, subsiteID int64, input PriceOverrideUpsert) (*PriceOverride, error)
@@ -105,12 +106,13 @@ type SubsiteSettings struct {
 
 // ScopedAdminHandler serves price management for the current sub-site only.
 type ScopedAdminHandler struct {
-	repo ScopedPriceRepository
+	repo    ScopedPriceRepository
+	catalog ModelCatalogProvider
 }
 
 // NewScopedAdminHandler creates a sub-site-scoped admin handler.
-func NewScopedAdminHandler(repo ScopedPriceRepository) *ScopedAdminHandler {
-	return &ScopedAdminHandler{repo: repo}
+func NewScopedAdminHandler(repo ScopedPriceRepository, catalog ModelCatalogProvider) *ScopedAdminHandler {
+	return &ScopedAdminHandler{repo: repo, catalog: catalog}
 }
 
 // ListPrices returns the price overrides of the current sub-site.
@@ -140,6 +142,30 @@ func (h *ScopedAdminHandler) ListChannels(c *gin.Context) {
 		return
 	}
 	response.Success(c, channels)
+}
+
+// ListModels returns the "group -> model" price list for the current sub-site:
+// the main-site multiplier of every model, plus the sub-site's own override.
+func (h *ScopedAdminHandler) ListModels(c *gin.Context) {
+	subsiteID, ok := h.authorize(c)
+	if !ok {
+		return
+	}
+	if h.catalog == nil {
+		response.Success(c, []SubsiteModelPrice{})
+		return
+	}
+	catalog, err := h.catalog(c.Request.Context())
+	if err != nil {
+		response.InternalError(c, "failed to load model catalog")
+		return
+	}
+	models, err := h.repo.ListSubsiteModelPrices(c.Request.Context(), subsiteID, catalog)
+	if err != nil {
+		response.InternalError(c, "failed to load subsite model prices")
+		return
+	}
+	response.Success(c, models)
 }
 
 // ListUsers returns the members of the current sub-site with scoped totals.

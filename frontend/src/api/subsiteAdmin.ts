@@ -96,6 +96,16 @@ export interface SubsiteMemberPage {
   page_size: number
 }
 
+export interface SubsiteModelPrice {
+  group_id: number
+  group_name: string
+  main_multiplier: number
+  model: string
+  platform: string
+  billing_mode: string
+  subsite_multiplier: number | null
+}
+
 // The shared apiClient prefixes /api/v1, so sub-site endpoints use absolute
 // URLs to bypass that base and hit /api/internal/... directly.
 function subsiteURL(path: string): string {
@@ -138,6 +148,13 @@ export async function listSubsiteUsers(page = 1, pageSize = 50): Promise<Subsite
   return data
 }
 
+export async function listSubsiteModels(): Promise<SubsiteModelPrice[]> {
+  const { data } = await apiClient.get<SubsiteModelPrice[]>(
+    subsiteURL('/api/internal/downstream/v1/admin/models')
+  )
+  return data
+}
+
 export async function updateSubsiteSettings(input: SubsiteSettingsInput): Promise<SubsiteSettings> {
   const { data } = await apiClient.put<SubsiteSettings>(
     subsiteURL('/api/internal/downstream/v1/admin/settings'),
@@ -174,6 +191,7 @@ export const subsiteAdminAPI = {
   getSettings: getSubsiteSettings,
   updateSettings: updateSubsiteSettings,
   listUsers: listSubsiteUsers,
+  listModels: listSubsiteModels,
   listChannels: listSubsiteChannels,
   listPrices: listSubsitePrices,
   createPrice: createSubsitePrice,
