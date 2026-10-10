@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -335,6 +336,16 @@ func (h *APIKeyHandler) GetAvailableGroups(c *gin.Context) {
 	out := make([]dto.Group, 0, len(groups))
 	for i := range groups {
 		out = append(out, *dto.GroupFromService(&groups[i]))
+	}
+	// 子站用户看到的是子站倍率：分组级覆盖优先于主站分组倍率。
+	if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
+		if overrides := LoadSubsitePriceOverrides(c.Request.Context(), subsite.ID); overrides != nil {
+			for i := range out {
+				if rate, ok := overrides.GroupRates[out[i].ID]; ok {
+					out[i].RateMultiplier = rate
+				}
+			}
+		}
 	}
 	response.Success(c, out)
 }

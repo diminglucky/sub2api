@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -165,10 +166,52 @@ func (h *ModelPlazaHandler) Get(c *gin.Context) {
 	for i := range visible {
 		out = append(out, toModelPlazaGroupDTO(&visible[i], userRates))
 	}
+	// 子站用户看到的是子站倍率：分组级覆盖直接替换分组倍率；模型级覆盖按比例
+	// 折进该模型的定价（前端展示价 = 定价 × 分组倍率，折算后即为子站价）。
+	if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
+		if overrides := LoadSubsitePriceOverrides(c.Request.Context(), subsite.ID); overrides != nil {
+			for i := range out {
+				groupRate := out[i].RateMultiplier
+				for j := range out[i].Models {
+					model := &out[i].Models[j]
+					subRate, hasRate := overrides.ModelRates[model.Name]
+					if !hasRate || groupRate <= 0 || model.Pricing == nil {
+						continue
+					}
+					scaleUserSupportedModelPricing(model.Pricing, subRate/groupRate)
+				}
+				if rate, ok := overrides.GroupRates[out[i].ID]; ok {
+					out[i].RateMultiplier = rate
+				}
+			}
+		}
+	}
 	response.Success(c, modelPlazaResponse{
 		Description: rt.Description,
 		Groups:      out,
 	})
+}
+
+// scaleUserSupportedModelPricing multiplies every displayed price field by a
+// factor so the sub-site model rate replaces the main-site group rate.
+func scaleUserSupportedModelPricing(pricing *userSupportedModelPricing, factor float64) {
+	if pricing == nil || factor <= 0 {
+		return
+	}
+	scale := func(value *float64) *float64 {
+		if value == nil {
+			return nil
+		}
+		scaled := *value * factor
+		return &scaled
+	}
+	pricing.InputPrice = scale(pricing.InputPrice)
+	pricing.OutputPrice = scale(pricing.OutputPrice)
+	pricing.CacheWritePrice = scale(pricing.CacheWritePrice)
+	pricing.CacheReadPrice = scale(pricing.CacheReadPrice)
+	pricing.ImageInputPrice = scale(pricing.ImageInputPrice)
+	pricing.ImageOutputPrice = scale(pricing.ImageOutputPrice)
+	pricing.PerRequestPrice = scale(pricing.PerRequestPrice)
 }
 
 // filterPlazaVisibleGroups 按登录态裁剪分组可见性。

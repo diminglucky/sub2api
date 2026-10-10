@@ -153,6 +153,30 @@ func registerRoutes(
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
+	// Sub-site users must see the sub-site price, not the main-site price.
+	handler.SetSubsitePriceOverrideProvider(func(ctx context.Context, subsiteID int64) (*handler.SubsitePriceOverrides, error) {
+		prices, err := downstreamRepo.ListSubsitePrices(ctx, subsiteID)
+		if err != nil {
+			return nil, err
+		}
+		overrides := &handler.SubsitePriceOverrides{
+			GroupRates: map[int64]float64{},
+			ModelRates: map[string]float64{},
+		}
+		for _, price := range prices {
+			switch price.Scope {
+			case downstream.PriceOverrideScopeGroup:
+				if price.GroupID != nil {
+					overrides.GroupRates[*price.GroupID] = price.RateMultiplier
+				}
+			case downstream.PriceOverrideScopeModel:
+				if price.Model != nil {
+					overrides.ModelRates[*price.Model] = price.RateMultiplier
+				}
+			}
+		}
+		return overrides, nil
+	})
 	downstream.RegisterRoutes(r, downstreamRepo, gin.HandlerFunc(jwtAuth), downstreamUserContext(), subsiteModelCatalog(h))
 
 	// API v1
