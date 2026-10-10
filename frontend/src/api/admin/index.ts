@@ -38,6 +38,7 @@ import auditAPI from './audit'
 import pluginsAPI from './plugins'
 import lotteryAPI from './lottery'
 import upstreamBalancesAPI from './upstreamBalances'
+import downstreamAdminAPI from './downstream'
 
 /**
  * Unified admin API object for convenient access
@@ -77,7 +78,8 @@ export const adminAPI = {
   audit: auditAPI,
   plugins: pluginsAPI,
   lottery: lotteryAPI,
-  upstreamBalances: upstreamBalancesAPI
+  upstreamBalances: upstreamBalancesAPI,
+  downstream: downstreamAdminAPI
 }
 
 export {
@@ -115,7 +117,8 @@ export {
   auditAPI,
   pluginsAPI,
   lotteryAPI,
-  upstreamBalancesAPI
+  upstreamBalancesAPI,
+  downstreamAdminAPI
 }
 
 export default adminAPI

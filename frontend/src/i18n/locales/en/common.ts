@@ -188,6 +188,7 @@ export default {
     availableChannels: 'Available Channels',
     modelPlaza: 'Model Plaza',
     subscriptions: 'Subscriptions',
+    downstream: 'Downstream Sites',
     accounts: 'Accounts',
     plugins: 'Plugins',
     proxies: 'Proxies',

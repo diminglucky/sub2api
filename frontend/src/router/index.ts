@@ -548,6 +548,17 @@ export const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/downstream',
+    name: 'AdminDownstream',
+    component: () => import('@/views/admin/DownstreamView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Downstream Sites',
+      titleKey: 'nav.downstream'
+    }
+  },
+  {
     path: '/admin/accounts',
     name: 'AdminAccounts',
     component: () => import('@/views/admin/AccountsView.vue'),
