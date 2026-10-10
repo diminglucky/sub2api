@@ -35,6 +35,23 @@ export const useAppStore = defineStore('app', () => {
   const cachedPublicSettings = ref<PublicSettings | null>(null)
   let publicSettingsRequest: Promise<PublicSettings | null> | null = null
 
+  // Sub-site context is injected by the backend only when the app is served on a
+  // downstream host (draw.superai.sbs). It scopes the navigation to that host.
+  const injectedSubsite =
+    typeof window !== 'undefined'
+      ? (window.__APP_CONFIG__ as { subsite?: { id?: number; slug?: string; name?: string } } | undefined)?.subsite
+      : undefined
+  const subsite = ref<{ id: number; slug: string; name: string } | null>(
+    injectedSubsite && injectedSubsite.slug
+      ? {
+          id: Number(injectedSubsite.id) || 0,
+          slug: String(injectedSubsite.slug),
+          name: String(injectedSubsite.name || '')
+        }
+      : null
+  )
+  const isSubsite = computed(() => subsite.value !== null)
+
   // Version cache state
   const versionLoaded = ref<boolean>(false)
   const versionLoading = ref<boolean>(false)
@@ -460,6 +477,7 @@ export const useAppStore = defineStore('app', () => {
     apiBaseUrl,
     docUrl,
     cachedPublicSettings,
+    subsite,
 
     // Version state
     versionLoaded,
@@ -473,6 +491,7 @@ export const useAppStore = defineStore('app', () => {
     // Computed
     hasActiveToasts,
     backendModeEnabled,
+    isSubsite,
 
     // Actions
     toggleSidebar,

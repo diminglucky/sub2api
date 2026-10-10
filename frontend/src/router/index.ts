@@ -437,6 +437,16 @@ export const routes: RouteRecordRaw[] = [
     redirect: '/admin/dashboard'
   },
   {
+    path: '/subsite-admin',
+    name: 'SubsiteAdmin',
+    component: () => import('@/views/subsite/SubsiteAdminView.vue'),
+    meta: {
+      requiresAuth: true,
+      title: '子站管理',
+      titleKey: 'nav.downstream'
+    }
+  },
+  {
     path: '/admin/dashboard',
     name: 'AdminDashboard',
     component: () => import('@/views/admin/DashboardView.vue'),
@@ -850,6 +860,13 @@ router.beforeEach(async (to, _from, next) => {
   // Check if route requires authentication
   const requiresAuth = to.meta.requiresAuth !== false // Default to true
   const requiresAdmin = to.meta.requiresAdmin === true
+
+  // Sub-site hosts must never expose the main-site admin console. Main admin
+  // routes fall back to the sub-site's own scoped admin page.
+  if (appStore.isSubsite && requiresAdmin) {
+    next('/subsite-admin')
+    return
+  }
 
   if (to.path === '/setup') {
     try {

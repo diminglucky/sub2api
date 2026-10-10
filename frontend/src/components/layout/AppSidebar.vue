@@ -32,7 +32,7 @@
     <!-- Navigation -->
     <nav ref="sidebarNavRef" class="sidebar-nav scrollbar-hide">
       <!-- Admin View: Admin menu first, then personal menu -->
-      <template v-if="isAdmin">
+      <template v-if="isAdmin && !isSubsite">
         <!-- Admin Section -->
         <div class="sidebar-section">
           <template v-for="item in adminNavItems" :key="item.path">
@@ -199,6 +199,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { getSubsiteAdminSummary } from '@/api/subsiteAdmin'
 
 interface NavItem {
   path: string
@@ -249,10 +250,16 @@ const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
 const isAdmin = computed(() => authStore.isAdmin)
+const isSubsite = computed(() => appStore.isSubsite)
+// A sub-site owner/admin is resolved from the sub-site's own membership API,
+// independent of the main-site admin role.
+const subsiteAdmin = ref(false)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
-const homePath = computed(() => (isAdmin.value ? '/admin/dashboard' : '/dashboard'))
+const homePath = computed(() =>
+  isAdmin.value && !isSubsite.value ? '/admin/dashboard' : '/dashboard'
+)
 
 // Per-group expand/collapse overrides. A group with no entry follows the
 // automatic behavior (expanded while the active route is one of its children);
@@ -772,7 +779,15 @@ function finalizeNav(items: NavItem[]): NavItem[] {
 }
 
 // User navigation items (for regular users)
-const userNavItems = computed((): NavItem[] => finalizeNav(buildSelfNavItems(true)))
+const userNavItems = computed((): NavItem[] => {
+  const items = finalizeNav(buildSelfNavItems(true))
+  // Sub-site hosts hide the main admin console; sub-site admins get a single
+  // scoped entry instead.
+  if (isSubsite.value && subsiteAdmin.value) {
+    return [{ path: '/subsite-admin', label: t('nav.downstream'), icon: GlobeIcon }, ...items]
+  }
+  return items
+})
 
 // Personal navigation items (for admin's "My Account" section, without Dashboard).
 // Admins access 可用渠道 from this section just like regular users — there is no
@@ -979,6 +994,17 @@ onMounted(() => {
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
+  }
+  if (isSubsite.value) {
+    // The sub-site summary endpoint is admin-only, so a successful call marks
+    // this member as a sub-site owner/admin.
+    getSubsiteAdminSummary()
+      .then(() => {
+        subsiteAdmin.value = true
+      })
+      .catch(() => {
+        subsiteAdmin.value = false
+      })
   }
   // Restore sidebar scroll position after route change re-mounts the component
   if (appStore.sidebarScrollTop > 0 && sidebarNavRef.value) {

@@ -204,12 +204,12 @@ func (s *FrontendServer) serveMainFrontendForSubsite(c *gin.Context) {
 	}
 
 	if cleanPath == "index.html" || !s.fileExists(cleanPath) {
-		name, logo := "", ""
-		if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
-			name = subsite.Name
-			logo = subsite.LogoURL
+		subsite, _ := downstream.FromGin(c)
+		if subsite != nil {
+			s.serveIndexHTMLForSubsite(c, subsite)
+			return
 		}
-		s.serveIndexHTMLForSubsite(c, name, logo)
+		s.serveIndexHTML(c)
 		return
 	}
 
@@ -318,7 +318,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 // serveIndexHTMLForSubsite renders the main app shell with the subsite brand
 // injected. The shared HTML cache is bypassed because the injected brand
 // differs per host, and settings are cheap to read through the settings cache.
-func (s *FrontendServer) serveIndexHTMLForSubsite(c *gin.Context, name, logo string) {
+func (s *FrontendServer) serveIndexHTMLForSubsite(c *gin.Context, subsite *downstream.Subsite) {
 	if s.settings == nil {
 		s.serveIndexHTML(c)
 		return
@@ -340,7 +340,7 @@ func (s *FrontendServer) serveIndexHTMLForSubsite(c *gin.Context, name, logo str
 		c.Abort()
 		return
 	}
-	settingsJSON = applySubsiteBranding(settingsJSON, name, logo)
+	settingsJSON = applySubsiteBranding(settingsJSON, subsite)
 	rendered := s.injectSettings(settingsJSON)
 	content := replaceNoncePlaceholder(rendered, nonce)
 	content = applyRouteSeo(content, requestOrigin(c), c.Request.URL.Path, siteNameFromSettingsJSON(settingsJSON))
@@ -351,12 +351,12 @@ func (s *FrontendServer) serveIndexHTMLForSubsite(c *gin.Context, name, logo str
 
 // applySubsiteBranding overrides the public site name/logo with the subsite's
 // own brand so the reused main app renders as the downstream brand.
-func applySubsiteBranding(settingsJSON []byte, name, logo string) []byte {
-	name = strings.TrimSpace(name)
-	logo = strings.TrimSpace(logo)
-	if name == "" && logo == "" {
+func applySubsiteBranding(settingsJSON []byte, subsite *downstream.Subsite) []byte {
+	if subsite == nil {
 		return settingsJSON
 	}
+	name := strings.TrimSpace(subsite.Name)
+	logo := strings.TrimSpace(subsite.LogoURL)
 	var cfg map[string]any
 	if err := json.Unmarshal(settingsJSON, &cfg); err != nil {
 		return settingsJSON
@@ -367,6 +367,12 @@ func applySubsiteBranding(settingsJSON []byte, name, logo string) []byte {
 	}
 	if logo != "" {
 		cfg["site_logo"] = logo
+	}
+	// The reused main app reads this to scope its navigation to the sub-site.
+	cfg["subsite"] = map[string]any{
+		"id":   subsite.ID,
+		"slug": subsite.Slug,
+		"name": name,
 	}
 	out, err := json.Marshal(cfg)
 	if err != nil {

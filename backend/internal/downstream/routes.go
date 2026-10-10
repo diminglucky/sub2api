@@ -25,4 +25,15 @@ func RegisterRoutes(r *gin.Engine, repo SummaryRepository, jwtAuth gin.HandlerFu
 	}
 	auth.GET("/me/summary", h.MeSummary)
 	auth.GET("/admin/summary", h.AdminSummary)
+
+	// Sub-site-scoped price management. Authorized by sub-site membership role
+	// (owner/admin), independent of the main-site admin role.
+	if scopedRepo, ok := repo.(ScopedPriceRepository); ok && scopedRepo != nil {
+		scoped := NewScopedAdminHandler(scopedRepo)
+		admin := auth.Group("/admin")
+		admin.GET("/prices", scoped.ListPrices)
+		admin.POST("/prices", scoped.CreatePrice)
+		admin.PUT("/prices/:id", scoped.UpdatePrice)
+		admin.DELETE("/prices/:id", scoped.DeletePrice)
+	}
 }
