@@ -363,6 +363,7 @@ func applySubsiteBranding(settingsJSON []byte, name, logo string) []byte {
 	}
 	if name != "" {
 		cfg["site_name"] = name
+		cfg["site_subtitle"] = "AI 网关"
 	}
 	if logo != "" {
 		cfg["site_logo"] = logo
