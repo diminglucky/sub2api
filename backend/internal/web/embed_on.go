@@ -171,12 +171,12 @@ func (s *FrontendServer) serveDownstreamEntry(c *gin.Context) {
 	}
 
 	if cleanPath != "index.html" && !s.downstreamFileExists(cleanPath) {
-		s.serveMainFrontend(c)
+		s.serveMainFrontendForSubsite(c)
 		return
 	}
 
 	if s.downstreamDistFS == nil || s.downstreamFileServer == nil {
-		s.serveMainFrontend(c)
+		s.serveMainFrontendForSubsite(c)
 		return
 	}
 
@@ -192,6 +192,34 @@ func (s *FrontendServer) serveDownstreamEntry(c *gin.Context) {
 
 func (s *FrontendServer) downstreamFileExists(path string) bool {
 	return fileExists(s.downstreamDistFS, path)
+}
+
+// serveMainFrontendForSubsite serves the main application shell on a subsite
+// host, injecting the subsite brand so the reused user pages render as Draw.
+// Static assets are shared with the main build; only the HTML shell differs.
+func (s *FrontendServer) serveMainFrontendForSubsite(c *gin.Context) {
+	cleanPath := strings.TrimPrefix(c.Request.URL.Path, "/")
+	if cleanPath == "" {
+		cleanPath = "index.html"
+	}
+
+	if cleanPath == "index.html" || !s.fileExists(cleanPath) {
+		name, logo := "", ""
+		if subsite, ok := downstream.FromGin(c); ok && subsite != nil {
+			name = subsite.Name
+			logo = subsite.LogoURL
+		}
+		s.serveIndexHTMLForSubsite(c, name, logo)
+		return
+	}
+
+	if s.tryServeOverride(c, cleanPath) {
+		return
+	}
+
+	applyStaticAssetCacheHeaders(c.Writer.Header(), cleanPath)
+	s.fileServer.ServeHTTP(c.Writer, c.Request)
+	c.Abort()
 }
 
 func (s *FrontendServer) fileExists(path string) bool {
@@ -285,6 +313,65 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 	c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 	c.Abort()
+}
+
+// serveIndexHTMLForSubsite renders the main app shell with the subsite brand
+// injected. The shared HTML cache is bypassed because the injected brand
+// differs per host, and settings are cheap to read through the settings cache.
+func (s *FrontendServer) serveIndexHTMLForSubsite(c *gin.Context, name, logo string) {
+	if s.settings == nil {
+		s.serveIndexHTML(c)
+		return
+	}
+
+	nonce := middleware.GetNonceFromContext(c)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+	defer cancel()
+
+	settings, err := s.settings.GetPublicSettingsForInjection(ctx)
+	if err != nil {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
+		c.Abort()
+		return
+	}
+	settingsJSON, err := json.Marshal(settings)
+	if err != nil {
+		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
+		c.Abort()
+		return
+	}
+	settingsJSON = applySubsiteBranding(settingsJSON, name, logo)
+	rendered := s.injectSettings(settingsJSON)
+	content := replaceNoncePlaceholder(rendered, nonce)
+	content = applyRouteSeo(content, requestOrigin(c), c.Request.URL.Path, siteNameFromSettingsJSON(settingsJSON))
+	c.Header("Cache-Control", "no-cache")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", content)
+	c.Abort()
+}
+
+// applySubsiteBranding overrides the public site name/logo with the subsite's
+// own brand so the reused main app renders as the downstream brand.
+func applySubsiteBranding(settingsJSON []byte, name, logo string) []byte {
+	name = strings.TrimSpace(name)
+	logo = strings.TrimSpace(logo)
+	if name == "" && logo == "" {
+		return settingsJSON
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(settingsJSON, &cfg); err != nil {
+		return settingsJSON
+	}
+	if name != "" {
+		cfg["site_name"] = name
+	}
+	if logo != "" {
+		cfg["site_logo"] = logo
+	}
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		return settingsJSON
+	}
+	return out
 }
 
 func (s *FrontendServer) injectSettings(settingsJSON []byte) []byte {

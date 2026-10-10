@@ -5,7 +5,7 @@
         <div>
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">子站管理</h1>
           <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            管理下游子站的品牌配置和价格覆盖。子站用户页面复用主站，差异只在价格与入口页。
+            选择哪些分组开放给子站，并为每个分组设置子站价格。子站用户页面复用主站，差异只在价格与入口页。
           </p>
         </div>
         <button class="btn btn-secondary" :disabled="loading" @click="reload">
@@ -72,7 +72,7 @@
 
         <section class="rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-700 dark:bg-dark-900">
           <div v-if="!selected" class="py-16 text-center text-sm text-gray-400">
-            从左侧选择一个子站来管理价格
+            从左侧选择一个子站来管理分组与价格
           </div>
           <template v-else>
             <div class="flex flex-wrap items-start justify-between gap-3">
@@ -90,76 +90,105 @@
             </div>
 
             <div class="mt-6">
-              <h3 class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">价格覆盖</h3>
+              <h3 class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">子站分组</h3>
               <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-                默认价格等于主站价格；这里设置的价格只影响该子站的用户扣费和结算差额。
+                勾选要开放给该子站的分组，并填写子站倍率。倍数 1 表示与主站价格相同。
               </p>
 
               <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
                 <table class="min-w-full text-sm">
                   <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-dark-800">
                     <tr>
-                      <th class="px-3 py-2">范围</th>
-                      <th class="px-3 py-2">目标</th>
+                      <th class="px-3 py-2">加入</th>
+                      <th class="px-3 py-2">分组</th>
+                      <th class="px-3 py-2">平台</th>
+                      <th class="px-3 py-2">主站倍率</th>
+                      <th class="px-3 py-2">子站倍率</th>
+                      <th class="px-3 py-2 text-right">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-if="!groupRows.length" class="border-t border-gray-100 dark:border-dark-700">
+                      <td colspan="6" class="px-3 py-6 text-center text-gray-400">没有可用分组</td>
+                    </tr>
+                    <tr
+                      v-for="row in groupRows"
+                      :key="row.id"
+                      class="border-t border-gray-100 dark:border-dark-700"
+                    >
+                      <td class="px-3 py-2">
+                        <input v-model="row.enabled" type="checkbox" />
+                      </td>
+                      <td class="px-3 py-2">{{ row.name }}</td>
+                      <td class="px-3 py-2 text-gray-500">{{ row.platform }}</td>
+                      <td class="px-3 py-2 text-gray-500">{{ row.mainMultiplier }}</td>
+                      <td class="px-3 py-2">
+                        <input
+                          v-model.number="row.multiplier"
+                          class="input w-24"
+                          type="number"
+                          step="0.01"
+                          :disabled="!row.enabled"
+                        />
+                      </td>
+                      <td class="px-3 py-2 text-right">
+                        <button class="text-primary-600 hover:underline" :disabled="saving" @click="saveGroup(row)">
+                          保存
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="mt-6">
+              <h3 class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">模型价格覆盖（可选）</h3>
+              <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+                针对单个模型设置更细的价格，优先于分组倍率。
+              </p>
+
+              <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700">
+                <table class="min-w-full text-sm">
+                  <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500 dark:bg-dark-800">
+                    <tr>
+                      <th class="px-3 py-2">模型</th>
                       <th class="px-3 py-2">倍率</th>
                       <th class="px-3 py-2">状态</th>
                       <th class="px-3 py-2 text-right">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-if="!prices.length">
-                      <td colspan="5" class="px-3 py-6 text-center text-gray-400">暂无价格覆盖</td>
+                    <tr v-if="!modelOverrides.length">
+                      <td colspan="4" class="px-3 py-6 text-center text-gray-400">暂无模型价格覆盖</td>
                     </tr>
-                    <tr v-for="price in prices" :key="price.id" class="border-t border-gray-100 dark:border-dark-700">
-                      <td class="px-3 py-2">{{ price.scope === 'group' ? '分组' : '模型' }}</td>
-                      <td class="px-3 py-2">{{ price.model || `分组 #${price.group_id}` }}</td>
+                    <tr
+                      v-for="price in modelOverrides"
+                      :key="price.id"
+                      class="border-t border-gray-100 dark:border-dark-700"
+                    >
+                      <td class="px-3 py-2">{{ price.model }}</td>
                       <td class="px-3 py-2">{{ price.rate_multiplier }}</td>
                       <td class="px-3 py-2">{{ price.status }}</td>
                       <td class="px-3 py-2 text-right">
-                        <button class="text-primary-600 hover:underline" @click="startEdit(price)">编辑</button>
-                        <button class="ml-3 text-red-500 hover:underline" @click="removePrice(price)">删除</button>
+                        <button class="text-red-500 hover:underline" @click="removeModelOverride(price)">删除</button>
                       </td>
                     </tr>
                   </tbody>
                 </table>
               </div>
 
-              <div class="mt-4 grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)_120px_auto]">
-                <select v-model="priceForm.scope" class="input">
-                  <option value="group">分组</option>
-                  <option value="model">模型</option>
-                </select>
+              <div class="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px_auto]">
+                <input v-model="modelForm.model" class="input" placeholder="模型名称，例如 gpt-image-1" />
                 <input
-                  v-if="priceForm.scope === 'model'"
-                  v-model="priceForm.model"
-                  class="input"
-                  placeholder="模型名称，例如 gpt-image-1"
-                />
-                <input
-                  v-else
-                  v-model.number="priceForm.group_id"
-                  class="input"
-                  type="number"
-                  placeholder="分组 ID"
-                />
-                <input
-                  v-model.number="priceForm.rate_multiplier"
+                  v-model.number="modelForm.rate_multiplier"
                   class="input"
                   type="number"
                   step="0.01"
                   placeholder="倍率"
                 />
-                <button class="btn btn-primary" :disabled="saving" @click="submitPrice">
-                  {{ editingPriceId ? '保存' : '添加' }}
-                </button>
+                <button class="btn btn-primary" :disabled="saving" @click="addModelOverride">添加</button>
               </div>
-              <button
-                v-if="editingPriceId"
-                class="mt-2 text-xs text-gray-500 hover:underline"
-                @click="cancelEdit"
-              >
-                取消编辑
-              </button>
             </div>
           </template>
         </section>
@@ -169,26 +198,38 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { adminAPI } from '@/api/admin'
 import {
   downstreamAdminAPI,
   type DownstreamPriceOverride,
   type DownstreamSubsite
 } from '@/api/admin/downstream'
 
+interface GroupRow {
+  id: number
+  name: string
+  platform: string
+  mainMultiplier: number
+  enabled: boolean
+  multiplier: number
+}
+
 const subsites = ref<DownstreamSubsite[]>([])
 const selected = ref<DownstreamSubsite | null>(null)
-const prices = ref<DownstreamPriceOverride[]>([])
+const overrides = ref<DownstreamPriceOverride[]>([])
+const groupRows = ref<GroupRow[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const error = ref('')
 const showCreate = ref(false)
-const editingPriceId = ref<number | null>(null)
 
 const createForm = reactive({ slug: '', domain: '', name: '', theme_color: '#fb6415' })
-const priceForm = reactive({ scope: 'group' as 'group' | 'model', group_id: null as number | null, model: '', rate_multiplier: 1 })
+const modelForm = reactive({ model: '', rate_multiplier: 1 })
+
+const modelOverrides = computed(() => overrides.value.filter((item) => item.scope === 'model'))
 
 onMounted(reload)
 
@@ -201,10 +242,11 @@ async function reload() {
       const fresh = subsites.value.find((item) => item.id === selected.value?.id)
       if (fresh) {
         selected.value = fresh
-        await loadPrices()
+        await loadDetail()
       } else {
         selected.value = null
-        prices.value = []
+        overrides.value = []
+        groupRows.value = []
       }
     }
   } catch (err) {
@@ -216,17 +258,102 @@ async function reload() {
 
 async function selectSubsite(item: DownstreamSubsite) {
   selected.value = item
-  editingPriceId.value = null
-  await loadPrices()
+  await loadDetail()
 }
 
-async function loadPrices() {
+async function loadDetail() {
   if (!selected.value) return
   error.value = ''
   try {
-    prices.value = await downstreamAdminAPI.listPrices(selected.value.id)
+    const [groups, prices] = await Promise.all([
+      adminAPI.groups.getAll(),
+      downstreamAdminAPI.listPrices(selected.value.id)
+    ])
+    overrides.value = prices
+    const groupPrices = new Map(
+      prices
+        .filter((price) => price.scope === 'group' && price.group_id)
+        .map((price) => [price.group_id as number, price])
+    )
+    groupRows.value = groups.map((group) => {
+      const override = groupPrices.get(group.id)
+      return {
+        id: group.id,
+        name: group.name,
+        platform: group.platform,
+        mainMultiplier: group.rate_multiplier,
+        enabled: Boolean(override),
+        multiplier: override?.rate_multiplier ?? group.rate_multiplier ?? 1
+      }
+    })
   } catch (err) {
-    error.value = err instanceof Error ? err.message : '加载价格失败'
+    error.value = err instanceof Error ? err.message : '加载分组或价格失败'
+  }
+}
+
+function overrideForGroup(groupId: number): DownstreamPriceOverride | undefined {
+  return overrides.value.find((price) => price.scope === 'group' && price.group_id === groupId)
+}
+
+async function saveGroup(row: GroupRow) {
+  if (!selected.value) return
+  saving.value = true
+  error.value = ''
+  const existing = overrideForGroup(row.id)
+  try {
+    if (row.enabled) {
+      const payload = {
+        scope: 'group' as const,
+        group_id: row.id,
+        rate_multiplier: Number(row.multiplier) || 1
+      }
+      if (existing) {
+        await downstreamAdminAPI.updatePrice(selected.value.id, existing.id, payload)
+      } else {
+        await downstreamAdminAPI.createPrice(selected.value.id, payload)
+      }
+    } else if (existing) {
+      await downstreamAdminAPI.deletePrice(selected.value.id, existing.id)
+    }
+    await loadDetail()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '保存分组价格失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function addModelOverride() {
+  if (!selected.value || !modelForm.model.trim()) return
+  saving.value = true
+  error.value = ''
+  try {
+    await downstreamAdminAPI.createPrice(selected.value.id, {
+      scope: 'model',
+      model: modelForm.model.trim(),
+      rate_multiplier: Number(modelForm.rate_multiplier) || 1
+    })
+    modelForm.model = ''
+    modelForm.rate_multiplier = 1
+    await loadDetail()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '保存模型价格失败'
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeModelOverride(price: DownstreamPriceOverride) {
+  if (!selected.value) return
+  saving.value = true
+  error.value = ''
+  try {
+    await downstreamAdminAPI.deletePrice(selected.value.id, price.id)
+    await loadDetail()
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : '删除模型价格失败'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -256,61 +383,6 @@ async function disableSelected() {
     await reload()
   } catch (err) {
     error.value = err instanceof Error ? err.message : '停用子站失败'
-  } finally {
-    saving.value = false
-  }
-}
-
-function startEdit(price: DownstreamPriceOverride) {
-  editingPriceId.value = price.id
-  priceForm.scope = price.scope
-  priceForm.group_id = price.group_id
-  priceForm.model = price.model || ''
-  priceForm.rate_multiplier = price.rate_multiplier
-}
-
-function cancelEdit() {
-  editingPriceId.value = null
-  priceForm.scope = 'group'
-  priceForm.group_id = null
-  priceForm.model = ''
-  priceForm.rate_multiplier = 1
-}
-
-async function submitPrice() {
-  if (!selected.value) return
-  saving.value = true
-  error.value = ''
-  const payload = {
-    scope: priceForm.scope,
-    group_id: priceForm.scope === 'group' ? priceForm.group_id : null,
-    model: priceForm.scope === 'model' ? priceForm.model : null,
-    rate_multiplier: Number(priceForm.rate_multiplier) || 1
-  }
-  try {
-    if (editingPriceId.value) {
-      await downstreamAdminAPI.updatePrice(selected.value.id, editingPriceId.value, payload)
-    } else {
-      await downstreamAdminAPI.createPrice(selected.value.id, payload)
-    }
-    cancelEdit()
-    await loadPrices()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '保存价格失败'
-  } finally {
-    saving.value = false
-  }
-}
-
-async function removePrice(price: DownstreamPriceOverride) {
-  if (!selected.value) return
-  saving.value = true
-  error.value = ''
-  try {
-    await downstreamAdminAPI.deletePrice(selected.value.id, price.id)
-    await loadPrices()
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '删除价格失败'
   } finally {
     saving.value = false
   }
