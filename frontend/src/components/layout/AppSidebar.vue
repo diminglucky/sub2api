@@ -199,7 +199,6 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
-import { getSubsiteAdminSummary } from '@/api/subsiteAdmin'
 
 interface NavItem {
   path: string
@@ -253,7 +252,7 @@ const isAdmin = computed(() => authStore.isAdmin)
 const isSubsite = computed(() => appStore.isSubsite)
 // A sub-site owner/admin is resolved from the sub-site's own membership API,
 // independent of the main-site admin role.
-const subsiteAdmin = ref(false)
+const subsiteAdmin = computed(() => appStore.subsiteAdmin === true)
 const sidebarNavRef = ref<HTMLElement | null>(null)
 const isDark = ref(document.documentElement.classList.contains('dark'))
 
@@ -1006,15 +1005,8 @@ onMounted(() => {
     adminSettingsStore.fetch()
   }
   if (isSubsite.value) {
-    // The sub-site summary endpoint is admin-only, so a successful call marks
-    // this member as a sub-site owner/admin.
-    getSubsiteAdminSummary()
-      .then(() => {
-        subsiteAdmin.value = true
-      })
-      .catch(() => {
-        subsiteAdmin.value = false
-      })
+    // Cached in the store so the menu does not flash on every route change.
+    void appStore.ensureSubsiteAdmin()
   }
   // Restore sidebar scroll position after route change re-mounts the component
   if (appStore.sidebarScrollTop > 0 && sidebarNavRef.value) {

@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { Toast, ToastType, PublicSettings } from '@/types'
+import { getSubsiteAdminSummary } from '@/api/subsiteAdmin'
 import { i18n } from '@/i18n'
 import {
   checkUpdates as checkUpdatesAPI,
@@ -51,6 +52,34 @@ export const useAppStore = defineStore('app', () => {
       : null
   )
   const isSubsite = computed(() => subsite.value !== null)
+  // Sub-site admin status is cached in the store so the sidebar does not flicker
+  // (re-fetch on every mount would briefly render the non-admin menu).
+  const subsiteAdmin = ref<boolean | null>(null)
+  let subsiteAdminRequest: Promise<void> | null = null
+
+  async function ensureSubsiteAdmin(force = false): Promise<void> {
+    if (!subsite.value) {
+      subsiteAdmin.value = false
+      return
+    }
+    if (!force && subsiteAdmin.value !== null) {
+      return
+    }
+    if (subsiteAdminRequest) {
+      return subsiteAdminRequest
+    }
+    subsiteAdminRequest = getSubsiteAdminSummary()
+      .then(() => {
+        subsiteAdmin.value = true
+      })
+      .catch(() => {
+        subsiteAdmin.value = false
+      })
+      .finally(() => {
+        subsiteAdminRequest = null
+      })
+    return subsiteAdminRequest
+  }
 
   // Version cache state
   const versionLoaded = ref<boolean>(false)
@@ -478,6 +507,7 @@ export const useAppStore = defineStore('app', () => {
     docUrl,
     cachedPublicSettings,
     subsite,
+    subsiteAdmin,
 
     // Version state
     versionLoaded,
@@ -492,6 +522,7 @@ export const useAppStore = defineStore('app', () => {
     hasActiveToasts,
     backendModeEnabled,
     isSubsite,
+    ensureSubsiteAdmin,
 
     // Actions
     toggleSidebar,
