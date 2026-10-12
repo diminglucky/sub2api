@@ -115,16 +115,22 @@ func subsiteModelCatalog(h *handler.Handlers) downstream.ModelCatalogProvider {
 		for _, group := range groups {
 			for _, model := range group.Models {
 				billingMode := ""
+				var mainPerRequest *float64
 				if model.Pricing != nil {
 					billingMode = string(model.Pricing.BillingMode)
+					if model.Pricing.PerRequestPrice != nil {
+						value := *model.Pricing.PerRequestPrice * group.RateMultiplier
+						mainPerRequest = &value
+					}
 				}
 				out = append(out, downstream.ModelCatalogEntry{
-					GroupID:        group.ID,
-					GroupName:      group.Name,
-					MainMultiplier: group.RateMultiplier,
-					Model:          model.Name,
-					Platform:       model.Platform,
-					BillingMode:    billingMode,
+					GroupID:             group.ID,
+					GroupName:           group.Name,
+					MainMultiplier:      group.RateMultiplier,
+					Model:               model.Name,
+					Platform:            model.Platform,
+					BillingMode:         billingMode,
+					MainPerRequestPrice: mainPerRequest,
 				})
 			}
 		}

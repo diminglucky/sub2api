@@ -75,6 +75,7 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, subsiteID int64, req 
 			}
 		}
 		mainRate := 0.0
+		mainPerRequest := 0.0
 		matched := false
 		if h.catalog != nil {
 			if catalog, err := h.catalog(c.Request.Context()); err == nil {
@@ -88,6 +89,9 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, subsiteID int64, req 
 					if !matched || entry.MainMultiplier > mainRate {
 						mainRate = entry.MainMultiplier
 					}
+					if entry.MainPerRequestPrice != nil && *entry.MainPerRequestPrice > mainPerRequest {
+						mainPerRequest = *entry.MainPerRequestPrice
+					}
 					matched = true
 				}
 			}
@@ -98,6 +102,11 @@ func (h *ScopedAdminHandler) validateFloor(c *gin.Context, subsiteID int64, req 
 		}
 		if rate+priceFloorEpsilon < mainRate {
 			response.BadRequest(c, "子站倍率不能低于主站倍率")
+			return false
+		}
+		// 按次/生图：一口价不能低于主站一次价。
+		if req.PerRequestPrice != nil && *req.PerRequestPrice+priceFloorEpsilon < mainPerRequest {
+			response.BadRequest(c, "子站一次价不能低于主站价格")
 			return false
 		}
 	}

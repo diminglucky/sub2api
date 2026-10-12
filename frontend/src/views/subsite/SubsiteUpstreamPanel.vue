@@ -36,8 +36,8 @@
               <th class="px-3 py-2">模型</th>
               <th class="px-3 py-2">平台</th>
               <th class="px-3 py-2">计费</th>
-              <th class="px-3 py-2">主站倍率</th>
-              <th class="px-3 py-2">子站倍率</th>
+              <th class="px-3 py-2">主站价格</th>
+              <th class="px-3 py-2">子站价格</th>
               <th class="px-3 py-2 text-right">操作</th>
             </tr>
           </thead>
@@ -48,23 +48,24 @@
               <td class="px-3 py-2 text-gray-500">{{ billingLabel(row.billing_mode) }}</td>
               <td class="px-3 py-2">
                 <span class="rounded bg-gray-100 px-2 py-1 font-mono text-gray-600 dark:bg-dark-800 dark:text-gray-300">
-                  ×{{ row.main_multiplier }}
+                  {{ isFlat(row) ? `${formatPrice(row.main_per_request_price)} / 次` : `×${row.main_multiplier}` }}
                 </span>
               </td>
               <td class="px-3 py-2">
                 <input
                   v-model.number="draft[row.model]"
-                  class="input w-24"
+                  class="input w-28"
                   type="number"
-                  step="0.01"
-                  :min="row.main_multiplier"
-                  :class="{ 'input-error': (draft[row.model] ?? row.main_multiplier) < row.main_multiplier }"
+                  :step="isFlat(row) ? 0.0001 : 0.01"
+                  :min="floorValue(row)"
+                  :class="{ 'input-error': (draft[row.model] ?? floorValue(row)) < floorValue(row) }"
                 />
+                <span v-if="isFlat(row)" class="ml-1 text-xs text-gray-400">/ 次</span>
               </td>
               <td class="px-3 py-2 text-right">
                 <button
                   class="text-primary-600 hover:underline disabled:opacity-40"
-                  :disabled="saving || (draft[row.model] ?? row.main_multiplier) < row.main_multiplier"
+                  :disabled="saving || (draft[row.model] ?? floorValue(row)) < floorValue(row)"
                   @click="saveModel(row)"
                 >
                   保存
@@ -114,6 +115,21 @@ function billingLabel(mode: string): string {
   return '—'
 }
 
+// 按量模型用"倍率"（同刻度替换主站分组倍率）；按次/生图模型用"一次多少钱"（一口价）。
+function isFlat(row: SubsiteModelPrice): boolean {
+  return row.billing_mode !== 'token'
+}
+
+function floorValue(row: SubsiteModelPrice): number {
+  if (isFlat(row)) return row.main_per_request_price ?? 0
+  return row.main_multiplier
+}
+
+function formatPrice(value: number | null): string {
+  if (value === null || value === undefined) return '—'
+  return `$${Number(value).toFixed(4)}`
+}
+
 async function reload() {
   loading.value = true
   error.value = ''
@@ -137,7 +153,9 @@ async function reload() {
       rows: models.filter((model) => model.group_id === channel.group_id)
     }))
     for (const model of models) {
-      draft[model.model] = model.subsite_multiplier ?? model.main_multiplier
+      draft[model.model] = isFlat(model)
+        ? (model.subsite_per_request_price ?? model.main_per_request_price ?? 0)
+        : (model.subsite_multiplier ?? model.main_multiplier)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败'
@@ -147,15 +165,18 @@ async function reload() {
 }
 
 async function saveModel(row: SubsiteModelPrice) {
-  const value = Number(draft[row.model]) || row.main_multiplier
-  if (value < row.main_multiplier) {
-    error.value = '子站倍率不能低于主站倍率'
+  const floor = floorValue(row)
+  const value = Number(draft[row.model]) || floor
+  if (value < floor) {
+    error.value = isFlat(row) ? '子站一次价不能低于主站价格' : '子站倍率不能低于主站倍率'
     return
   }
   saving.value = true
   error.value = ''
   try {
-    const payload = { scope: 'model' as const, model: row.model, rate_multiplier: value }
+    const payload = isFlat(row)
+      ? { scope: 'model' as const, model: row.model, rate_multiplier: 1, per_request_price: value }
+      : { scope: 'model' as const, model: row.model, rate_multiplier: value }
     const existing = overrideIds.value[row.model]
     if (existing) {
       await updateSubsitePrice(existing, payload)

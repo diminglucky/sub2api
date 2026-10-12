@@ -41,6 +41,7 @@ export interface SubsitePriceInput {
   group_id?: number | null
   model?: string | null
   rate_multiplier: number
+  per_request_price?: number | null
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
@@ -104,6 +105,8 @@ export interface SubsiteModelPrice {
   platform: string
   billing_mode: string
   subsite_multiplier: number | null
+  main_per_request_price: number | null
+  subsite_per_request_price: number | null
 }
 
 // The shared apiClient prefixes /api/v1, so sub-site endpoints use absolute

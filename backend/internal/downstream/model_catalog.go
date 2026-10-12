@@ -15,6 +15,10 @@ type ModelCatalogEntry struct {
 	Model          string
 	Platform       string
 	BillingMode    string
+	// MainPerRequestPrice is the main-site effective flat price per request
+	// (channel per-request price x group multiplier) for per-request/image
+	// models. Nil for token models.
+	MainPerRequestPrice *float64
 }
 
 // ModelCatalogProvider lists the main-site pricing catalog.
@@ -30,6 +34,10 @@ type SubsiteModelPrice struct {
 	Platform          string   `json:"platform"`
 	BillingMode       string   `json:"billing_mode"`
 	SubsiteMultiplier *float64 `json:"subsite_multiplier"`
+	// 主站一次价（按次/生图模型），只读。
+	MainPerRequestPrice *float64 `json:"main_per_request_price"`
+	// 子站一次价覆盖（按次/生图模型）；nil 表示未覆盖。
+	SubsitePerRequestPrice *float64 `json:"subsite_per_request_price"`
 }
 
 // ListSubsiteModelPrices joins the main-site catalog with the sub-site's
@@ -70,9 +78,13 @@ func (r *Repository) ListSubsiteModelPrices(
 	_ = rows.Close()
 
 	// Per-model multiplier overrides.
-	overrides := make(map[string]*float64)
+	type overrideRow struct {
+		multiplier float64
+		perRequest *float64
+	}
+	overrides := make(map[string]overrideRow)
 	priceRows, err := r.db.QueryContext(ctx, `
-		SELECT model, rate_multiplier FROM subsite_prices
+		SELECT model, rate_multiplier, per_request_price FROM subsite_prices
 		WHERE subsite_id = $1 AND scope = 'model' AND status = 'active'`,
 		subsiteID,
 	)
@@ -83,14 +95,19 @@ func (r *Repository) ListSubsiteModelPrices(
 		var (
 			model      sql.NullString
 			multiplier float64
+			perRequest sql.NullFloat64
 		)
-		if err := priceRows.Scan(&model, &multiplier); err != nil {
+		if err := priceRows.Scan(&model, &multiplier, &perRequest); err != nil {
 			_ = priceRows.Close()
 			return nil, err
 		}
 		if model.Valid {
-			value := multiplier
-			overrides[model.String] = &value
+			row := overrideRow{multiplier: multiplier}
+			if perRequest.Valid {
+				value := perRequest.Float64
+				row.perRequest = &value
+			}
+			overrides[model.String] = row
 		}
 	}
 	if err := priceRows.Err(); err != nil {
@@ -111,15 +128,18 @@ func (r *Repository) ListSubsiteModelPrices(
 		}
 		seen[key] = struct{}{}
 		item := SubsiteModelPrice{
-			GroupID:        entry.GroupID,
-			GroupName:      entry.GroupName,
-			MainMultiplier: entry.MainMultiplier,
-			Model:          entry.Model,
-			Platform:       entry.Platform,
-			BillingMode:    entry.BillingMode,
+			GroupID:             entry.GroupID,
+			GroupName:           entry.GroupName,
+			MainMultiplier:      entry.MainMultiplier,
+			Model:               entry.Model,
+			Platform:            entry.Platform,
+			BillingMode:         entry.BillingMode,
+			MainPerRequestPrice: entry.MainPerRequestPrice,
 		}
-		if m, ok := overrides[entry.Model]; ok {
-			item.SubsiteMultiplier = m
+		if override, ok := overrides[entry.Model]; ok {
+			value := override.multiplier
+			item.SubsiteMultiplier = &value
+			item.SubsitePerRequestPrice = override.perRequest
 		}
 		out = append(out, item)
 	}

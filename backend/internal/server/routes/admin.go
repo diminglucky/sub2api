@@ -159,12 +159,18 @@ func adminModelCatalog(h *handler.Handlers) downstream.ModelCatalogProvider {
 		out := make([]downstream.ModelCatalogEntry, 0)
 		for _, group := range groups {
 			for _, model := range group.Models {
+				var mainPerRequest *float64
+				if model.Pricing != nil && model.Pricing.PerRequestPrice != nil {
+					value := *model.Pricing.PerRequestPrice * group.RateMultiplier
+					mainPerRequest = &value
+				}
 				out = append(out, downstream.ModelCatalogEntry{
-					GroupID:        group.ID,
-					GroupName:      group.Name,
-					MainMultiplier: group.RateMultiplier,
-					Model:          model.Name,
-					Platform:       model.Platform,
+					GroupID:             group.ID,
+					GroupName:           group.Name,
+					MainMultiplier:      group.RateMultiplier,
+					Model:               model.Name,
+					Platform:            model.Platform,
+					MainPerRequestPrice: mainPerRequest,
 				})
 			}
 		}
