@@ -3,8 +3,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import UserEditModal from '../UserEditModal.vue'
 
-const { update, updateUserAttributeValues, showSuccess, showError } = vi.hoisted(() => ({
+const { update, getUserGroups, updateUserAttributeValues, showSuccess, showError } = vi.hoisted(() => ({
   update: vi.fn(),
+  getUserGroups: vi.fn(),
   updateUserAttributeValues: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn()
@@ -13,6 +14,7 @@ const { update, updateUserAttributeValues, showSuccess, showError } = vi.hoisted
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     users: { update },
+    groups: { getAll: getUserGroups },
     userAttributes: { updateUserAttributeValues }
   }
 }))
@@ -56,10 +58,12 @@ const mountModal = (concurrency: number) => mount(UserEditModal, {
 describe('UserEditModal concurrency', () => {
   beforeEach(() => {
     update.mockReset()
+    getUserGroups.mockReset()
     updateUserAttributeValues.mockReset()
     showSuccess.mockReset()
     showError.mockReset()
     update.mockResolvedValue({})
+    getUserGroups.mockResolvedValue([])
   })
 
   // Regression coverage for issue #5977: the gateway treats concurrency <= 0 as

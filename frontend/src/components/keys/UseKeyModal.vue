@@ -1029,7 +1029,7 @@ ${codexModelCatalogMode.value === 'remote' ? `model_catalog_url = "${escapeTomlB
 ${generateCodexProviderAuthConfig(apiKey)}
 
 [features]
-${codexModelCatalogMode.value === 'remote' ? 'api_key_model_discovery = true\n' : ''}goals = true`
+goals = true${codexModelCatalogMode.value === 'remote' ? '\napi_key_model_discovery = true' : ''}`
 
   return buildOpenAICodexFileConfigs(configDir, configContent, apiKey)
 }
@@ -1376,8 +1376,8 @@ supports_websockets = true
 ${generateCodexProviderAuthConfig(apiKey)}
 
 [features]
-${codexModelCatalogMode.value === 'remote' ? 'api_key_model_discovery = true\n' : ''}responses_websockets_v2 = true
-goals = true`
+responses_websockets_v2 = true
+goals = true${codexModelCatalogMode.value === 'remote' ? '\napi_key_model_discovery = true' : ''}`
 
   return buildOpenAICodexFileConfigs(configDir, configContent, apiKey)
 }
