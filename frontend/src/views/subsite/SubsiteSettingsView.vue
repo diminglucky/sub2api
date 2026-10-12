@@ -97,6 +97,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import SubsiteUpstreamPanel from './SubsiteUpstreamPanel.vue'
 import SubsiteUsersPanel from './SubsiteUsersPanel.vue'
@@ -109,13 +110,20 @@ const tabs = [
 ] as const
 
 const activeTab = ref<(typeof tabs)[number]['key']>('basic')
+const route = useRoute()
 const settings = ref<SubsiteSettings | null>(null)
 const form = reactive({ name: '', logo_url: '', theme_color: '#fb6415' })
 const saving = ref(false)
 const error = ref('')
 const saved = ref(false)
 
-onMounted(load)
+onMounted(() => {
+  const requested = String(route.query.tab || '')
+  if (tabs.some((tab) => tab.key === requested)) {
+    activeTab.value = requested as (typeof tabs)[number]['key']
+  }
+  void load()
+})
 
 async function load() {
   error.value = ''

@@ -39,14 +39,14 @@
 
       <section class="grid gap-3 sm:grid-cols-3">
         <RouterLink
-          to="/subsite-users"
+          :to="{ path: '/subsite-settings', query: { tab: 'users' } }"
           class="rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-primary-400 dark:border-dark-700 dark:bg-dark-900"
         >
           <p class="text-sm font-semibold text-gray-900 dark:text-white">用户管理</p>
           <p class="mt-1 text-xs text-gray-500">查看本站用户、余额与用量</p>
         </RouterLink>
         <RouterLink
-          to="/subsite-channels"
+          :to="{ path: '/subsite-settings', query: { tab: 'upstream' } }"
           class="rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-primary-400 dark:border-dark-700 dark:bg-dark-900"
         >
           <p class="text-sm font-semibold text-gray-900 dark:text-white">上游管理</p>
