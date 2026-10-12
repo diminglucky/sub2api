@@ -28,7 +28,10 @@ export async function listImageStudioGallery(): Promise<ImageStudioGalleryEntry[
 export async function saveImageStudioGallery(
   request: SaveImageStudioGalleryRequest,
 ): Promise<ImageStudioGalleryEntry> {
-  const { data } = await apiClient.post<ImageStudioGalleryEntry>('/image-studio/gallery', request)
+  // Saving includes uploading the image to object storage, which can take several minutes.
+  const { data } = await apiClient.post<ImageStudioGalleryEntry>('/image-studio/gallery', request, {
+    timeout: 5 * 60 * 1000,
+  })
   return data
 }
 
