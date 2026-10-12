@@ -167,3 +167,12 @@ issues/
 .vite/
 # 本地闭源插件开发目录及构建产物不进入 Sub2API 仓库
 /plugins/
+
+# 本地构建 / 调试产物（子站开发期间产生，勿提交）
+/bin/
+*.tar
+sub2api-linux-amd64
+cloudflare-debug.png
+.superpowers/
+.workbuddy-ai/
+backend/logs/
