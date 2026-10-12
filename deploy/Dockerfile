@@ -24,7 +24,7 @@ ENV npm_config_registry=https://registry.npmmirror.com
 
 # Install pnpm. Keep this pinned to the lockfile-compatible version so Docker
 # builds remain reproducible when pnpm changes config validation rules.
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+RUN npm i -g pnpm@11.9.0 --registry=https://registry.npmmirror.com
 
 # Install dependencies first (better caching)
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
@@ -49,7 +49,7 @@ ENV NODE_OPTIONS=--max-old-space-size=4096
 ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 ENV npm_config_registry=https://registry.npmmirror.com
 
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+RUN npm i -g pnpm@11.9.0 --registry=https://registry.npmmirror.com
 
 COPY frontend-downstream/package.json frontend-downstream/pnpm-lock.yaml frontend-downstream/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
