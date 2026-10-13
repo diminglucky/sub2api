@@ -4,7 +4,6 @@
       <template #filters>
         <div class="flex flex-wrap-reverse items-start justify-between gap-3">
           <AccountTableFilters
-            class="lg:w-auto lg:flex-1"
             v-model:searchQuery="params.search"
             :filters="params"
             :groups="groups"
@@ -305,7 +304,7 @@
             />
           </template>
           <template #cell-groups="{ row }">
-            <AccountGroupsCell :groups="row.groups" :max-display="4" />
+            <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" />
           </template>
           <template #header-usage="{ column }">
             <div class="flex items-center">
@@ -538,7 +537,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
-import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { Account, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, Group, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -642,7 +641,7 @@ const accountToolsDropdownStyle = computed(() => ({
   width: `${accountToolsDropdownPosition.width}px`
 }))
 const hiddenColumns = reactive<Set<string>>(new Set())
-const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier']
+const DEFAULT_HIDDEN_COLUMNS = ['today_stats', 'proxy', 'notes', 'scheduler_score', 'rate_multiplier', 'created_at']
 const HIDDEN_COLUMNS_KEY = 'account-hidden-columns'
 // One-time migration: hide scheduler score for existing admins too, because showing it opt-ins to heavy backend scoring.
 const HIDDEN_COLUMNS_VERSION_KEY = 'account-hidden-columns-version'
@@ -1451,16 +1450,18 @@ const refreshAccountsIncrementally = async () => {
     const result = await adminAPI.accounts.listWithEtag(
       pagination.page,
       pagination.page_size,
-      toRaw(params) as {
-        platform?: string
-        type?: string
-        status?: string
-        privacy_mode?: string
-        group?: string
-        search?: string
-        sort_by?: string
-        sort_order?: AccountSortOrder
-
+      {
+        ...(toRaw(params) as {
+          platform?: string
+          type?: string
+          status?: string
+          privacy_mode?: string
+          group?: string
+          search?: string
+          sort_by?: string
+          sort_order?: AccountSortOrder
+        }),
+        lite: '1'
       },
       { etag: autoRefreshETag.value }
     )
@@ -1828,7 +1829,27 @@ const cols = computed(() =>
   )
 )
 
-const handleEdit = (a: Account) => { edAcc.value = a; showEdit.value = true }
+const accountGroupsForRow = (account: Account): Group[] => {
+  if (account.groups?.length) return account.groups
+  const groupIDs = new Set(account.group_ids ?? [])
+  return groups.value.filter((group) => groupIDs.has(group.id))
+}
+
+const loadAccountDetail = async (account: Account): Promise<Account | null> => {
+  try {
+    return await adminAPI.accounts.getById(account.id)
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t('common.error')))
+    return null
+  }
+}
+
+const handleEdit = async (account: Account) => {
+  const fullAccount = await loadAccountDetail(account)
+  if (!fullAccount) return
+  edAcc.value = fullAccount
+  showEdit.value = true
+}
 const openMenu = (a: Account, e: MouseEvent) => {
   menu.acc = a
   const target = e.currentTarget as HTMLElement
@@ -2297,8 +2318,18 @@ const accountExportStepUp = useStepUp()
 const closeTestModal = () => { showTest.value = false; testingAcc.value = null }
 const closeStatsModal = () => { showStats.value = false; statsAcc.value = null }
 const closeReAuthModal = () => { showReAuth.value = false; reAuthAcc.value = null }
-const handleTest = (a: Account) => { testingAcc.value = a; showTest.value = true }
-const handleViewStats = (a: Account) => { statsAcc.value = a; showStats.value = true }
+const handleTest = async (account: Account) => {
+  const fullAccount = await loadAccountDetail(account)
+  if (!fullAccount) return
+  testingAcc.value = fullAccount
+  showTest.value = true
+}
+const handleViewStats = async (account: Account) => {
+  const fullAccount = await loadAccountDetail(account)
+  if (!fullAccount) return
+  statsAcc.value = fullAccount
+  showStats.value = true
+}
 const handleSchedule = async (a: Account) => {
   scheduleAcc.value = a
   scheduleModelOptions.value = []

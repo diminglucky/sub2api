@@ -119,6 +119,7 @@ func (s *OpenAIGatewayService) recordDownstreamUsageSettlement(
 	tokens UsageTokens,
 	serviceTier string,
 	longContextBillingGate *bool,
+	modelLongContextExempt bool,
 	pricingAt time.Time,
 	revenue *CostBreakdown,
 	subsitePricing subsitePricingResolution,
@@ -143,6 +144,7 @@ func (s *OpenAIGatewayService) recordDownstreamUsageSettlement(
 		tokens,
 		serviceTier,
 		longContextBillingGate,
+		modelLongContextExempt,
 		pricingAt,
 		nil,
 	)
