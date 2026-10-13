@@ -300,7 +300,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 	if err != nil {
 		return nil, fmt.Errorf("create order: %w", err)
 	}
-	if subsiteID, hasSubsite := downstream.SubsiteIDFromContext(ctx); hasSubsite {
+	if subsiteID, ok := downstream.SubsiteIDFromContext(ctx); ok {
 		if err := downstream.AttributePaymentOrder(ctx, tx.Client(), subsiteID, order.ID); err != nil {
 			return nil, fmt.Errorf("attribute payment order to subsite: %w", err)
 		}

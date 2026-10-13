@@ -120,7 +120,7 @@ func TestDownstreamSubsiteMigration(t *testing.T) {
 		"ALTER TABLE api_keys       ADD COLUMN IF NOT EXISTS subsite_id BIGINT",
 		"REFERENCES subsites(id) ON DELETE CASCADE",
 		"subsite_id    BIGINT        NOT NULL REFERENCES subsites(id) ON DELETE RESTRICT",
-		"currency      VARCHAR(10)   NOT NULL DEFAULT 'USD'",
+		"currency      VARCHAR(10)   NOT NULL DEFAULT 'CNY'",
 		"ADD CONSTRAINT fk_payment_orders_subsite_id",
 		"FOREIGN KEY (subsite_id) REFERENCES subsites(id) ON DELETE SET NULL NOT VALID",
 		"ADD CONSTRAINT fk_api_keys_subsite_id",
@@ -145,36 +145,12 @@ func TestDownstreamSubsiteMigration(t *testing.T) {
 	require.Contains(t, indexSQL, "WHERE subsite_id IS NOT NULL")
 }
 
-// TestDownstreamUsageSettlementMigration pins the usage-based settlement schema:
-// the ledger keys off the billed usage request, not a recharge order.
-func TestDownstreamUsageSettlementMigration(t *testing.T) {
-	content, err := migrations.FS.ReadFile("244_downstream_usage_settlement.sql")
-	require.NoError(t, err)
-	sqlText := string(content)
-
-	for _, required := range []string{
-		"ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS usage_request_id TEXT",
-		"ALTER TABLE settlement_ledger ADD COLUMN IF NOT EXISTS billing_mode VARCHAR(20)",
-		"ALTER TABLE settlement_ledger ALTER COLUMN currency SET DEFAULT 'USD'",
-		"ON settlement_ledger (subsite_id, usage_request_id)",
-		"WHERE usage_request_id IS NOT NULL",
-	} {
-		require.Contains(t, sqlText, required)
-	}
-
-	// Usage settlement stays in USD and never introduces a payout path.
-	require.NotContains(t, sqlText, "TRANSFER")
-	require.NotContains(t, strings.ToUpper(stripSQLLineComments(sqlText)), "CONCURRENTLY")
-}
-
 // TestSettlementEntryNullableReferences pins that nullable settlement_ledger
 // references scan into pointer fields instead of failing on NULL.
 func TestSettlementEntryNullableReferences(t *testing.T) {
 	var entry SettlementEntry
 	require.Nil(t, entry.OrderID)
 	require.Nil(t, entry.UserID)
-	require.Nil(t, entry.UsageRequestID)
-	require.Nil(t, entry.BillingMode)
 
 	orderID := int64(1001)
 	userID := int64(42)
@@ -182,13 +158,6 @@ func TestSettlementEntryNullableReferences(t *testing.T) {
 	entry.UserID = &userID
 	require.Equal(t, int64(1001), *entry.OrderID)
 	require.Equal(t, int64(42), *entry.UserID)
-
-	requestID := "req-1"
-	mode := "token"
-	entry.UsageRequestID = &requestID
-	entry.BillingMode = &mode
-	require.Equal(t, "req-1", *entry.UsageRequestID)
-	require.Equal(t, "token", *entry.BillingMode)
 }
 
 func TestRepositoryGetSubsiteUserSummaryScopesBySubsite(t *testing.T) {

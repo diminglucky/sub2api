@@ -126,15 +126,14 @@
 **Interfaces:**
 
 - Produces: `ResolveSubsitePrice(ctx, subsiteID, model, basePrice)`
-- Produces: `RecordUsageSettlement(ctx, usage, cost, revenue)`
+- Produces: `RecordSettlementForOrder(ctx, order)`
 
 **Steps:**
 
 - [ ] Write failing tests for price override precedence and settlement rows.
 - [ ] Run `go test ./internal/downstream -run 'Price|Settlement' -v` and expect failure.
 - [ ] Resolve price as `subsite_prices`, then group price, then base price.
-- [ ] Treat the main-site price as wholesale cost; sub-site price defaults to the same value.
-- [ ] During actual API billing, snapshot main-site cost, sub-site revenue, and sub-site margin in `settlement_ledger`.
+- [ ] On successful payment, snapshot order amount, platform cost, subsite share, and status in `settlement_ledger`.
 - [ ] Run focused tests and expect PASS.
 - [ ] Commit with `feat: add downstream pricing and settlement`.
 
