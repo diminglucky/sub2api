@@ -502,7 +502,10 @@ func validateMigrationExecutionMode(name, content string) (bool, error) {
 	nonTx := strings.HasSuffix(normalizedName, nonTransactionalMigrationSuffix)
 
 	if !nonTx {
-		if strings.Contains(upperContent, "CONCURRENTLY") {
+		// Comments may describe the non-transactional migration convention. Only
+		// inspect SQL after removing line comments, otherwise documentation text
+		// containing "CONCURRENTLY" is mistaken for an executable statement.
+		if strings.Contains(strings.ToUpper(stripSQLLineComment(content)), "CONCURRENTLY") {
 			return false, errors.New("CONCURRENTLY statements must be placed in *_notx.sql migrations")
 		}
 		return false, nil

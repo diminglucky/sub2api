@@ -11,6 +11,12 @@ import (
 )
 
 func TestValidateMigrationExecutionMode(t *testing.T) {
+	t.Run("事务迁移中的说明注释可以提及CONCURRENTLY", func(t *testing.T) {
+		nonTx, err := validateMigrationExecutionMode("242_downstream_subsites.sql", "-- CREATE INDEX CONCURRENTLY belongs in a _notx migration.\nCREATE TABLE example (id BIGINT);")
+		require.False(t, nonTx)
+		require.NoError(t, err)
+	})
+
 	t.Run("事务迁移包含CONCURRENTLY会被拒绝", func(t *testing.T) {
 		nonTx, err := validateMigrationExecutionMode("001_add_idx.sql", "CREATE INDEX CONCURRENTLY idx_a ON t(a);")
 		require.False(t, nonTx)
