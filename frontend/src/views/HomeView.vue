@@ -102,8 +102,6 @@
           <span class="truncate text-lg font-semibold tracking-tight">{{ siteName }}</span>
         </router-link>
         <div class="ml-auto hidden items-center gap-7 text-sm text-[#766c66] lg:flex dark:text-dark-300">
-          <a href="#overview" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ siteName }}</a>
-          <a href="#features" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('home.features.unifiedGateway') }}</a>
           <a href="#providers" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('home.providers.title') }}</a>
           <a v-if="showModelPlazaEntry" href="#pricing" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('homePricing.title') }}</a>
           <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('home.docs') }}</a>

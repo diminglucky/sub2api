@@ -50,6 +50,102 @@ export const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/docs/authentication',
+    name: 'ApiDocsAuthentication',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.connection', descriptionKey: 'apiDocs.description', docsPage: 'authentication' }
+  },
+  {
+    path: '/docs/models',
+    name: 'ApiDocsModels',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.modelDiscovery', descriptionKey: 'apiDocs.description', docsPage: 'models' }
+  },
+  {
+    path: '/docs/errors',
+    name: 'ApiDocsErrors',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.errors', descriptionKey: 'apiDocs.description', docsPage: 'errors' }
+  },
+  {
+    path: '/docs/chat/completions',
+    name: 'ApiDocsChatCompletions',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navChatCompletions', descriptionKey: 'apiDocs.description', docsPage: 'endpoint', docsEndpoint: 'chat' }
+  },
+  {
+    path: '/docs/chat/responses',
+    name: 'ApiDocsResponses',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navResponses', descriptionKey: 'apiDocs.description', docsPage: 'endpoint', docsEndpoint: 'responses' }
+  },
+  {
+    path: '/docs/chat/realtime',
+    name: 'ApiDocsRealtime',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navRealtime', descriptionKey: 'apiDocs.description', docsPage: 'media', docsMedia: 'realtime' }
+  },
+  {
+    path: '/docs/images/gpt-image-2',
+    name: 'ApiDocsGptImage',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navGptImage', descriptionKey: 'apiDocs.description', docsPage: 'endpoint', docsEndpoint: 'imagesGenerations' }
+  },
+  {
+    path: '/docs/images/banana',
+    name: 'ApiDocsBanana',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navBanana', descriptionKey: 'apiDocs.description', docsPage: 'media', docsMedia: 'banana' }
+  },
+  {
+    path: '/docs/data/embeddings',
+    name: 'ApiDocsEmbeddings',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navEmbeddings', descriptionKey: 'apiDocs.description', docsPage: 'endpoint', docsEndpoint: 'embeddings' }
+  },
+  {
+    path: '/docs/data/rerank',
+    name: 'ApiDocsRerank',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navRerank', descriptionKey: 'apiDocs.description', docsPage: 'rerank' }
+  },
+  {
+    path: '/docs/audio',
+    name: 'ApiDocsAudio',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navAudioApi', descriptionKey: 'apiDocs.description', docsPage: 'media', docsMedia: 'audio' }
+  },
+  {
+    path: '/docs/video',
+    name: 'ApiDocsVideo',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.navVideoApi', descriptionKey: 'apiDocs.description', docsPage: 'media', docsMedia: 'video' }
+  },
+  {
+    path: '/docs/compatibility',
+    name: 'ApiDocsCompatibility',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.compatibility', descriptionKey: 'apiDocs.description', docsPage: 'compatibility' }
+  },
+  {
+    path: '/docs/billing',
+    name: 'ApiDocsBilling',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.billing', descriptionKey: 'apiDocs.description', docsPage: 'billing' }
+  },
+  {
+    path: '/docs/faq',
+    name: 'ApiDocsFaq',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.faqTitle', descriptionKey: 'apiDocs.description', docsPage: 'faq' }
+  },
+  {
+    path: '/docs/tools/:tool',
+    name: 'ApiDocsTool',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: { requiresAuth: false, titleKey: 'apiDocs.clients', descriptionKey: 'apiDocs.description', docsPage: 'tool' }
+  },
+  {
     path: '/home',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
