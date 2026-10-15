@@ -648,6 +648,20 @@ export default {
     }
   },
 
+  homePricing: {
+    title: 'Model pricing',
+    description: 'Browse prices by platform and model. Published models and prices update automatically.',
+    viewPricing: 'View model pricing',
+    emptyTitle: 'No public model prices yet',
+    emptyDescription: 'Model prices will appear here once they are published.',
+    emptyAdminDescription: 'Add model pricing in Channels and link an enabled public group. Save, then refresh this section to see the prices.',
+    configurePricing: 'Configure model pricing',
+    clearFilters: 'Clear filters',
+    refreshFailed: 'Refresh failed. Previously fetched prices are still shown. Please retry later.',
+    previewCount: 'Showing {shown} of {total} model prices',
+    fetchedAt: 'Fetched at {time}'
+  },
+
   // Model Plaza (public group/model pricing showcase)
   modelPlaza: {
     title: 'Model Plaza',
@@ -657,6 +671,8 @@ export default {
     empty: 'No groups to display',
     loadFailed: 'Failed to load model plaza',
     noSearchResult: 'No matching models',
+      expandModels: 'Show all ({count})',
+      collapseModels: 'Collapse prices',
     anonymousHint: 'Sign in to see your exclusive groups and personal rates',
     filters: {
       platformLabel: 'Platform',

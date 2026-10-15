@@ -147,3 +147,18 @@ describe('PlazaGroupSection 高峰配置传递', () => {
     expect(wrapper.findComponent(PlazaModelPricingTable).props('peakWindow')).toBe('')
   })
 })
+
+describe('PlazaGroupSection 首页折叠预览', () => {
+  it('首页默认显示前 8 个模型并支持展开全部', async () => {
+    const models = Array.from({ length: 10 }, (_, index) => ladderModel(index + 1))
+      .map((item, index) => ({ ...item, name: `model-${index}` }))
+    const wrapper = mount(PlazaGroupSection, {
+      props: { group: group({ models }), collapsible: true, previewModelCount: 8 },
+      global: { stubs: { GroupBadge: true, Icon: true, PlazaModelPricingTable: true } }
+    })
+
+    expect(wrapper.findComponent(PlazaModelPricingTable).props('models')).toHaveLength(8)
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.findComponent(PlazaModelPricingTable).props('models')).toHaveLength(10)
+  })
+})
