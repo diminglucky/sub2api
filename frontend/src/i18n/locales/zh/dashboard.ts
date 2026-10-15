@@ -655,14 +655,12 @@ export default {
 
   homePricing: {
     title: 'GPT 最低倍率',
-    description: '展示当前所有公开分组里 GPT 的最低倍率，完整价目见模型广场。',
+    description: '展示所有公开分组里 GPT 倍率最低的那个分组，以及该分组的模型与价格。',
     viewPricing: '查看模型价格',
-    lowestRateLabel: 'GPT 最低倍率',
     gptEmptyTitle: '暂无 GPT 价格',
     emptyDescription: 'GPT 价格尚未公布，发布后将在这里展示。',
     emptyAdminDescription: '请先在渠道管理中添加模型定价，并关联启用的公开分组。保存后刷新此处即可展示。',
     configurePricing: '配置模型价格',
-    peakNote: '高峰时段 {multiplier}（{start}-{end}）',
     refreshFailed: '刷新失败，当前保留上一次获取的价格。请稍后重试。'
   },
 

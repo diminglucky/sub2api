@@ -37,7 +37,7 @@
         {{ t('modelPlaza.loadFailed') }}
       </div>
       <div
-        v-else-if="!lowestGpt"
+        v-else-if="!lowestGroup"
         class="mt-8 rounded-2xl border border-dashed border-[#cbd5e1] bg-[#f0fdfa] px-5 py-12 text-center dark:border-dark-700 dark:bg-dark-900/50"
       >
         <h3 class="text-base font-semibold text-[#1e293b] dark:text-dark-100">{{ t('homePricing.gptEmptyTitle') }}</h3>
@@ -53,22 +53,8 @@
           <Icon name="arrowRight" size="sm" />
         </router-link>
       </div>
-      <div
-        v-else
-        data-testid="lowest-gpt-rate"
-        class="mt-8 flex flex-col gap-6 rounded-2xl border border-[#e2e8f0] bg-white/80 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8 dark:border-dark-800 dark:bg-dark-900/70"
-      >
-        <div class="min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#14b8a6]">
-            {{ t('homePricing.lowestRateLabel') }}
-          </p>
-          <p class="mt-3 truncate text-lg font-semibold text-[#0f172a] dark:text-white">{{ lowestGpt.groupName }}</p>
-          <p class="mt-1 text-sm text-[#64748b] dark:text-dark-400">{{ lowestGpt.modelsLabel }}</p>
-          <p v-if="lowestGpt.peakNote" class="mt-2 text-xs text-[#94a3b8] dark:text-dark-400">{{ lowestGpt.peakNote }}</p>
-        </div>
-        <p class="shrink-0 text-4xl font-semibold tracking-tight text-[#0f766e] sm:text-5xl dark:text-[#2dd4bf]">
-          {{ lowestGpt.rateLabel }}
-        </p>
+      <div v-else data-testid="lowest-gpt-group" class="mt-8">
+        <PlazaGroupSection :group="lowestGroup" collapsible :preview-model-count="8" />
       </div>
 
       <div class="mt-5 flex justify-end text-xs text-[#64748b] dark:text-dark-400">
@@ -84,6 +70,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import PlazaGroupSection from '@/components/modelPlaza/PlazaGroupSection.vue'
 import { getModelPlaza, type ModelPlazaGroup, type ModelPlazaResponse, type PlazaModel } from '@/api/modelPlaza'
 
 const props = defineProps<{ visible: boolean; showEntry: boolean; canManage?: boolean }>()
@@ -103,35 +90,14 @@ function effectiveRate(group: ModelPlazaGroup) {
   return group.user_rate_multiplier ?? group.rate_multiplier
 }
 
-function formatRate(rate: number) {
-  return `${Number(rate.toFixed(4))}x`
-}
-
 /**
- * 首页只展示一个数字：所有公开分组里 GPT 的最低倍率。
- * 取“包含 GPT 模型且倍率最低”的那个分组，附带该分组的 GPT 模型清单。
+ * 首页只展示一个分组的价格表：所有公开分组里包含 GPT 且倍率最低的那个。
+ * 分组内的模型与价格沿用模型广场的表格，不再把每个分组都铺出来。
  */
-const lowestGpt = computed(() => {
-  const candidates = (response.value?.groups ?? [])
-    .map(group => ({ group, models: group.models.filter(isGptModel) }))
-    .filter(entry => entry.models.length > 0)
+const lowestGroup = computed(() => {
+  const candidates = (response.value?.groups ?? []).filter(group => group.models.some(isGptModel))
   if (candidates.length === 0) return null
-
-  const best = candidates.reduce((acc, entry) => (effectiveRate(entry.group) < effectiveRate(acc.group) ? entry : acc))
-  const rate = effectiveRate(best.group)
-  const shownModels = best.models.slice(0, 3).map(model => model.name).join(' · ')
-  return {
-    rateLabel: formatRate(rate),
-    groupName: best.group.name,
-    modelsLabel: best.models.length > 3 ? `${shownModels} …` : shownModels,
-    peakNote: best.group.peak_rate_enabled
-      ? t('homePricing.peakNote', {
-          multiplier: formatRate(best.group.peak_rate_multiplier),
-          start: best.group.peak_start,
-          end: best.group.peak_end
-        })
-      : ''
-  }
+  return candidates.reduce((acc, group) => (effectiveRate(group) < effectiveRate(acc) ? group : acc))
 })
 
 async function load() {

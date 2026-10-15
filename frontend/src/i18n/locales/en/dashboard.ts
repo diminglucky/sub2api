@@ -650,14 +650,12 @@ export default {
 
   homePricing: {
     title: 'Lowest GPT rate',
-    description: 'The lowest GPT rate across every public group. See the Model Plaza for the full price list.',
+    description: 'The public group with the lowest GPT rate, with its models and prices.',
     viewPricing: 'View model pricing',
-    lowestRateLabel: 'Lowest GPT rate',
     gptEmptyTitle: 'No GPT pricing yet',
     emptyDescription: 'GPT pricing will appear here once it is published.',
     emptyAdminDescription: 'Add model pricing in Channels and link an enabled public group. Save, then refresh this section to see the prices.',
     configurePricing: 'Configure model pricing',
-    peakNote: 'Peak hours {multiplier} ({start}-{end})',
     refreshFailed: 'Refresh failed. Previously fetched prices are still shown. Please retry later.'
   },
 
