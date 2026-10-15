@@ -6,109 +6,117 @@ const getModelPlaza = vi.hoisted(() => vi.fn())
 vi.mock('@/api/modelPlaza', () => ({ getModelPlaza }))
 vi.mock('vue-i18n', async (importOriginal) => ({
   ...await importOriginal<typeof import('vue-i18n')>(),
-  useI18n: () => ({ t: (key: string) => key, locale: { value: 'en' } })
+  useI18n: () => ({ t: (key: string) => key })
 }))
+
+function group(id: number, name: string, platform: string, rate: number, models: string[]) {
+  return {
+    id,
+    name,
+    description: '',
+    platform,
+    subscription_type: 'standard',
+    rate_multiplier: rate,
+    peak_rate_enabled: false,
+    peak_start: '',
+    peak_end: '',
+    peak_rate_multiplier: 1,
+    is_exclusive: false,
+    image_rate_independent: false,
+    image_rate_multiplier: 1,
+    video_rate_independent: false,
+    video_rate_multiplier: 1,
+    long_context_pricing_enabled: false,
+    models: models.map(model => ({ name: model, platform, pricing: null, official_pricing: null }))
+  }
+}
 
 const response = {
   description: '',
   groups: [
-    { id: 1, name: 'OpenAI', platform: 'openai', models: [{ name: 'gpt-5', platform: 'openai' }] },
-    { id: 2, name: 'Anthropic', platform: 'anthropic', models: [{ name: 'claude-sonnet', platform: 'anthropic' }] }
+    group(1, 'OpenAI 标准', 'openai', 0.2, ['gpt-5', 'gpt-5-mini']),
+    group(2, 'Anthropic', 'anthropic', 0.05, ['claude-sonnet']),
+    group(3, 'OpenAI 特价', 'openai', 0.08, ['gpt-5.1-codex'])
   ]
 }
 
 function mountPreview() {
   return mount(HomePricingPreview, {
     props: { visible: true, showEntry: true },
-    global: {
-      stubs: {
-        Icon: true,
-        RouterLink: true,
-        PlazaGroupSection: {
-          props: ['group'],
-          template: '<div data-testid="group">{{ group.name }}: {{ group.models.map(model => model.name).join(", ") }}</div>'
-        }
-      }
-    }
+    global: { stubs: { Icon: true, RouterLink: true } }
   })
 }
 
 describe('HomePricingPreview', () => {
   beforeEach(() => { getModelPlaza.mockReset() })
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks() })
-  it('filters live pricing by platform and model, then refreshes it', async () => {
+
+  it('shows only the lowest GPT rate, ignoring cheaper non-GPT groups', async () => {
     getModelPlaza.mockResolvedValue(response)
     const wrapper = mountPreview()
     await flushPromises()
-    expect(wrapper.findAll('[data-testid="group"]')).toHaveLength(2)
 
-    await wrapper.get('select').setValue('openai')
-    expect(wrapper.findAll('[data-testid="group"]')).toHaveLength(1)
-    expect(wrapper.text()).toContain('gpt-5')
-
-    await wrapper.get('input[type="search"]').setValue('missing')
-    expect(wrapper.text()).toContain('modelPlaza.noSearchResult')
-
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-    expect(getModelPlaza).toHaveBeenCalledTimes(2)
+    const card = wrapper.get('[data-testid="lowest-gpt-rate"]')
+    expect(card.text()).toContain('0.08x')
+    expect(card.text()).toContain('OpenAI 特价')
+    expect(card.text()).toContain('gpt-5.1-codex')
+    // Anthropic 分组倍率更低（0.05x），但不是 GPT，不应被选中
+    expect(card.text()).not.toContain('claude-sonnet')
+    expect(card.text()).not.toContain('0.05x')
     wrapper.unmount()
   })
 
-  it('shows a failed request and allows a retry', async () => {
-    getModelPlaza.mockReset()
-    getModelPlaza.mockRejectedValueOnce(new Error('unavailable')).mockResolvedValueOnce(response)
+  it('shows a failed request instead of a rate', async () => {
+    getModelPlaza.mockRejectedValue(new Error('unavailable'))
     const wrapper = mountPreview()
     await flushPromises()
+
     expect(wrapper.text()).toContain('modelPlaza.loadFailed')
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid="group"]')).toHaveLength(2)
+    expect(wrapper.find('[data-testid="lowest-gpt-rate"]').exists()).toBe(false)
     wrapper.unmount()
   })
 
-  it('shows added models after automatic refresh and stops refreshing after unmount', async () => {
+  it('shows the empty state when no GPT pricing is published', async () => {
+    getModelPlaza.mockResolvedValue({ description: '', groups: [group(2, 'Anthropic', 'anthropic', 0.05, ['claude-sonnet'])] })
+    const wrapper = mountPreview()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('homePricing.gptEmptyTitle')
+    expect(wrapper.find('[data-testid="lowest-gpt-rate"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('refreshes the rate on the timer and stops after unmount', async () => {
     vi.useFakeTimers()
     vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
-    getModelPlaza.mockResolvedValueOnce(response).mockResolvedValue({
-      ...response,
-      groups: [{ ...response.groups[0], models: [...response.groups[0].models, { name: 'new-model', platform: 'openai' }] }]
-    })
+    getModelPlaza
+      .mockResolvedValueOnce(response)
+      .mockResolvedValue({ description: '', groups: [group(4, 'OpenAI 闪购', 'openai', 0.03, ['gpt-5'])] })
     const wrapper = mountPreview()
     await flushPromises()
-    expect(wrapper.text()).not.toContain('new-model')
+    expect(wrapper.get('[data-testid="lowest-gpt-rate"]').text()).toContain('0.08x')
+
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
     await flushPromises()
-    expect(wrapper.text()).toContain('new-model')
+    expect(wrapper.get('[data-testid="lowest-gpt-rate"]').text()).toContain('0.03x')
+
     wrapper.unmount()
     await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
     expect(getModelPlaza).toHaveBeenCalledTimes(2)
   })
 
-  it('preserves fetched prices when a refresh fails', async () => {
-    getModelPlaza.mockResolvedValueOnce(response).mockRejectedValueOnce(new Error('network'))
+  it('keeps the last rate when a refresh fails', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    getModelPlaza.mockResolvedValueOnce(response).mockRejectedValue(new Error('network'))
     const wrapper = mountPreview()
     await flushPromises()
-    await wrapper.get('button').trigger('click')
-    await flushPromises()
-    expect(wrapper.text()).toContain('gpt-5')
-    expect(wrapper.get('[role="status"]').text()).toContain('homePricing.refreshFailed')
-    wrapper.unmount()
-  })
 
-  it('can search models outside the initial 24-price preview and updates model suggestions per platform', async () => {
-    getModelPlaza.mockResolvedValue({ ...response, groups: [{
-      ...response.groups[0], models: Array.from({ length: 30 }, (_, index) => ({ name: `model-${index}`, platform: 'openai' }))
-    }, response.groups[1]] })
-    const wrapper = mountPreview()
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1000)
     await flushPromises()
-    expect(wrapper.findAll('datalist option')).toHaveLength(31)
-    expect(wrapper.text()).not.toContain('model-29')
-    await wrapper.get('input').setValue('model-29')
-    expect(wrapper.get('[data-testid="group"]').text()).toContain('model-29')
-    await wrapper.get('select').setValue('anthropic')
-    expect(wrapper.findAll('datalist option')).toHaveLength(1)
-    expect(wrapper.text()).toContain('modelPlaza.noSearchResult')
+
+    expect(wrapper.get('[data-testid="lowest-gpt-rate"]').text()).toContain('0.08x')
+    expect(wrapper.get('[role="status"]').text()).toContain('homePricing.refreshFailed')
     wrapper.unmount()
   })
 })
