@@ -50,13 +50,14 @@ function mountHome(settings: Record<string, unknown> = {}) {
         RouterLink: RouterLinkStub,
         LocaleSwitcher: { template: '<div data-testid="locale-switcher" />' },
         Icon: { template: '<span data-testid="icon" />' },
+        HomePricingPreview: true,
       },
     },
   })
 }
 
 function compactDestination(wrapper: ReturnType<typeof mountHome>) {
-  return wrapper.get('[data-testid="compact-home"]').findComponent(RouterLinkStub).props('to')
+  return wrapper.get('[data-testid="compact-home"] main').findComponent(RouterLinkStub).props('to')
 }
 
 function modelPlazaDestination(wrapper: ReturnType<typeof mountHome>) {
@@ -85,6 +86,12 @@ describe('HomeView compact mode', () => {
 
     expect(wrapper.get('#custom-home').text()).toBe('Custom home')
     expect(wrapper.find('[data-testid="compact-home"]').exists()).toBe(false)
+  })
+
+  it.each([true, false])('exposes public API docs in the header with compact=%s', (compact) => {
+    const wrapper = mountHome({ compact_home_enabled: compact })
+    expect(wrapper.get('header').findAllComponents(RouterLinkStub).some(link => link.props('to') === '/docs')).toBe(true)
+    wrapper.unmount()
   })
 
   it('renders custom URL content ahead of compact mode', () => {

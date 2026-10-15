@@ -13,9 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"go.uber.org/zap"
 )
@@ -238,15 +236,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		serviceTier = strings.TrimSpace(*result.ServiceTier)
 	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
-	modelLongContextExempt := openAISubscriptionLongContextExempt(billingAccount, result)
-	baselineBillingModel := firstUsageBillingModel(billingModels)
-	subsitePricing, hasSubsitePricing := s.resolveSubsitePricingForModel(ctx, baselineBillingModel, apiKey)
-	var subsitePrice *downstream.Price
-	if hasSubsitePricing {
-		price := subsitePricing.Price
-		subsitePrice = &price
-	}
-	cost, err = s.calculateOpenAIRecordUsageCostWithSubsite(
+	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
 		result,
 		apiKey,
@@ -258,9 +248,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		tokens,
 		serviceTier,
 		longContextBillingGate,
-		modelLongContextExempt,
 		pricingAt,
-		subsitePrice,
 	)
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
@@ -281,6 +269,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// 采纳条件见 responseModelBillingDeclaration + hasIdentifiedOpenAIResponsePricing
 	// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
 	// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
+	baselineBillingModel := firstUsageBillingModel(billingModels)
 	if responseModel := responseModelBillingDeclaration(
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
@@ -290,19 +279,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
-			responseSubsitePricing, responseHasSubsitePricing := s.resolveSubsitePricingForModel(
-				ctx,
-				firstUsageBillingModel(responseModels),
-				apiKey,
-			)
-			var responseSubsitePrice *downstream.Price
-			if responseHasSubsitePricing {
-				price := responseSubsitePricing.Price
-				responseSubsitePrice = &price
-			}
-			responseCost, responseErr := s.calculateOpenAIRecordUsageCostWithSubsite(
+			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
 				ctx, result, apiKey, responseModels, multiplier, imageMultiplier,
-				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, modelLongContextExempt, pricingAt, responseSubsitePrice,
+				videoMultiplier, baseMultiplier, tokens, serviceTier, longContextBillingGate, pricingAt,
 			)
 			// 基线定价源以 baselineBillingModel 为准：它正是 calculateOpenAIRecordUsageCost
 			// 内部做渠道定价判断时使用的模型，且"首候选有渠道价"必然意味着首候选就是实际
@@ -313,9 +292,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 					baselineBillingModel, responseModel, cost, responseCost)
 				billingModels = responseModels
 				cost = responseCost
-				subsitePricing = responseSubsitePricing
-				hasSubsitePricing = responseHasSubsitePricing
-				subsitePrice = responseSubsitePrice
 			}
 		}
 	}
@@ -323,10 +299,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Free Fast changes only the customer charge. Keep priority TotalCost and
 	// service_tier for upstream accounting, but evaluate ActualCost once more at
 	// the Standard tier using the same channel, peak, and long-context policy.
-	settlementServiceTier := serviceTier
 	if groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) {
-		settlementServiceTier = ""
-		standardCost, standardErr := s.calculateOpenAIRecordUsageCostWithSubsite(
+		standardCost, standardErr := s.calculateOpenAIRecordUsageCost(
 			ctx,
 			result,
 			apiKey,
@@ -338,9 +312,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			tokens,
 			"",
 			longContextBillingGate,
-			modelLongContextExempt,
 			pricingAt,
-			subsitePrice,
 		)
 		if standardErr != nil && !isUsagePricingUnavailableError(standardErr) {
 			return standardErr
@@ -380,6 +352,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			requestID = stable
 		}
 	}
+
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
 	if input.OriginalModel != "" {
@@ -511,7 +484,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			tokens, cost.TotalCost, pricingAt,
-			accountStatsLongContextPricingEnabled(longContextBillingGate) && !modelLongContextExempt,
+			accountStatsLongContextPricingEnabled(longContextBillingGate),
 		)
 	}
 
@@ -549,27 +522,6 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 		return billingErr
 	}
-	if hasSubsitePricing && cost != nil {
-		s.recordDownstreamUsageSettlement(
-			ctx,
-			requestID,
-			user.ID,
-			apiKey,
-			result,
-			billingModels,
-			multiplier,
-			imageMultiplier,
-			videoMultiplier,
-			baseMultiplier,
-			tokens,
-			settlementServiceTier,
-			longContextBillingGate,
-			modelLongContextExempt,
-			pricingAt,
-			cost,
-			subsitePricing,
-		)
-	}
 	writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.openai_gateway")
 
 	return nil
@@ -605,22 +557,6 @@ func openAILongContextBillingGate(account *Account) *bool {
 	return &enabled
 }
 
-// openAISubscriptionLongContextExempt 按实际凭据和最终发送模型判断订阅豁免。
-// GPT-6.1 Sol 的订阅请求不再收取模型长上下文附加费；API Key 仍使用 API 价卡。
-// 使用发送模型，避免客户别名、渠道计费模型或响应模型计费切换改变上游订阅规则。
-func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForwardResult) bool {
-	if !account.IsOpenAIOAuthLike() || result == nil {
-		return false
-	}
-	model := strings.TrimSpace(result.UpstreamModel)
-	if model == "" {
-		model = result.Model
-	}
-	return openai.IsGPT61SolModelSpelling(model)
-}
-
-// calculateOpenAIRecordUsageCost keeps the historical signature: main-site
-// billing, and the default for callers that do not resolve a sub-site price.
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	ctx context.Context,
 	result *OpenAIForwardResult,
@@ -633,31 +569,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokens UsageTokens,
 	serviceTier string,
 	longContextBillingGate *bool,
-	modelLongContextExempt bool,
 	pricingAt time.Time,
-) (*CostBreakdown, error) {
-	return s.calculateOpenAIRecordUsageCostWithSubsite(
-		ctx, result, apiKey, billingModels, multiplier, imageMultiplier,
-		videoMultiplier, webSearchMultiplier, tokens, serviceTier,
-		longContextBillingGate, modelLongContextExempt, pricingAt, nil,
-	)
-}
-
-func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCostWithSubsite(
-	ctx context.Context,
-	result *OpenAIForwardResult,
-	apiKey *APIKey,
-	billingModels []string,
-	multiplier float64,
-	imageMultiplier float64,
-	videoMultiplier float64,
-	webSearchMultiplier float64,
-	tokens UsageTokens,
-	serviceTier string,
-	longContextBillingGate *bool,
-	modelLongContextExempt bool,
-	pricingAt time.Time,
-	subsitePrice *downstream.Price,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
@@ -669,16 +581,13 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCostWithSubsite(
 	}
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier, subsitePrice), nil
+			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
 		}
 	}
 	if result != nil && result.AudioUsage != nil {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 			(resolved.Mode == BillingModePerRequest) {
 			gid := apiKey.Group.ID
-			if subsitePrice != nil {
-				resolved = applyDownstreamPriceToResolved(resolved, *subsitePrice)
-			}
 			return s.billingService.CalculateCostUnified(CostInput{
 				Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
 				UsageUnits: result.AudioUsage.DurationOrUnits, SizeTier: result.AudioUsage.Mode,
@@ -693,7 +602,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCostWithSubsite(
 	if result != nil && result.ImageCount > 0 {
 		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier, subsitePrice), nil
+			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
 		}
 	}
 
@@ -716,8 +625,6 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCostWithSubsite(
 				serviceTier,
 				optionalStringValue(result.ReasoningEffort),
 				longContextBillingGate,
-				modelLongContextExempt,
-				subsitePrice,
 			)
 			if err == nil {
 				tokenCost = cost
@@ -812,22 +719,14 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 	serviceTier string,
 	reasoningEffort string,
 	longContextBillingGate *bool,
-	modelLongContextExempt bool,
-	subsitePrice *downstream.Price,
 ) (*CostBreakdown, error) {
 	if s.resolver != nil && apiKey.Group != nil {
 		gid := apiKey.Group.ID
-		resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &gid, Group: apiKey.Group})
-		if subsitePrice != nil {
-			resolved = applyDownstreamPriceToResolved(resolved, *subsitePrice)
-		}
 		return s.billingService.CalculateCostUnified(CostInput{
 			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
 			Tokens: tokens, RequestCount: 1, RateMultiplier: multiplier, PricingAt: pricingAt,
 			ServiceTier: serviceTier, ReasoningEffort: reasoningEffort, Resolver: s.resolver,
-			Resolved:                       resolved,
-			LongContextBillingEnabled:      longContextBillingGate,
-			DisableModelLongContextPricing: modelLongContextExempt,
+			LongContextBillingEnabled: longContextBillingGate,
 		})
 	}
 	return s.billingService.calculateCostWithServiceTierPolicy(
@@ -835,7 +734,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageTokenCost(
 		tokens,
 		multiplier,
 		serviceTier,
-		(longContextBillingGate == nil || *longContextBillingGate) && !modelLongContextExempt,
+		longContextBillingGate == nil || *longContextBillingGate,
 	)
 }
 
@@ -845,13 +744,9 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 	apiKey *APIKey,
 	result *OpenAIForwardResult,
 	multiplier float64,
-	subsitePrice *downstream.Price,
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
-	if subsitePrice != nil {
-		resolved = applyDownstreamPriceToResolved(resolved, *subsitePrice)
-	}
 	if resolved != nil && resolved.Source == PricingSourceGroup &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
@@ -906,7 +801,6 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	apiKey *APIKey,
 	result *OpenAIForwardResult,
 	multiplier float64,
-	subsitePrice *downstream.Price,
 ) *CostBreakdown {
 	videoCount := result.VideoCount
 	if videoCount <= 0 {
@@ -915,9 +809,6 @@ func (s *OpenAIGatewayService) calculateOpenAIVideoCost(
 	resolution := NormalizeVideoBillingResolutionOrDefault(result.VideoResolution)
 	durationSeconds := NormalizeVideoBillingDurationSecondsOrDefault(result.VideoDurationSeconds)
 	resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey)
-	if subsitePrice != nil {
-		resolved = applyDownstreamPriceToResolved(resolved, *subsitePrice)
-	}
 	if resolved != nil && resolved.Source == PricingSourceGroup && resolved.Mode == BillingModeVideo {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{

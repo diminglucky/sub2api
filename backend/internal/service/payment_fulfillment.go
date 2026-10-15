@@ -408,10 +408,6 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 	if lease == nil {
 		return errors.New("missing payment fulfillment lease")
 	}
-	// Downstream settlement is usage-based (see internal/downstream settlements
-	// and the OpenAI gateway billing path). Recharge order completion must not
-	// write any ledger row: order amounts are collected in the gateway currency
-	// while usage is billed in USD, so settling from an order would mix units.
 	now := time.Now()
 	updated, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
@@ -428,11 +424,6 @@ func (s *PaymentService) markCompleted(ctx context.Context, o *dbent.PaymentOrde
 		}
 		return infraerrors.Conflict("CONFLICT", "fulfillment lease was lost before completion")
 	}
-	s.afterPaymentOrderCompleted(ctx, o, auditAction)
-	return nil
-}
-
-func (s *PaymentService) afterPaymentOrderCompleted(ctx context.Context, o *dbent.PaymentOrder, auditAction string) {
 	if !s.hasAuditLog(ctx, o.ID, auditAction) {
 		s.writeAuditLog(ctx, o.ID, auditAction, "system", map[string]any{
 			"rechargeCode":   o.RechargeCode,
@@ -441,6 +432,7 @@ func (s *PaymentService) afterPaymentOrderCompleted(ctx context.Context, o *dben
 		})
 		s.dispatchPaymentFulfillmentNotification(o, auditAction)
 	}
+	return nil
 }
 
 func (s *PaymentService) dispatchPaymentFulfillmentNotification(o *dbent.PaymentOrder, auditAction string) {

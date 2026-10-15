@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
-	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
@@ -35,7 +34,6 @@ func SetupRouter(
 	opsService *service.OpsService,
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
-	downstreamRepo *downstream.Repository,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) *gin.Engine {
@@ -73,7 +71,6 @@ func SetupRouter(
 	}))
 	r.Use(middleware2.RegionBlock(cfg.RegionBlockSettings))
 	r.Use(middleware2.ServerTiming(cfg.Server.EnableServerTiming))
-	r.Use(middleware2.DownstreamSubsite(downstreamRepo, "superai.sbs"))
 
 	// Serve embedded frontend with settings injection if available
 	if web.HasEmbeddedFrontend() {
@@ -95,7 +92,7 @@ func SetupRouter(
 	}
 
 	// 注册路由
-	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, downstreamRepo, cfg, redisClient)
+	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
 
 	return r
 }
@@ -115,13 +112,11 @@ func registerRoutes(
 	opsService *service.OpsService,
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
-	downstreamRepo *downstream.Repository,
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) {
 	// 通用路由（健康检查、状态等）
 	routes.RegisterCommonRoutes(r)
-	downstream.RegisterRoutes(r, downstreamRepo, gin.HandlerFunc(jwtAuth), downstreamUserContext())
 
 	// API v1
 	v1 := r.Group("/api/v1")
@@ -141,16 +136,4 @@ func registerRoutes(
 	routes.RegisterPaymentRoutes(v1, h.Payment, h.PaymentWebhook, h.Admin.Payment, jwtAuth, adminAuth, auditLog, settingService, panelRateLimiter, redisClient)
 
 	handler.RegisterPageRoutes(v1, cfg.Pricing.DataDir, gin.HandlerFunc(jwtAuth), gin.HandlerFunc(adminAuth), settingService)
-}
-
-func downstreamUserContext() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		subject, ok := middleware2.GetAuthSubjectFromContext(c)
-		if !ok || subject.UserID <= 0 {
-			middleware2.AbortWithError(c, 401, "UNAUTHORIZED", "authentication is required")
-			return
-		}
-		c.Set(downstream.ContextKeyUserID, subject.UserID)
-		c.Next()
-	}
 }

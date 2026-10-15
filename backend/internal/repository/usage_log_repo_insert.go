@@ -12,7 +12,6 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
-	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
@@ -87,7 +86,6 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // session_id
 	"boolean",     // native_compaction_v2
 	"timestamptz", // created_at
-	"bigint",      // subsite_id
 }
 
 const (
@@ -156,7 +154,6 @@ func (r *usageLogRepository) Create(ctx context.Context, log *service.UsageLog) 
 	if log == nil {
 		return false, nil
 	}
-	applyUsageLogSubsiteFromContext(ctx, log)
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		return r.createSingle(ctx, tx.Client(), log)
@@ -173,7 +170,6 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	if log == nil {
 		return nil
 	}
-	applyUsageLogSubsiteFromContext(ctx, log)
 
 	if tx := dbent.TxFromContext(ctx); tx != nil {
 		_, err := r.createSingle(ctx, tx.Client(), log)
@@ -290,15 +286,14 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
 			$10, $11,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -751,13 +746,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		) AS (VALUES `)
 
-	// Each batch row prepends the synthetic input_index before the 63
+	// Each batch row prepends the synthetic input_index before the 60
 	// usage-log column values.
-	args := make([]any, 0, len(keys)*64)
+	args := make([]any, 0, len(keys)*61)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -847,8 +841,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				upstream_request_id,
 				session_id,
 				native_compaction_v2,
-				created_at,
-				subsite_id
+				created_at
 			)
 			SELECT
 				user_id,
@@ -912,8 +905,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				upstream_request_id,
 				session_id,
 				native_compaction_v2,
-				created_at,
-				subsite_id
+				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
 			RETURNING request_id, api_key_id, id, created_at
@@ -1017,11 +1009,10 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*63)
+	args := make([]any, 0, len(preparedList)*60)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1108,8 +1099,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		)
 		SELECT
 			user_id,
@@ -1173,8 +1163,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`)
@@ -1246,15 +1235,14 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			upstream_request_id,
 			session_id,
 			native_compaction_v2,
-			created_at,
-			subsite_id
+			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
 			$10, $11,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1379,17 +1367,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			sessionID,            // session_id
 			log.NativeCompactionV2,
 			createdAt,
-			nullInt64(log.SubsiteID),
 		},
-	}
-}
-
-func applyUsageLogSubsiteFromContext(ctx context.Context, log *service.UsageLog) {
-	if log == nil || log.SubsiteID != nil {
-		return
-	}
-	if subsiteID, ok := downstream.SubsiteIDFromContext(ctx); ok {
-		log.SubsiteID = &subsiteID
 	}
 }
 

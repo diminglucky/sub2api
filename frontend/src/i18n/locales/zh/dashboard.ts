@@ -653,6 +653,20 @@ export default {
     }
   },
 
+  homePricing: {
+    title: '模型价格',
+    description: '按平台和模型查看价格，后台发布的模型与定价会自动同步到这里。',
+    viewPricing: '查看模型价格',
+    emptyTitle: '暂无公开模型价格',
+    emptyDescription: '模型价格尚未公布，发布后将在这里展示。',
+    emptyAdminDescription: '请先在渠道管理中添加模型定价，并关联启用的公开分组。保存后刷新此处即可展示。',
+    configurePricing: '配置模型价格',
+    clearFilters: '清除筛选',
+    refreshFailed: '刷新失败，当前保留上一次获取的价格。请稍后重试。',
+    previewCount: '展示 {shown} / {total} 个模型价格',
+    fetchedAt: '本次获取 {time}'
+  },
+
   // Model Plaza (public group/model pricing showcase)
   modelPlaza: {
     title: '模型广场',
@@ -662,6 +676,8 @@ export default {
     empty: '暂无可展示的分组',
     loadFailed: '加载模型广场失败',
     noSearchResult: '没有匹配的模型',
+      expandModels: '展开全部 ({count})',
+      collapseModels: '收起价格',
     anonymousHint: '登录后可查看你的专属分组与专属倍率',
     filters: {
       platformLabel: '平台',

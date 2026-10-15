@@ -18,7 +18,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
-	"github.com/Wei-Shaw/sub2api/internal/downstream"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -50,19 +49,6 @@ type OpenAIGatewayHandler struct {
 	imageLimiter               *imageConcurrencyLimiter
 	maxAccountSwitches         int
 	cfg                        *config.Config
-}
-
-// SetDownstreamPricing wires optional sub-site price resolution and usage-based
-// settlement into the OpenAI gateway service. When unset (main site) billing is
-// unchanged. It is called once at startup after the router's DB is available.
-func (h *OpenAIGatewayHandler) SetDownstreamPricing(
-	pricing service.DownstreamPricingRepository,
-	settlement service.DownstreamUsageSettlementRecorder,
-) {
-	if h == nil || h.gatewayService == nil {
-		return
-	}
-	h.gatewayService.SetDownstreamPricing(pricing, settlement)
 }
 
 type openAIWSTurnChannelMappingSnapshot struct {
@@ -269,11 +255,6 @@ func usageRecordContext(parent context.Context, base context.Context) context.Co
 	}
 	if requestID, _ := parent.Value(ctxkey.RequestID).(string); strings.TrimSpace(requestID) != "" {
 		base = context.WithValue(base, ctxkey.RequestID, strings.TrimSpace(requestID))
-	}
-	// 下游子站上下文必须随计费任务一起度过 worker 池的 context 切换，
-	// 否则真实 draw.superai.sbs 流量的 usage_logs.subsite_id 会落成 NULL。
-	if subsite, ok := downstream.FromContext(parent); ok {
-		base = downstream.WithSubsite(base, subsite)
 	}
 	return base
 }

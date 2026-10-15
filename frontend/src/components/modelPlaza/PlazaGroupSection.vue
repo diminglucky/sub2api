@@ -31,6 +31,16 @@
         >
           {{ t('modelPlaza.badges.subscription') }}
         </span>
+        <button
+          v-if="collapsible && hasMoreModels"
+          type="button"
+          class="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 transition hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:text-dark-300"
+          :aria-expanded="expanded"
+          @click="expanded = !expanded"
+        >
+          <Icon :name="expanded ? 'chevronUp' : 'chevronDown'" size="xs" />
+          {{ expanded ? t('modelPlaza.collapseModels') : t('modelPlaza.expandModels', { count: group.models.length }) }}
+        </button>
       </div>
       <p v-if="group.description" class="mt-2 text-sm text-gray-500 dark:text-dark-400">
         {{ group.description }}
@@ -52,10 +62,10 @@
     </header>
 
     <!-- 模型价格表:整行(含 hover 底色/分区底色)顶到卡片边缘,左右留白由表格首列/末列的 padding 提供 -->
-    <div>
+    <div class="relative">
       <PlazaModelPricingTable
         v-if="group.models.length > 0"
-        :models="group.models"
+        :models="displayModels"
         :platform="group.platform"
         :rate-multiplier="group.rate_multiplier"
         :user-rate-multiplier="group.user_rate_multiplier ?? null"
@@ -69,12 +79,17 @@
       <p v-else class="px-5 py-4 text-center text-sm text-gray-400 dark:text-dark-500">
         {{ t('modelPlaza.detail.noModels') }}
       </p>
+      <div
+        v-if="collapsible && !expanded && hasMoreModels"
+        class="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-white via-white/85 to-transparent dark:from-dark-800/95 dark:via-dark-800/70"
+        aria-hidden="true"
+      ></div>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -85,12 +100,23 @@ import { platformBorderStrongClass } from '@/utils/platformColors'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { useAppStore } from '@/stores/app'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   group: ModelPlazaGroup
-}>()
+  collapsible?: boolean
+  previewModelCount?: number
+}>(), {
+  collapsible: false,
+  previewModelCount: 3
+})
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const expanded = ref(!props.collapsible)
+const displayModels = computed(() => {
+  if (!props.collapsible || expanded.value) return props.group.models
+  return props.group.models.slice(0, props.previewModelCount)
+})
+const hasMoreModels = computed(() => props.group.models.length > props.previewModelCount)
 
 /** 高峰窗口描述(含倍率与服务器时区标注);分组未启用高峰为空串。 */
 const peakWindow = computed(() => {

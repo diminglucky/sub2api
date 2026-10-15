@@ -39,6 +39,17 @@ export const routes: RouteRecordRaw[] = [
 
   // ==================== Public Routes ====================
   {
+    path: '/docs',
+    name: 'ApiDocs',
+    component: () => import('@/views/public/ApiDocsView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'API Documentation',
+      titleKey: 'apiDocs.title',
+      descriptionKey: 'apiDocs.description'
+    }
+  },
+  {
     path: '/home',
     name: 'Home',
     component: () => import('@/views/HomeView.vue'),
@@ -787,7 +798,7 @@ let authInitialized = false
 const navigationLoading = useNavigationLoadingState()
 // 延迟初始化预加载，传入 router 实例
 let routePrefetch: ReturnType<typeof useRoutePrefetch> | null = null
-const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal']
+const BACKEND_MODE_ALLOWED_PATHS = ['/login', '/key-usage', '/setup', '/payment/result', '/payment/airwallex', '/legal', '/docs']
 const BACKEND_MODE_CALLBACK_PATHS = [
   '/auth/callback',
   '/auth/linuxdo/callback',
