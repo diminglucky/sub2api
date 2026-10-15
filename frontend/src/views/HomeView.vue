@@ -94,32 +94,32 @@
   </div>
 
   <!-- Default Home Page -->
-  <div v-else class="min-h-screen bg-[#fffdfb] text-[#171311] dark:bg-dark-950 dark:text-white">
-    <header class="sticky inset-x-0 top-0 z-30 border-b border-[#eadfd8] bg-[#fffdfb]/90 backdrop-blur-xl dark:border-dark-800 dark:bg-dark-950/90">
+  <div v-else class="min-h-screen bg-[#f8fafc] text-[#0f172a] dark:bg-dark-950 dark:text-white">
+    <header class="sticky inset-x-0 top-0 z-30 border-b border-[#e2e8f0] bg-[#f8fafc]/90 backdrop-blur-xl dark:border-dark-800 dark:bg-dark-950/90">
       <nav class="mx-auto flex h-[72px] max-w-7xl items-center gap-4 px-4 sm:px-6 lg:px-8">
         <router-link to="/" class="flex min-w-0 items-center gap-2.5" aria-label="Home">
           <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-8 w-8 rounded-lg object-contain" />
           <span class="truncate text-lg font-semibold tracking-tight">{{ siteName }}</span>
         </router-link>
-        <div class="ml-auto hidden items-center gap-7 text-sm text-[#766c66] lg:flex dark:text-dark-300">
-          <a href="#providers" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('home.providers.title') }}</a>
-          <a v-if="showModelPlazaEntry" href="#pricing" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('homePricing.title') }}</a>
-          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('home.docs') }}</a>
-          <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="transition-colors hover:text-[#171311] dark:hover:text-white">{{ t('nav.modelPlaza') }}</router-link>
+        <div class="ml-auto hidden items-center gap-7 text-sm text-[#475569] lg:flex dark:text-dark-300">
+          <a href="#providers" class="transition-colors hover:text-[#0f172a] dark:hover:text-white">{{ t('home.providers.title') }}</a>
+          <a v-if="showModelPlazaEntry" href="#pricing" class="transition-colors hover:text-[#0f172a] dark:hover:text-white">{{ t('homePricing.title') }}</a>
+          <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="transition-colors hover:text-[#0f172a] dark:hover:text-white">{{ t('home.docs') }}</a>
+          <router-link v-if="showModelPlazaEntry" to="/model-plaza" class="transition-colors hover:text-[#0f172a] dark:hover:text-white">{{ t('nav.modelPlaza') }}</router-link>
         </div>
         <div class="ml-auto flex items-center gap-1.5 sm:gap-2 lg:ml-0">
-          <router-link to="/docs" class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs font-medium text-[#766c66] transition hover:bg-[#f4ebe5] hover:text-[#171311] sm:px-3 sm:text-sm dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white">
+          <router-link to="/docs" class="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2 text-xs font-medium text-[#475569] transition hover:bg-[#ccfbf1] hover:text-[#0f172a] sm:px-3 sm:text-sm dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white">
             <Icon name="book" size="sm" class="hidden sm:block" />{{ t('apiDocs.title') }}
           </router-link>
           <LocaleSwitcher />
-          <button class="flex h-9 w-9 items-center justify-center rounded-full text-[#766c66] transition hover:bg-[#f4ebe5] hover:text-[#171311] dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white" :title="isDark ? t('home.switchToLight') : t('home.switchToDark')" @click="toggleTheme">
+          <button class="flex h-9 w-9 items-center justify-center rounded-full text-[#475569] transition hover:bg-[#ccfbf1] hover:text-[#0f172a] dark:text-dark-300 dark:hover:bg-dark-800 dark:hover:text-white" :title="isDark ? t('home.switchToLight') : t('home.switchToDark')" @click="toggleTheme">
             <Icon v-if="isDark" name="sun" size="sm" />
             <Icon v-else name="moon" size="sm" />
           </button>
-          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="hidden h-9 items-center justify-center rounded-full bg-[#fb6415] px-4 text-sm font-medium text-black transition hover:bg-[#ff7b33] sm:inline-flex">
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="hidden h-9 items-center justify-center rounded-full bg-[#14b8a6] px-4 text-sm font-medium text-black transition hover:bg-[#2dd4bf] sm:inline-flex">
             {{ isAuthenticated ? t('home.dashboard') : t('home.login') }}
           </router-link>
-          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="flex h-9 w-9 items-center justify-center rounded-full bg-[#fb6415] text-sm font-semibold text-black sm:hidden" :aria-label="isAuthenticated ? t('home.dashboard') : t('home.login')">
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="flex h-9 w-9 items-center justify-center rounded-full bg-[#14b8a6] text-sm font-semibold text-black sm:hidden" :aria-label="isAuthenticated ? t('home.dashboard') : t('home.login')">
             <span v-if="isAuthenticated">{{ userInitial }}</span><Icon v-else name="arrowRight" size="sm" />
           </router-link>
         </div>
@@ -127,22 +127,22 @@
     </header>
 
     <main>
-      <section id="overview" class="relative overflow-hidden border-b border-[#eadfd8] dark:border-dark-800">
-        <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_25%,rgba(251,100,21,0.12),transparent_30%),radial-gradient(circle_at_88%_20%,rgba(100,128,255,0.10),transparent_28%)]"></div>
+      <section id="overview" class="relative overflow-hidden border-b border-[#e2e8f0] dark:border-dark-800">
+        <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_25%,rgba(20,184,166,0.14),transparent_30%),radial-gradient(circle_at_88%_20%,rgba(45,212,191,0.12),transparent_28%)]"></div>
         <div class="relative mx-auto grid max-w-7xl items-center gap-14 px-4 pb-20 pt-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_480px] lg:px-8 lg:pb-24 lg:pt-24">
           <div class="max-w-3xl">
-            <p class="mb-5 inline-flex rounded-full border border-[#eadfd8] bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8a7b72] dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-300">AI API Gateway</p>
-            <h1 class="max-w-3xl text-6xl font-bold leading-[0.94] tracking-[-0.04em] text-[#171311] sm:text-7xl lg:text-8xl dark:text-white">
+            <p class="mb-5 inline-flex rounded-full border border-[#e2e8f0] bg-white/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#64748b] dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-300">AI API Gateway</p>
+            <h1 class="max-w-3xl text-6xl font-bold leading-[0.94] tracking-[-0.04em] text-[#0f172a] sm:text-7xl lg:text-8xl dark:text-white">
               <span class="block">{{ siteName }}</span>
-              <span class="mt-2 block bg-gradient-to-r from-[#171311] via-[#926f5d] to-[#fb6415] bg-clip-text text-transparent dark:from-white dark:via-[#f7c8ad] dark:to-[#fb6415]">API GATEWAY.</span>
+              <span class="mt-2 block bg-gradient-to-r from-[#0f172a] via-[#0d9488] to-[#14b8a6] bg-clip-text text-transparent dark:from-white dark:via-[#99f6e4] dark:to-[#14b8a6]">API GATEWAY.</span>
             </h1>
-            <p class="mt-7 max-w-2xl text-base leading-8 text-[#766c66] sm:text-lg dark:text-dark-300">{{ siteSubtitle }}</p>
+            <p class="mt-7 max-w-2xl text-base leading-8 text-[#475569] sm:text-lg dark:text-dark-300">{{ siteSubtitle }}</p>
             <div class="mt-8 flex flex-col gap-3 sm:flex-row">
-              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#fb6415] px-6 text-sm font-semibold text-black transition hover:bg-[#ff7b33]">
+              <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#14b8a6] px-6 text-sm font-semibold text-black transition hover:bg-[#2dd4bf]">
                 {{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}<Icon name="arrowRight" size="sm" />
               </router-link>
-              <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="inline-flex h-11 items-center justify-center rounded-full border border-[#ded2ca] bg-white/70 px-6 text-sm font-medium text-[#3f3631] transition hover:bg-white dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-100 dark:hover:bg-dark-800">{{ t('home.viewDocs') }}</a>
-              <a v-else-if="showModelPlazaEntry" href="#pricing" class="inline-flex h-11 items-center justify-center rounded-full border border-[#ded2ca] bg-white/70 px-6 text-sm font-medium text-[#3f3631] transition hover:bg-white dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-100 dark:hover:bg-dark-800">{{ t('homePricing.viewPricing') }}</a>
+              <a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="inline-flex h-11 items-center justify-center rounded-full border border-[#cbd5e1] bg-white/70 px-6 text-sm font-medium text-[#1e293b] transition hover:bg-white dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-100 dark:hover:bg-dark-800">{{ t('home.viewDocs') }}</a>
+              <a v-else-if="showModelPlazaEntry" href="#pricing" class="inline-flex h-11 items-center justify-center rounded-full border border-[#cbd5e1] bg-white/70 px-6 text-sm font-medium text-[#1e293b] transition hover:bg-white dark:border-dark-700 dark:bg-dark-900/70 dark:text-dark-100 dark:hover:bg-dark-800">{{ t('homePricing.viewPricing') }}</a>
             </div>
           </div>
           <div class="flex justify-center lg:justify-end">
@@ -158,36 +158,43 @@
 
       <section class="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div class="grid gap-3 sm:grid-cols-3">
-          <div class="flex items-center gap-3 rounded-xl border border-[#eadfd8] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="swap" size="sm" class="text-[#fb6415]" /><span class="text-sm font-medium text-[#4e443e] dark:text-dark-200">{{ t('home.tags.subscriptionToApi') }}</span></div>
-          <div class="flex items-center gap-3 rounded-xl border border-[#eadfd8] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="shield" size="sm" class="text-[#fb6415]" /><span class="text-sm font-medium text-[#4e443e] dark:text-dark-200">{{ t('home.tags.stickySession') }}</span></div>
-          <div class="flex items-center gap-3 rounded-xl border border-[#eadfd8] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="chart" size="sm" class="text-[#fb6415]" /><span class="text-sm font-medium text-[#4e443e] dark:text-dark-200">{{ t('home.tags.realtimeBilling') }}</span></div>
+          <div class="flex items-center gap-3 rounded-xl border border-[#e2e8f0] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="swap" size="sm" class="text-[#14b8a6]" /><span class="text-sm font-medium text-[#334155] dark:text-dark-200">{{ t('home.tags.subscriptionToApi') }}</span></div>
+          <div class="flex items-center gap-3 rounded-xl border border-[#e2e8f0] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="shield" size="sm" class="text-[#14b8a6]" /><span class="text-sm font-medium text-[#334155] dark:text-dark-200">{{ t('home.tags.stickySession') }}</span></div>
+          <div class="flex items-center gap-3 rounded-xl border border-[#e2e8f0] bg-white/70 px-4 py-3 dark:border-dark-800 dark:bg-dark-900/70"><Icon name="chart" size="sm" class="text-[#14b8a6]" /><span class="text-sm font-medium text-[#334155] dark:text-dark-200">{{ t('home.tags.realtimeBilling') }}</span></div>
         </div>
       </section>
 
       <HomePricingPreview :visible="showModelPlazaEntry" :show-entry="showModelPlazaEntry" :can-manage="isAdmin" />
 
-      <section id="features" class="border-y border-[#eadfd8] bg-[#f8f3ef] py-20 dark:border-dark-800 dark:bg-dark-900/50">
+      <section id="features" class="border-y border-[#e2e8f0] bg-[#f0fdfa] py-20 dark:border-dark-800 dark:bg-dark-900/50">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div class="mb-10 max-w-2xl"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#fb6415]">Core capabilities</p><h2 class="mt-3 text-3xl font-semibold tracking-tight text-[#171311] sm:text-4xl dark:text-white">{{ t('home.providers.title') }}</h2><p class="mt-4 text-base leading-7 text-[#766c66] dark:text-dark-300">{{ t('home.providers.description') }}</p></div>
+          <div class="mb-10 max-w-2xl"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#14b8a6]">Core capabilities</p><h2 class="mt-3 text-3xl font-semibold tracking-tight text-[#0f172a] sm:text-4xl dark:text-white">{{ t('home.providers.title') }}</h2><p class="mt-4 text-base leading-7 text-[#475569] dark:text-dark-300">{{ t('home.providers.description') }}</p></div>
           <div class="grid gap-4 md:grid-cols-3">
-            <article class="rounded-2xl border border-[#eadfd8] bg-[#fffdfb] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff0e8] text-[#fb6415] dark:bg-[#4a2414]"><Icon name="server" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.unifiedGateway') }}</h3><p class="mt-3 text-sm leading-7 text-[#766c66] dark:text-dark-300">{{ t('home.features.unifiedGatewayDesc') }}</p></article>
-            <article class="rounded-2xl border border-[#eadfd8] bg-[#fffdfb] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff0e8] text-[#fb6415] dark:bg-[#4a2414]"><Icon name="users" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.multiAccount') }}</h3><p class="mt-3 text-sm leading-7 text-[#766c66] dark:text-dark-300">{{ t('home.features.multiAccountDesc') }}</p></article>
-            <article class="rounded-2xl border border-[#eadfd8] bg-[#fffdfb] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#fff0e8] text-[#fb6415] dark:bg-[#4a2414]"><Icon name="chart" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.balanceQuota') }}</h3><p class="mt-3 text-sm leading-7 text-[#766c66] dark:text-dark-300">{{ t('home.features.balanceQuotaDesc') }}</p></article>
+            <article class="rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#ccfbf1] text-[#14b8a6] dark:bg-[#134e4a]"><Icon name="server" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.unifiedGateway') }}</h3><p class="mt-3 text-sm leading-7 text-[#475569] dark:text-dark-300">{{ t('home.features.unifiedGatewayDesc') }}</p></article>
+            <article class="rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#ccfbf1] text-[#14b8a6] dark:bg-[#134e4a]"><Icon name="users" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.multiAccount') }}</h3><p class="mt-3 text-sm leading-7 text-[#475569] dark:text-dark-300">{{ t('home.features.multiAccountDesc') }}</p></article>
+            <article class="rounded-2xl border border-[#e2e8f0] bg-[#f8fafc] p-6 dark:border-dark-700 dark:bg-dark-900"><div class="mb-5 flex h-10 w-10 items-center justify-center rounded-xl bg-[#ccfbf1] text-[#14b8a6] dark:bg-[#134e4a]"><Icon name="chart" size="md" /></div><h3 class="text-lg font-semibold">{{ t('home.features.balanceQuota') }}</h3><p class="mt-3 text-sm leading-7 text-[#475569] dark:text-dark-300">{{ t('home.features.balanceQuotaDesc') }}</p></article>
           </div>
         </div>
       </section>
 
       <section id="providers" class="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8">
-        <div class="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:items-center"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#fb6415]">Supported models</p><h2 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{ t('home.providers.title') }}</h2><p class="mt-4 text-base leading-7 text-[#766c66] dark:text-dark-300">{{ t('home.providers.description') }}</p></div><div class="flex flex-wrap gap-3">
-          <div v-for="provider in [{ key: 'claude', letter: 'C' }, { key: 'gpt', letter: 'G' }, { key: 'gemini', letter: 'G' }, { key: 'antigravity', letter: 'A' }]" :key="provider.key" class="flex items-center gap-3 rounded-xl border border-[#eadfd8] bg-white px-4 py-3 dark:border-dark-800 dark:bg-dark-900"><span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#fff0e8] text-sm font-bold text-[#fb6415] dark:bg-[#4a2414]">{{ provider.letter }}</span><span class="text-sm font-medium">{{ provider.key === 'gpt' ? 'GPT' : t(`home.providers.${provider.key}`) }}</span><span class="rounded-full bg-[#fff0e8] px-2 py-0.5 text-[10px] font-semibold text-[#c34c0d] dark:bg-[#4a2414] dark:text-[#ffb28d]">{{ t('home.providers.supported') }}</span>
-          </div><div class="flex items-center gap-3 rounded-xl border border-dashed border-[#d9ccc4] px-4 py-3 text-[#8a7b72] dark:border-dark-700 dark:text-dark-400"><span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f4ebe5] text-sm font-bold dark:bg-dark-800">+</span><span class="text-sm">{{ t('home.providers.more') }}</span></div>
+        <div class="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:items-center"><div><p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#14b8a6]">Supported models</p><h2 class="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{{ t('home.providers.title') }}</h2><p class="mt-4 text-base leading-7 text-[#475569] dark:text-dark-300">{{ t('home.providers.description') }}</p></div><div class="flex flex-wrap gap-3">
+          <div v-for="provider in [{ key: 'claude', letter: 'C' }, { key: 'gpt', letter: 'G' }, { key: 'gemini', letter: 'G' }, { key: 'antigravity', letter: 'A' }]" :key="provider.key" class="flex items-center gap-3 rounded-xl border border-[#e2e8f0] bg-white px-4 py-3 dark:border-dark-800 dark:bg-dark-900"><span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ccfbf1] text-sm font-bold text-[#14b8a6] dark:bg-[#134e4a]">{{ provider.letter }}</span><span class="text-sm font-medium">{{ provider.key === 'gpt' ? 'GPT' : t(`home.providers.${provider.key}`) }}</span><span class="rounded-full bg-[#ccfbf1] px-2 py-0.5 text-[10px] font-semibold text-[#0f766e] dark:bg-[#134e4a] dark:text-[#5eead4]">{{ t('home.providers.supported') }}</span>
+          </div><div class="flex items-center gap-3 rounded-xl border border-dashed border-[#cbd5e1] px-4 py-3 text-[#64748b] dark:border-dark-700 dark:text-dark-400"><span class="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ccfbf1] text-sm font-bold dark:bg-dark-800">+</span><span class="text-sm">{{ t('home.providers.more') }}</span></div>
         </div></div>
       </section>
 
-      <section class="mx-auto max-w-7xl px-4 pb-20 sm:px-6 lg:px-8"><div class="rounded-[1.75rem] bg-[#1f292d] px-6 py-12 text-center text-[#fffaf0] sm:px-10"><p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#fb6415]">{{ t('home.getStarted') }}</p><h2 class="mt-4 text-3xl font-semibold sm:text-4xl">{{ siteName }} API Gateway</h2><p class="mx-auto mt-4 max-w-2xl text-sm leading-7 text-[#d8e0e2]">{{ siteSubtitle }}</p><router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#fb6415] px-6 text-sm font-semibold text-[#172126] transition hover:bg-[#ff7b33]">{{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}<Icon name="arrowRight" size="sm" /></router-link></div></section>
+      <section class="border-t border-[#e2e8f0] bg-[#f0fdfa] py-20 dark:border-dark-800 dark:bg-dark-900/40">
+        <div class="mx-auto max-w-4xl px-4 text-center sm:px-6 lg:px-8">
+          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#14b8a6]">{{ t('home.getStarted') }}</p>
+          <h2 class="mt-4 text-3xl font-semibold tracking-tight text-[#0f172a] sm:text-4xl dark:text-white">{{ siteName }} API Gateway</h2>
+          <p class="mx-auto mt-4 max-w-2xl text-sm leading-7 text-[#475569] dark:text-dark-300">{{ siteSubtitle }}</p>
+          <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-8 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-[#14b8a6] px-6 text-sm font-semibold text-black transition hover:bg-[#2dd4bf]">{{ isAuthenticated ? t('home.goToDashboard') : t('home.getStarted') }}<Icon name="arrowRight" size="sm" /></router-link>
+        </div>
+      </section>
     </main>
 
-    <footer class="border-t border-[#eadfd8] px-4 py-8 dark:border-dark-800"><div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-[#8a7b72] sm:flex-row sm:text-left dark:text-dark-400"><p>&copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}</p><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="transition hover:text-[#fb6415]">{{ t('home.docs') }}</a></div></footer>
+    <footer class="border-t border-[#e2e8f0] px-4 py-8 dark:border-dark-800"><div class="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 text-center text-sm text-[#64748b] sm:flex-row sm:text-left dark:text-dark-400"><p>&copy; {{ currentYear }} {{ siteName }}. {{ t('home.footer.allRightsReserved') }}</p><a v-if="docUrl" :href="docUrl" target="_blank" rel="noopener noreferrer" class="transition hover:text-[#14b8a6]">{{ t('home.docs') }}</a></div></footer>
   </div>
 </template>
 
@@ -200,6 +207,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import HomePricingPreview from '@/components/home/HomePricingPreview.vue'
+import { normalizeBrandName } from '@/utils/brand'
 
 const { t } = useI18n()
 
@@ -207,7 +215,7 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 // Site settings - directly from appStore (already initialized from injected config)
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'SuperAI')
+const siteName = computed(() => normalizeBrandName(appStore.cachedPublicSettings?.site_name || appStore.siteName))
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const siteSubtitle = computed(() => appStore.cachedPublicSettings?.site_subtitle || 'AI API Gateway Platform')
 const docUrl = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.doc_url || appStore.docUrl || ''))

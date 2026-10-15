@@ -544,6 +544,7 @@ import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import { sanitizeUrl } from '@/utils/url'
+import { normalizeBrandName } from '@/utils/brand'
 import {
   buildDocsExample,
   docsEndpoints,
@@ -562,7 +563,7 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const { copied, copyToClipboard } = useClipboard()
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'SuperAI')
+const siteName = computed(() => normalizeBrandName(appStore.cachedPublicSettings?.site_name || appStore.siteName))
 const siteLogo = computed(() => sanitizeUrl(appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const consoleUrl = computed(() => window.location.origin)
 const baseUrl = computed(() => resolveDocsApiBaseUrl(appStore.cachedPublicSettings?.api_base_url || appStore.apiBaseUrl, window.location.origin))

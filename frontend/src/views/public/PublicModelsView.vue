@@ -184,6 +184,7 @@ import userChannelsAPI, { type UserAvailableGroup, type UserSupportedModel } fro
 import { BILLING_MODE_IMAGE, BILLING_MODE_PER_REQUEST, BILLING_MODE_TOKEN, type BillingMode } from '@/constants/channel'
 import type { GroupPlatform } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { normalizeBrandName } from '@/utils/brand'
 
 interface ModelRow {
   name: string
@@ -203,7 +204,7 @@ const searchQuery = ref('')
 const selectedModelKey = ref('')
 const isDrawerOpen = ref(false)
 
-const siteName = computed(() => appStore.cachedPublicSettings?.site_name || appStore.siteName || 'SuperAI')
+const siteName = computed(() => normalizeBrandName(appStore.cachedPublicSettings?.site_name || appStore.siteName))
 const siteLogo = computed(() => appStore.cachedPublicSettings?.site_logo || appStore.siteLogo || '')
 const isAuthenticated = computed(() => authStore.isAuthenticated)
 const dashboardPath = computed(() => authStore.isAdmin ? '/admin/dashboard' : '/dashboard')

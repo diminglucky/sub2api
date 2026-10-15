@@ -13,6 +13,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
+import { normalizeBrandName } from '@/utils/brand'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -290,10 +291,7 @@ export const useAppStore = defineStore('app', () => {
    * Apply settings to store state (internal helper to avoid code duplication)
    */
   function normalizeSiteName(name?: string): string {
-    const trimmed = typeof name === 'string' ? name.trim() : ''
-    if (!trimmed) return 'SuperAI'
-    if (['sub2api', 'sub2 api', 'sub2-api'].includes(trimmed.toLowerCase())) return 'SuperAI'
-    return trimmed
+    return normalizeBrandName(name)
   }
 
   function applySettings(config: PublicSettings): void {
