@@ -108,6 +108,14 @@
           @paste="onPaste"
         />
 
+        <p
+          v-if="sizeIssue"
+          class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"
+          data-testid="image-size-warning"
+        >
+          当前尺寸不可用：{{ sizeIssue }}。点左侧「尺寸」调整后再生成。
+        </p>
+
         <div class="mt-3 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-3 dark:border-dark-800">
           <button
             type="button"
@@ -354,7 +362,8 @@
                 </label>
               </div>
               <p class="size-dimension-hint">
-                宽高会按 16 的倍数自动规整，最长边不超过 3840px。
+                边长按 16 的倍数规整；最长边 256~3840、长短边比 ≤ 3:1、总像素
+                655360~8294400。选到 4K 方形这类超限组合时会按比例自动收紧。
               </p>
             </section>
           </template>
@@ -364,6 +373,9 @@
           <span>将使用</span>
           <strong>{{ draftSizeValue }}</strong>
         </div>
+        <p v-if="draftSizeIssue" class="size-dialog__issue" data-testid="size-dialog-issue">
+          {{ draftSizeIssue }}
+        </p>
       </div>
 
       <template #footer>
@@ -465,17 +477,21 @@ const PENDING_STORAGE_KEY = 'sub2api:image-studio:pending'
 
 const size = computed(() => formatSize(appliedSize))
 const draftSizeValue = computed(() => formatSize(draftSize))
+// 上游按"总像素 + 比例"卡尺寸，本地不拦的话只能在生成时吃上游的 400。
+const sizeIssue = computed(() => validateSize(size.value))
+const draftSizeIssue = computed(() => validateSize(draftSizeValue.value))
 const canConfirmSize = computed(() => {
   if (draftSize.mode === 'ratio' && draftSize.useCustomRatio) {
-    return draftSize.customRatioWidth > 0 && draftSize.customRatioHeight > 0
+    return draftSize.customRatioWidth > 0 && draftSize.customRatioHeight > 0 && !draftSizeIssue.value
   }
   if (draftSize.mode === 'custom') {
     return Number.isFinite(Number(draftSize.width)) &&
       Number.isFinite(Number(draftSize.height)) &&
       Number(draftSize.width) >= 256 &&
-      Number(draftSize.height) >= 256
+      Number(draftSize.height) >= 256 &&
+      !draftSizeIssue.value
   }
-  return true
+  return !draftSizeIssue.value
 })
 const sizeModeOptions: Array<{ value: SizeMode; label: string }> = [
   { value: 'auto', label: '自动' },
@@ -525,7 +541,7 @@ const imageCapableKeys = computed(() => activeKeys.value.filter(
 ))
 const apiKeyOptions = computed(() => imageCapableKeys.value.map((key) => ({ value: String(key.id), label: key.name })))
 const selectedKey = computed(() => imageCapableKeys.value.find((key) => String(key.id) === selectedKeyId.value) || null)
-const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value?.key && imageModel.value.trim() && prompt.value.trim()))
+const canGenerate = computed(() => Boolean(apiBaseUrl.value && selectedKey.value?.key && imageModel.value.trim() && prompt.value.trim()) && !sizeIssue.value)
 const hasReferences = computed(() => references.value.length > 0)
 
 let nextImageId = 1
@@ -595,6 +611,14 @@ function findSizeMatch(value: string): Partial<SizeSettings> | null {
   }
 }
 
+// 上游（gpt-image 系列）对 size 的约束：边长 16 的倍数、最长边 256~3840、
+// 长短边比 ≤ 3:1、总像素 655360 ~ 8294400（上限正好是 3840x2160）。
+// 只按"最长边 ≤ 3840"约束的话，4K 的方形/3:2/4:3 都能选出来，但会被上游拒绝。
+const IMAGE_MIN_EDGE = 256
+const IMAGE_MAX_EDGE = 3840
+const IMAGE_MIN_PIXELS = 655_360
+const IMAGE_MAX_PIXELS = 8_294_400
+
 function formatSize(settings: SizeSettings) {
   if (settings.mode === 'auto') return 'auto'
   if (settings.mode === 'custom') {
@@ -608,16 +632,72 @@ function formatSize(settings: SizeSettings) {
 
 function ratioSize(ratio: string, base: number) {
   const [rawWidth, rawHeight] = ratio.split(':').map(Number)
-  if (!rawWidth || !rawHeight) return `${base}x${base}`
-  if (rawWidth >= rawHeight) {
-    return `${normalizeDimension(base)}x${normalizeDimension(base * rawHeight / rawWidth)}`
+  if (!rawWidth || !rawHeight) return formatDimensions(base, base)
+  const width = rawWidth >= rawHeight ? base : base * rawWidth / rawHeight
+  const height = rawWidth >= rawHeight ? base * rawHeight / rawWidth : base
+  const fitted = fitSizeToWindow(width, height)
+  return `${fitted.width}x${fitted.height}`
+}
+
+/**
+ * 把一组宽高收敛到上游允许的窗口内：保持比例，超上限按比例缩小，
+ * 低于下限按比例放大（不越最长边）。预设尺寸走这里，于是 4K+1:1 会
+ * 得到 2880x2880，而不是会被拒绝的 3840x3840。
+ */
+function fitSizeToWindow(rawWidth: number, rawHeight: number) {
+  let width = normalizeDimension(rawWidth)
+  let height = normalizeDimension(rawHeight)
+
+  for (let guard = 0; guard < 128 && width * height > IMAGE_MAX_PIXELS; guard += 1) {
+    const factor = Math.sqrt(IMAGE_MAX_PIXELS / (width * height))
+    const nextWidth = Math.max(IMAGE_MIN_EDGE, Math.floor(width * factor / 16) * 16)
+    const nextHeight = Math.max(IMAGE_MIN_EDGE, Math.floor(height * factor / 16) * 16)
+    if (nextWidth === width && nextHeight === height) break
+    width = nextWidth
+    height = nextHeight
   }
-  return `${normalizeDimension(base * rawWidth / rawHeight)}x${normalizeDimension(base)}`
+
+  for (let guard = 0; guard < 128 && width * height < IMAGE_MIN_PIXELS; guard += 1) {
+    const edgeRoom = Math.max(1, IMAGE_MAX_EDGE / Math.max(width, height))
+    const factor = Math.min(Math.sqrt(IMAGE_MIN_PIXELS / (width * height)), edgeRoom)
+    const nextWidth = Math.min(IMAGE_MAX_EDGE, Math.ceil(width * factor / 16) * 16)
+    const nextHeight = Math.min(IMAGE_MAX_EDGE, Math.ceil(height * factor / 16) * 16)
+    if (nextWidth === width && nextHeight === height) break
+    width = nextWidth
+    height = nextHeight
+  }
+
+  return { width, height }
+}
+
+function formatDimensions(width: number, height: number) {
+  return `${normalizeDimension(width)}x${normalizeDimension(height)}`
+}
+
+/** 校验最终 size 是否满足上游约束：通过返回空串，否则返回给用户看的原因。 */
+function validateSize(value: string) {
+  if (!value || value === 'auto') return ''
+  const parsed = parseSize(value)
+  if (!parsed) return '尺寸格式无法识别'
+  const { width, height } = parsed
+  const longest = Math.max(width, height)
+  const shortest = Math.min(width, height)
+  if (shortest < IMAGE_MIN_EDGE || longest > IMAGE_MAX_EDGE) {
+    return `边长需在 ${IMAGE_MIN_EDGE}~${IMAGE_MAX_EDGE} 之间`
+  }
+  if (width % 16 !== 0 || height % 16 !== 0) return '边长必须是 16 的倍数'
+  if (longest / shortest > 3) return '长短边比不能超过 3:1'
+  const pixels = width * height
+  if (pixels < IMAGE_MIN_PIXELS) return `总像素 ${pixels} 低于下限 ${IMAGE_MIN_PIXELS}`
+  if (pixels > IMAGE_MAX_PIXELS) {
+    return `总像素 ${pixels} 超过上限 ${IMAGE_MAX_PIXELS}（3840x2160）`
+  }
+  return ''
 }
 
 function normalizeDimension(value: number) {
   const numeric = Number.isFinite(Number(value)) ? Number(value) : 1024
-  const clamped = Math.min(3840, Math.max(256, numeric))
+  const clamped = Math.min(IMAGE_MAX_EDGE, Math.max(IMAGE_MIN_EDGE, numeric))
   return Math.round(clamped / 16) * 16
 }
 
@@ -1557,6 +1637,16 @@ onMounted(loadData)
   color: rgb(15 23 42);
 }
 
+.size-dialog__issue {
+  margin-top: 0.6rem;
+  border-radius: 0.75rem;
+  background: rgb(254 243 199);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: rgb(146 64 14);
+}
+
 .size-dialog__footer {
   display: grid;
   width: 100%;
@@ -1895,6 +1985,11 @@ onMounted(loadData)
 :global(.dark .size-dialog__current strong),
 :global(.dark .size-dimension-hint) {
   color: rgb(226 232 240);
+}
+
+:global(.dark .size-dialog__issue) {
+  background: rgb(69 26 3 / 0.6);
+  color: rgb(253 230 138);
 }
 
 :global(.dark .size-auto-icon) {
