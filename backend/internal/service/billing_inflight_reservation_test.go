@@ -449,19 +449,50 @@ func TestInflightEstimate_AccountMappingNoDBAndBoundedMemory(t *testing.T) {
 	}
 	require.Zero(t, snap.reads.Load(), "priced models must never trigger account-mapping lookup")
 
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
 	const n = 20000
-	for i := 0; i < n; i++ {
-		_, priced := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: fmt.Sprintf("rand-%d-%d", i, time.Now().UnixNano()), BodyBytes: 4000, MaxTokens: 1000})
-		require.False(t, priced)
+	// 预热：把一次性分配（栈增长、日志/编码缓冲等）排除在测量之外。
+	const warmup = 200
+	for i := 0; i < warmup; i++ {
+		svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: fmt.Sprintf("warm-%d", i), BodyBytes: 4000, MaxTokens: 1000})
 	}
-	runtime.GC()
-	runtime.ReadMemStats(&after)
+
+	// 堆增量断言不能直接和绝对阈值比：同进程内其他测试残留的后台 goroutine 会持续分配，
+	// 噪声足以让差值在阈值附近抖动。这里改成自归一化：两轮跑同样的次数、同样的代码路径，
+	// 只有「模型名是否重复」这一个变量不同——若存在按模型名的缓存，唯一名那一轮会明显更高，
+	// 而背景噪声在差值里基本抵消。
+	measureHeapGrowth := func(modelName func(i int) string) int64 {
+		runtime.GC()
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for i := 0; i < n; i++ {
+			_, priced := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: modelName(i), BodyBytes: 4000, MaxTokens: 1000})
+			require.False(t, priced)
+		}
+		runtime.GC()
+		runtime.GC()
+		runtime.ReadMemStats(&after)
+		return int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	}
+	// 每个变体多跑几轮取最小值：第一轮会带上 arena/GC 元数据这类一次性分配，
+	// 取最小可把它和偶发噪声一起滤掉；真有逐模型缓存则每轮都会增长，最小值仍然反映它。
+	const rounds = 3
+	minHeapGrowth := func(modelName func(i int) string) int64 {
+		min := measureHeapGrowth(modelName)
+		for round := 1; round < rounds; round++ {
+			if growth := measureHeapGrowth(modelName); growth < min {
+				min = growth
+			}
+		}
+		return min
+	}
+	uniqueNames := minHeapGrowth(func(i int) string { return fmt.Sprintf("rand-%d-%d", i, time.Now().UnixNano()) })
+	repeatedName := minHeapGrowth(func(int) string { return "rand-repeated-unpriced" })
+
 	require.Zero(t, repo.dbCalls.Load(), "no direct DB query on the request path")
-	require.Equal(t, int64(n), snap.reads.Load(), "unpriced lookups read the scheduler snapshot only")
-	require.Less(t, int64(after.HeapAlloc)-int64(before.HeapAlloc), int64(8<<20), "no per-model cache growth")
+	require.Equal(t, int64(warmup+2*rounds*n), snap.reads.Load(), "unpriced lookups read the scheduler snapshot only")
+	t.Logf("heap growth bytes: unique=%d repeated=%d diff=%d", uniqueNames, repeatedName, uniqueNames-repeatedName)
+	require.Less(t, uniqueNames-repeatedName, int64(1<<20), "no per-model cache growth")
 }
 
 // 无分组 API Key：使用调度器的未分组账号池，估算与计费回退的账号映射模型同口径。
