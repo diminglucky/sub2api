@@ -190,6 +190,7 @@ func ProvideAdminSettingHandler(settingService *service.SettingService, emailSer
 func ProvideHandlers(
 	authHandler *AuthHandler,
 	userHandler *UserHandler,
+	mcpOAuthHandler *MCPOAuthHandler,
 	apiKeyHandler *APIKeyHandler,
 	usageHandler *UsageHandler,
 	redeemHandler *RedeemHandler,
@@ -239,6 +240,7 @@ func ProvideHandlers(
 		AsyncImage:         asyncImageHandler,
 		BatchImage:         batchImageHandler,
 		ImageStudioGallery: imageStudioGalleryHandler,
+		MCPOAuth:           mcpOAuthHandler,
 	}
 }
 
@@ -255,6 +257,7 @@ var ProviderSet = wire.NewSet(
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
+	NewMCPOAuthHandler,
 	NewAPIKeyHandler,
 	NewUsageHandler,
 	NewRedeemHandler,

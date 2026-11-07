@@ -418,6 +418,29 @@ export const routes: RouteRecordRaw[] = [
   },
   ...userCustomFeatureRoutesAfterAvailableChannels,
   {
+    path: '/settings/mcp',
+    name: 'MCP',
+    component: () => import('@/views/user/MCPView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'MCP Connection',
+      titleKey: 'mcp.title',
+      descriptionKey: 'mcp.description'
+    }
+  },
+  {
+    path: '/oauth/mcp/authorize',
+    name: 'MCPOAuthAuthorize',
+    component: () => import('@/views/auth/MCPOAuthAuthorizeView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Authorize MCP Application',
+      titleKey: 'mcp.consentTitle'
+    }
+  },
+  {
     path: '/profile',
     name: 'Profile',
     component: () => import('@/views/user/ProfileView.vue'),
