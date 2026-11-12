@@ -382,6 +382,58 @@ describe('ImageStudioView image size dialog', () => {
 
     expect(trigger.text()).toContain('1280x1024')
   })
+
+  it('converges an oversized preset into the upstream pixel window', async () => {
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-size-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="size-mode-ratio"]').trigger('click')
+    const base4k = wrapper.findAll('.size-base-option').find((button) => button.text() === '4K')
+    expect(base4k).toBeTruthy()
+    await base4k!.trigger('click')
+
+    // 4K 方形原本是 3840x3840 = 14745600 像素，超过上游 8294400 的上限，
+    // 这里必须自动收紧而不是原样提交（否则生成时才被上游 400 拒绝）。
+    expect(wrapper.get('.size-preview').text()).toContain('2880x2880')
+
+    await wrapper.get('[data-testid="confirm-image-size"]').trigger('click')
+
+    expect(wrapper.get('[data-testid="image-size-trigger"]').text()).toContain('2880x2880')
+    expect(wrapper.find('[data-testid="image-size-warning"]').exists()).toBe(false)
+  })
+
+  it('raises an undersized preset above the minimum pixel count', async () => {
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-size-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="size-mode-ratio"]').trigger('click')
+    const base1k = wrapper.findAll('.size-base-option').find((button) => button.text() === '1K')
+    await base1k!.trigger('click')
+    const wideRatio = wrapper.findAll('.size-ratio-option').find((button) => button.text().includes('21:9'))
+    await wideRatio!.trigger('click')
+
+    // 1024x432 = 442368 像素，低于下限 655360，必须被抬回区间内。
+    const match = /(\d+)x(\d+)/.exec(wrapper.get('.size-preview').text())
+    expect(match).toBeTruthy()
+    const pixels = Number(match![1]) * Number(match![2])
+    expect(pixels).toBeGreaterThanOrEqual(655_360)
+    expect(pixels).toBeLessThanOrEqual(8_294_400)
+  })
+
+  it('blocks a custom size beyond the pixel budget and explains why', async () => {
+    const wrapper = mountImageStudio()
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-size-trigger"]').trigger('click')
+    await wrapper.get('[data-testid="size-mode-custom"]').trigger('click')
+    await wrapper.get('[data-testid="custom-width"]').setValue('3840')
+    await wrapper.get('[data-testid="custom-height"]').setValue('3840')
+
+    expect(wrapper.get('[data-testid="size-dialog-issue"]').text()).toContain('总像素')
+    expect(wrapper.get('[data-testid="confirm-image-size"]').attributes('disabled')).toBeDefined()
+  })
 })
 
 describe('ImageStudioView gallery', () => {

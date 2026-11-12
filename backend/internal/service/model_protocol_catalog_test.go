@@ -327,6 +327,9 @@ func TestProtocolRulesWithProtocolSets(t *testing.T) {
 }
 
 // 经真实入口验证：目录声明模型支持入站协议时原样直通，不做协议转换。
+// commandCodeForwardSeq 让同一测试里的多次 forward 拿到互不相同的目录键。
+var commandCodeForwardSeq atomic.Uint64
+
 func TestCommandCodeGatewayPassesThroughCatalogProtocols(t *testing.T) {
 	type observation struct {
 		url  string
@@ -334,7 +337,10 @@ func TestCommandCodeGatewayPassesThroughCatalogProtocols(t *testing.T) {
 	}
 	forward := func(t *testing.T, ingress routingMatrixIngress, model string, catalog map[string][]string) observation {
 		t.Helper()
-		base := fmt.Sprintf("http://cc-%s-%d.example", strings.ReplaceAll(t.Name(), "/", "-"), time.Now().UnixNano())
+		// 键里加一个自增序号：只靠 UnixNano() 在 Windows 上偶尔会撞到同一个值，
+		// 两次 forward 撞键就会共用同一个目录条目，断言随之失真。
+		base := fmt.Sprintf("http://cc-%s-%d-%d.example",
+			strings.ReplaceAll(t.Name(), "/", "-"), time.Now().UnixNano(), commandCodeForwardSeq.Add(1))
 		account := commandCodeTestAccount(12)
 		account.Credentials["api_base_urls"] = map[string]any{
 			APIProtocolChatCompletions: base + "/provider/v1",
@@ -347,6 +353,13 @@ func TestCommandCodeGatewayPassesThroughCatalogProtocols(t *testing.T) {
 			upstreamModelProtocols.store(key, catalog, nil, time.Now())
 		} else {
 			// 目录不可用（退避中）：不触发刷新，回落内置规则。
+			//
+			// 这里必须先把这个 key 清掉再存错误态：store(nil, err) 会**保留**已有目录
+			// （失败刷新不该丢掉好数据），所以只要这个 key 之前被写过，光存错误态
+			// 并不会让它变成"没有目录"，下面的断言就失去意义了。
+			upstreamModelProtocols.mu.Lock()
+			delete(upstreamModelProtocols.entries, key)
+			upstreamModelProtocols.mu.Unlock()
 			upstreamModelProtocols.store(key, nil, errors.New("unavailable"), time.Now())
 		}
 		upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}

@@ -1,6 +1,10 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+)
 
 func TestResolveOpenAIForwardModel(t *testing.T) {
 	tests := []struct {
@@ -296,6 +300,13 @@ func TestResolveOpenAIForwardMappedModels_CompactMappingPrecedence(t *testing.T)
 }
 
 func TestCanonicalOpenAIAccountSchedulingModelMatchesForwardSemantics(t *testing.T) {
+	// 跨客户端模型映射是进程级开关，设置解析路径会按默认设置把它打开
+	// （grok_cross_client_model_map_enabled 默认 true）。这里固定回关闭状态，
+	// 让断言只验证账号级映射，不受同包其他用例的执行顺序影响。
+	originalMappingOptions := xai.RuntimeModelMappingOptions()
+	t.Cleanup(func() { xai.SetRuntimeModelMappingOptions(originalMappingOptions) })
+	xai.SetRuntimeModelMappingOptions(xai.ModelMappingOptions{})
+
 	tests := []struct {
 		name    string
 		account *Account
