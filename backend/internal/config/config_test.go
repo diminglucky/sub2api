@@ -117,6 +117,16 @@ func TestLoadDefaultModelsListReadMaxBytes(t *testing.T) {
 	require.Equal(t, DefaultModelsListReadMaxBytes, cfg.Gateway.ModelsListReadMaxBytes)
 }
 
+func TestLoadRegionBlockDefaultsAllowChina(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("SECURITY_REGION_BLOCK_ENABLED", "")
+	t.Setenv("SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.RegionBlockSettings().Enabled)
+	require.Empty(t, cfg.RegionBlockSettings().BlockedCountries)
+}
+
 func TestLoadDefaultMinOutputTokens(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

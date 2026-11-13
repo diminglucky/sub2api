@@ -65,8 +65,8 @@
             <button type="button" class="relative block aspect-square w-full overflow-hidden" :disabled="image.pending" @click="!image.pending && (previewImage = image)">
               <div v-if="image.pending" class="image-pending-card">
                 <span class="image-generation-spinner" aria-hidden="true"></span>
-                <strong>正在生成</strong>
-                <small>请稍候，完成后将在此显示</small>
+                <strong>{{ image.statusText || '正在生成' }}</strong>
+                <small>{{ image.taskId ? '任务已提交，正在等待上游完成' : '请稍候，完成后将在此显示' }}</small>
               </div>
               <img v-else :src="image.src" :alt="image.title" loading="lazy" decoding="async" class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]" />
             </button>
@@ -168,7 +168,7 @@
                 v-model.number="count"
                 type="number"
                 min="1"
-                max="4"
+                :max="maxImageCount"
                 aria-label="生成数量"
                 @blur="normalizeCount"
               />
@@ -177,7 +177,7 @@
                 class="count-stepper__button"
                 data-testid="count-increment"
                 aria-label="增加数量"
-                :disabled="count >= 4"
+                :disabled="count >= maxImageCount"
                 @click="adjustCount(1)"
               >
                 <Icon name="plus" size="xs" />
@@ -417,6 +417,8 @@ interface GeneratedImage {
   size?: string
   format?: string
   pending?: boolean
+  taskId?: string
+  statusText?: string
 }
 
 interface ReferenceItem {
@@ -519,11 +521,14 @@ const qualityOptions = [
   { value: 'medium', label: 'medium' },
   { value: 'high', label: 'high' },
 ]
-const formatOptions = [
+const isAnimatedImageModel = computed(() => /^gpt-image-2[.-]6(?:-(?:flare|sunburst))?$/i.test(imageModel.value.trim()))
+const maxImageCount = computed(() => isAnimatedImageModel.value ? 1 : 4)
+const formatOptions = computed(() => [
   { value: 'png', label: 'PNG' },
   { value: 'jpeg', label: 'JPEG' },
   { value: 'webp', label: 'WEBP' },
-]
+  ...(isAnimatedImageModel.value ? [{ value: 'gif', label: 'GIF 动图' }] : []),
+])
 const backgroundOptions = [
   { value: 'auto', label: '自动' },
   { value: 'transparent', label: '透明' },
@@ -579,11 +584,11 @@ function selectAspectRatio(value: string) {
 }
 
 function adjustCount(delta: number) {
-  count.value = Math.min(4, Math.max(1, Number(count.value || 1) + delta))
+  count.value = Math.min(maxImageCount.value, Math.max(1, Number(count.value || 1) + delta))
 }
 
 function normalizeCount() {
-  count.value = Math.min(4, Math.max(1, Math.round(Number(count.value) || 1)))
+  count.value = Math.min(maxImageCount.value, Math.max(1, Math.round(Number(count.value) || 1)))
 }
 
 function findSizeMatch(value: string): Partial<SizeSettings> | null {
@@ -821,7 +826,7 @@ async function persistGeneratedImages(items: GeneratedImage[], prompt: string, m
       prompt,
       model,
       size: size.value,
-      format: format.value,
+      format: item.format || format.value,
     })
     return { item, entry }
   }))
@@ -1023,6 +1028,8 @@ function isGeminiModel(name: string) {
 
 async function generate() {
   if (!canGenerate.value || !selectedKey.value) return
+  const useAsyncTask = isGifRequest()
+  const requestedFormat = format.value
   generating.value = true
   activeGenerations.value += 1
   const requestId = nextImageId++
@@ -1032,6 +1039,7 @@ async function generate() {
     src: '',
     meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
     pending: true,
+    statusText: useAsyncTask ? '正在提交任务' : undefined,
   }
   images.value.unshift(pendingImage)
   persistPendingImages()
@@ -1056,21 +1064,34 @@ async function generate() {
         quality: quality.value,
         output_format: format.value,
         background: background.value,
-        n: Math.min(Math.max(Number(count.value) || 1, 1), 4),
+        n: Math.min(Math.max(Number(count.value) || 1, 1), maxImageCount.value),
         response_format: 'b64_json',
       })
     }
-    const response = await fetch(url, { method: 'POST', headers, body })
-    const payload = await response.json().catch(() => null)
-    if (!response.ok) {
-      throw new Error(payload?.error?.message || payload?.message || `${response.status} ${response.statusText}`)
+    let payload: any
+    if (useAsyncTask) {
+      const task = await submitAsyncImageTask(url, headers, body)
+      if (task.kind === 'task') {
+        const pendingIndex = images.value.findIndex((item) => item.id === requestId)
+        if (pendingIndex >= 0) {
+          images.value[pendingIndex].taskId = task.taskId
+          images.value[pendingIndex].statusText = '后台生成中'
+        }
+        persistPendingImages()
+        payload = await waitForAsyncImageTask(task.taskId, headers)
+      } else {
+        payload = task.result
+      }
+    } else {
+      payload = await requestImageResult(url, headers, body)
     }
     const items = extractImages(payload)
     if (!items.length) throw new Error('上游没有返回图片')
     const generated = (await Promise.all(items.map(async (item: any, index: number): Promise<GeneratedImage | null> => {
-      const mime = String(item.mimeType || item.mime_type || 'image/png')
+      const outputFormat = imageFormatFromItem(item, requestedFormat)
+      const mime = imageMimeType(outputFormat)
       const b64 = String(item.b64_json || item.data || '')
-      const rawSrc = b64 ? `data:${mime};base64,${b64}` : String(item.url || '')
+      const rawSrc = b64 ? (b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`) : String(item.url || '')
       if (!rawSrc) return null
       return {
         id: nextImageId++,
@@ -1079,8 +1100,8 @@ async function generate() {
         prompt: currentPrompt,
         model: imageModel.value,
         size: size.value,
-        format: format.value,
-        meta: `${format.value.toUpperCase()} · ${size.value} · ${imageModel.value}`,
+        format: outputFormat,
+        meta: `${outputFormat.toUpperCase()} · ${size.value} · ${imageModel.value}`,
       }
     }))).filter((item): item is GeneratedImage => item !== null)
     const pendingIndex = images.value.findIndex((item) => item.id === requestId)
@@ -1096,6 +1117,64 @@ async function generate() {
     activeGenerations.value -= 1
     generating.value = activeGenerations.value > 0
   }
+}
+
+function isGifRequest() {
+  return isAnimatedImageModel.value && format.value.toLowerCase() === 'gif'
+}
+
+async function requestImageResult(url: string, headers: Record<string, string>, body: string | FormData) {
+  const response = await fetch(url, { method: 'POST', headers, body })
+  const payload: any = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || payload?.message || `${response.status} ${response.statusText}`)
+  }
+  return payload
+}
+
+async function submitAsyncImageTask(url: string, headers: Record<string, string>, body: string | FormData) {
+  const asyncURL = `${url}/async`
+  const response = await fetch(asyncURL, { method: 'POST', headers, body })
+  const payload: any = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message = payload?.error?.message || payload?.message || `${response.status} ${response.statusText}`
+    // This exact response means no task was accepted. Other failures may have
+    // already incurred upstream costs, so never resubmit those automatically.
+    if (response.status === 404 && String(message).trim().toLowerCase() === 'async image tasks are not enabled') {
+      return { kind: 'result' as const, result: await requestImageResult(url, headers, body) }
+    }
+    throw new Error(message)
+  }
+  const taskId = String(payload?.task_id || payload?.id || '').trim()
+  if (!taskId) throw new Error('服务器未返回图片任务编号')
+  return { kind: 'task' as const, taskId }
+}
+
+async function waitForAsyncImageTask(taskId: string, headers: Record<string, string>) {
+  const deadline = Date.now() + 8 * 60 * 1000
+  let consecutivePollErrors = 0
+  let firstPoll = true
+  while (Date.now() < deadline) {
+    if (!firstPoll) await new Promise((resolve) => window.setTimeout(resolve, 2000))
+    firstPoll = false
+    let response: Response
+    try {
+      response = await fetch(`${apiBaseUrl.value}/images/tasks/${encodeURIComponent(taskId)}`, { headers })
+      consecutivePollErrors = 0
+    } catch (error) {
+      consecutivePollErrors += 1
+      if (consecutivePollErrors >= 5) throw error
+      continue
+    }
+    const task: any = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(task?.error?.message || `任务状态查询失败 (${response.status})`)
+    if (task?.status === 'completed') return task.result
+    if (task?.status === 'failed') {
+      const message = task?.error?.message || task?.error?.error?.message || '图片生成失败'
+      throw new Error(message)
+    }
+  }
+  throw new Error('图片任务仍在处理中，请稍后刷新图库查看结果。')
 }
 
 function buildGeminiURL(model: string) {
@@ -1144,7 +1223,7 @@ function buildEditForm(text: string) {
   form.append('quality', quality.value)
   form.append('output_format', format.value)
   form.append('background', background.value)
-  form.append('n', String(Math.min(Math.max(Number(count.value) || 1, 1), 4)))
+  form.append('n', String(Math.min(Math.max(Number(count.value) || 1, 1), maxImageCount.value)))
   form.append('response_format', 'b64_json')
   references.value.forEach((item) => form.append('image[]', item.file, item.name))
   return form
@@ -1167,6 +1246,32 @@ function extractImages(payload: any): any[] {
   if (Array.isArray(payload.output)) return payload.output
   if (payload.b64_json || payload.url || payload.result) return [payload]
   return []
+}
+
+function normalizeImageFormat(value: unknown, fallback = 'png') {
+  const normalized = String(value || '').trim().toLowerCase().replace(/^image\//, '')
+  if (normalized === 'jpg') return 'jpeg'
+  if (['png', 'jpeg', 'webp', 'gif'].includes(normalized)) return normalized
+  return fallback
+}
+
+function imageMimeType(formatValue: string) {
+  switch (normalizeImageFormat(formatValue)) {
+    case 'jpeg':
+      return 'image/jpeg'
+    case 'webp':
+      return 'image/webp'
+    case 'gif':
+      return 'image/gif'
+    default:
+      return 'image/png'
+  }
+}
+
+function imageFormatFromItem(item: any, requestedFormat: string) {
+  const mime = String(item?.mimeType || item?.mime_type || '').trim()
+  const mimeFormat = mime.toLowerCase().startsWith('image/') ? mime : ''
+  return normalizeImageFormat(mimeFormat || item?.output_format || item?.outputFormat || requestedFormat)
 }
 
 function onFilesSelected(event: Event) {
@@ -1206,7 +1311,8 @@ function removeReference(id: number) {
 function downloadImage(image: GeneratedImage) {
   const link = document.createElement('a')
   link.href = image.src
-  link.download = `${image.title}.png`
+  const outputFormat = normalizeImageFormat(image.format)
+  link.download = `${image.title}.${outputFormat === 'jpeg' ? 'jpg' : outputFormat}`
   link.click()
 }
 
@@ -1218,6 +1324,15 @@ function copyPreviewPrompt() {
 
 watch([selectedKeyId, apiBaseUrl], () => {
   void loadModels()
+})
+
+watch(imageModel, () => {
+  normalizeCount()
+  if (isAnimatedImageModel.value) {
+    format.value = 'gif'
+  } else if (format.value === 'gif') {
+    format.value = 'png'
+  }
 })
 
 onMounted(loadData)

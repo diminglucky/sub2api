@@ -1061,6 +1061,9 @@ func buildOpenAIImagesAPIResponse(
 		if img.RevisedPrompt != "" {
 			item, _ = sjson.SetBytes(item, "revised_prompt", img.RevisedPrompt)
 		}
+		if img.OutputFormat != "" {
+			item, _ = sjson.SetBytes(item, "output_format", img.OutputFormat)
+		}
 		out, _ = sjson.SetRawBytes(out, "data.-1", item)
 	}
 	if firstMeta.Background != "" {

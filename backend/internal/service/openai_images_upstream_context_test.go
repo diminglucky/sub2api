@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,6 +47,19 @@ func newOpenAIImagesAPIKeyAccount() *Account {
 		Credentials: map[string]any{
 			"api_key":  "sk-test",
 			"base_url": "https://api.openai.com/v1",
+		},
+	}
+}
+
+func newNbilityImagesAPIKeyAccount() *Account {
+	return &Account{
+		ID:       32,
+		Name:     "nbility-images",
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":  "sk-nbility-test",
+			"base_url": "https://api.nbility.ai",
 		},
 	}
 }
@@ -123,6 +137,31 @@ func TestForwardOpenAIImagesAPIKey_StreamKeepsDetachedUpstreamContext(t *testing
 	require.NotNil(t, recorder.lastReq)
 	require.NoError(t, recorder.lastReq.Context().Err(),
 		"流式路径原本就脱钩，不能被改回随客户端取消")
+}
+
+func TestForwardOpenAIImagesAPIKey_NbilityGIFSubmitsAndPolls(t *testing.T) {
+	body := []byte(`{"model":"gpt-image-2-6","prompt":"animated cat","output_format":"gif","response_format":"b64_json"}`)
+	c, rec := newOpenAIImagesTestContext(t, body)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"code":"success","data":{"task_id":"task_gif_1","status":"submitted"}}`))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: passthroughErrReadCloser{err: errors.New("http2: client connection lost")}},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"code":"success","data":{"status":"completed","result":{"data":[{"b64_json":"R0lGODlh","output_format":"gif"}]}}}`))},
+	}}
+	svc := newOpenAIImagesTestService(upstream)
+	parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+	require.NoError(t, err)
+	result, err := svc.ForwardImages(context.Background(), c, newNbilityImagesAPIKeyAccount(), body, parsed, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 1, result.ImageCount)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, http.MethodPost, upstream.requests[0].Method)
+	require.Equal(t, "true", upstream.requests[0].Header.Get("X-New-Api-Async-Task"))
+	require.Equal(t, http.MethodGet, upstream.requests[1].Method)
+	require.Equal(t, "/v1/images/tasks/task_gif_1", upstream.requests[1].URL.Path)
+	require.Equal(t, "Bearer sk-nbility-test", upstream.requests[1].Header.Get("Authorization"))
+	require.Equal(t, http.MethodGet, upstream.requests[2].Method, "a transient poll read failure must retry the idempotent task lookup")
+	require.Contains(t, rec.Body.String(), `"output_format":"gif"`)
 }
 
 // 两个 detach 辅助函数的语义差异是本次修复的根据，锁死它们防止被悄悄改动。

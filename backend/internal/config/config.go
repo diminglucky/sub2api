@@ -2275,9 +2275,9 @@ func setDefaults() {
 	viper.SetDefault("security.response_headers.force_remove", []string{})
 	viper.SetDefault("security.csp.enabled", true)
 	viper.SetDefault("security.csp.policy", DefaultCSPPolicy)
-	viper.SetDefault("security.region_block.enabled", true)
+	viper.SetDefault("security.region_block.enabled", false)
 	viper.SetDefault("security.region_block.hosts", []string{"superai.sbs"})
-	viper.SetDefault("security.region_block.blocked_countries", []string{"CN", "HK", "MO", "TW"})
+	viper.SetDefault("security.region_block.blocked_countries", []string{})
 	viper.SetDefault("security.region_block.header_names", []string{
 		"CF-IPCountry",
 		"CloudFront-Viewer-Country",

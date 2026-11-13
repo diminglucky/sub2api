@@ -561,6 +561,174 @@ describe('ImageStudioView gallery', () => {
     }))
   })
 
+  it.each(['gpt-image-2-6', 'gpt-image-2-6-flare', 'gpt-image-2-6-sunburst', 'gpt-image-2.6-flare'])('requests GIF output for %s and preserves each returned format', async (model) => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    saveGallery.mockResolvedValue({
+      id: 'gallery-1',
+      url: '',
+      prompt: '',
+      model: '',
+      size: '',
+      format: '',
+      created_at: 0,
+      expires_at: 0,
+    })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: model }] }) } as Response
+      }
+      if (url.endsWith('/images/generations/async')) {
+        return {
+          ok: true,
+          status: 202,
+          json: async () => ({ task_id: 'imgtask_test' }),
+        } as Response
+      }
+      if (url.endsWith('/images/tasks/imgtask_test')) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: 'completed',
+            result: {
+              data: [
+                { b64_json: 'aW1hZ2UtZ2lm', output_format: 'gif' },
+                { b64_json: 'aW1hZ2UtcG5n', output_format: 'png' },
+              ],
+            },
+          }),
+        } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return {
+          ok: true,
+          json: async () => ({ data: [{ b64_json: 'unexpected-sync-result' }] }),
+        } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="format-select"] button').text()).toContain('GIF 动图')
+    expect(wrapper.get('[data-testid="count-increment"]').attributes('disabled')).toBeDefined()
+    await wrapper.get('[data-testid="image-count-control"] input').setValue(4)
+
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    await flushPromises()
+
+    const generationCall = vi.mocked(fetch).mock.calls.find((call) => String(call[0]).endsWith('/images/generations/async'))
+    expect(generationCall).toBeDefined()
+    expect(JSON.parse(String((generationCall![1] as RequestInit).body))).toMatchObject({
+      model,
+      output_format: 'gif',
+      n: 1,
+    })
+    expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toContain('data:image/gif;base64,')
+    expect(wrapper.get('img[alt="生成结果 2"]').attributes('src')).toContain('data:image/png;base64,')
+    expect(saveGallery).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      image_data_url: expect.stringContaining('data:image/gif;base64,'),
+      format: 'gif',
+    }))
+    expect(saveGallery).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      image_data_url: expect.stringContaining('data:image/png;base64,'),
+      format: 'png',
+    }))
+    expect(vi.mocked(fetch).mock.calls.some((call) => String(call[0]).endsWith('/images/tasks/imgtask_test'))).toBe(true)
+  })
+
+  it('uses synchronous GIF generation only when async tasks are explicitly disabled', async () => {
+    listKeys.mockResolvedValue({
+      items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],
+    })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    saveGallery.mockResolvedValue({ id: 'gallery-gif', url: '' })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-2-6' }] }) } as Response
+      }
+      if (url.endsWith('/images/generations/async')) {
+        return {
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+          json: async () => ({ error: { message: 'async image tasks are not enabled' } }),
+        } as Response
+      }
+      if (url.endsWith('/images/generations')) {
+        return { ok: true, json: async () => ({ data: [{ b64_json: 'R0lGODlh', output_format: 'gif' }] }) } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toBe('data:image/gif;base64,R0lGODlh')
+    expect(vi.mocked(fetch).mock.calls.filter((call) => String(call[0]).endsWith('/images/generations'))).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('正在生成')
+  })
+
+  it('does not resubmit a GIF generation when async submission has an uncertain failure', async () => {
+    listKeys.mockResolvedValue({ items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active' }] })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-2-6' }] }) } as Response
+      }
+      throw new Error('connection lost')
+    })
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain('connection lost')
+    expect(vi.mocked(fetch).mock.calls.some((call) => String(call[0]).endsWith('/images/generations'))).toBe(false)
+  })
+
+  it('submits GIF edits with a reference image to the async edit endpoint', async () => {
+    listKeys.mockResolvedValue({ items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active' }] })
+    getPublicSettings.mockResolvedValue({ api_base_url: 'https://api.superai.sbs/v1' })
+    saveGallery.mockResolvedValue({ id: 'gallery-gif', url: '' })
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith('/images/batches/models')) {
+        return { ok: true, json: async () => ({ data: [{ id: 'gpt-image-2-6' }] }) } as Response
+      }
+      if (url.endsWith('/images/edits/async')) {
+        return { ok: true, json: async () => ({ task_id: 'imgtask_edit' }) } as Response
+      }
+      if (url.endsWith('/images/tasks/imgtask_edit')) {
+        return { ok: true, json: async () => ({ status: 'completed', result: { data: [{ b64_json: 'data:image/gif;base64,R0lGODlh', output_format: 'gif' }] } }) } as Response
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const wrapper = mountImageStudio()
+    await flushPromises()
+    const input = wrapper.get('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: [new File(['image'], 'reference.png', { type: 'image/png' })] })
+    await input.trigger('change')
+    await vi.waitFor(() => expect(wrapper.find('img[alt="reference.png"]').exists()).toBe(true))
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    const editCall = vi.mocked(fetch).mock.calls.find((call) => String(call[0]).endsWith('/images/edits/async'))
+    expect(editCall).toBeDefined()
+    const body = (editCall![1] as RequestInit).body as FormData
+    expect(body.get('output_format')).toBe('gif')
+    expect(body.getAll('image[]')).toHaveLength(1)
+    expect(wrapper.get('img[alt="生成结果 1"]').attributes('src')).toBe('data:image/gif;base64,R0lGODlh')
+  })
+
   it('does not show the freshly generated image twice when the gallery lists it', async () => {
     listKeys.mockResolvedValue({
       items: [{ id: 1, name: 'dd', key: 'sk-local', status: 'active', group_id: 2 }],

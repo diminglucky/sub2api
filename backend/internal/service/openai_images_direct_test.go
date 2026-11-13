@@ -17,6 +17,10 @@ func directImagesTestAccount() *Account {
 		Credentials: map[string]any{"access_token": "test-token", "chatgpt_account_id": "test-account"}}
 }
 
+func TestOpenAIImageOutputMIMETypeSupportsGIF(t *testing.T) {
+	require.Equal(t, "image/gif", openAIImageOutputMIMEType("gif"))
+}
+
 func TestCodexDirectImagesRouting(t *testing.T) {
 	for _, model := range []string{"gpt-image-1.5", "gpt-image-2", "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "gpt-image-2.5-flare-2026-09-08", "gpt-image-2.5-sunburst-2026-09-08", "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
 		t.Run(model, func(t *testing.T) {

@@ -613,7 +613,7 @@ default:
 - `security.url_allowlist.allow_private_hosts` 允许私有/本地 IP 地址
 - `security.response_headers.enabled` 可启用可配置响应头过滤（关闭时使用默认白名单）
 - `security.csp` 配置 Content-Security-Policy
-- `security.region_block` 按 CDN/反代国家码拦截网页访问（如 Cloudflare `CF-IPCountry`），API 路径不受影响
+- `security.region_block` 为可选的网页地区限制，默认关闭且屏蔽列表为空，允许中国地区访问；API 路径不受影响
 - `billing.circuit_breaker` 计费异常时 fail-closed
 - `security.trust_forwarded_ip_for_api_key_acl` 控制旧版原始转发头接管（为升级兼容默认开启）；关闭后严格使用 `server.trusted_proxies`，其中只应填写直接连接 Sub2API 的精确代理 CIDR
 - `security.forwarded_client_ip_headers` 最多配置 16 个第三方 CDN 客户端 IP 请求头；仅在旧版接管开启时按顺序优先于内置请求头解析
@@ -653,16 +653,16 @@ SECURITY_URL_ALLOWLIST_ENABLED=false
 SECURITY_URL_ALLOWLIST_ALLOW_INSECURE_HTTP=false
 ```
 
-地区拦截可通过环境变量配置：
+默认不限制中国地区访问。地区拦截默认配置如下：
 
 ```bash
-SECURITY_REGION_BLOCK_ENABLED=true
+SECURITY_REGION_BLOCK_ENABLED=false
 SECURITY_REGION_BLOCK_HOSTS=superai.sbs
-SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES=CN,HK,MO,TW
+SECURITY_REGION_BLOCK_BLOCKED_COUNTRIES=
 SECURITY_REGION_BLOCK_SUPPORT_EMAIL=support@example.com
 ```
 
-该功能只拦截配置域名下的网页访问，不会限制 `/api/*`、`/v1/*`、`/responses`、`/chat/completions`、`/embeddings`、`/images` 等 API 路径。它依赖 Cloudflare/反向代理注入国家码 Header；如果源站 IP 可被直接访问，用户可能绕过 CDN，因此建议只允许 Cloudflare/反代回源。
+升级时会从已有后台屏蔽列表中移除 `CN、HK、MO、TW`；列表为空时同步关闭地区拦截。其他地区的自定义限制会保留。若手动启用该功能，它只限制配置域名下的网页访问，不影响 `/api/*`、`/v1/*`、`/responses`、`/chat/completions`、`/embeddings`、`/images` 等 API 路径，并依赖 Cloudflare/反向代理注入国家码 Header。
 
 **允许 HTTP 的风险：**
 - API 密钥和数据以**明文传输**（可被截获）

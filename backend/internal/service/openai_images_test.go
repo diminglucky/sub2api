@@ -2045,6 +2045,22 @@ func TestCollectOpenAIImagesFromResponsesBody_FallsBackToOutputItemDone(t *testi
 	require.JSONEq(t, `{"images":1}`, string(usageRaw))
 }
 
+func TestBuildOpenAIImagesAPIResponsePreservesPerImageOutputFormat(t *testing.T) {
+	body, err := buildOpenAIImagesAPIResponse(
+		[]openAIResponsesImageResult{
+			{Result: "Z2lm", OutputFormat: "gif"},
+			{Result: "cG5n", OutputFormat: "png"},
+		},
+		1,
+		nil,
+		openAIResponsesImageResult{OutputFormat: "gif"},
+		"b64_json",
+	)
+	require.NoError(t, err)
+	require.Equal(t, "gif", gjson.GetBytes(body, "data.0.output_format").String())
+	require.Equal(t, "png", gjson.GetBytes(body, "data.1.output_format").String())
+}
+
 func TestCollectOpenAIImagesFromResponsesBody_MultilineSSE(t *testing.T) {
 	body := []byte(
 		"data: {\"type\":\"response.completed\",\n" +

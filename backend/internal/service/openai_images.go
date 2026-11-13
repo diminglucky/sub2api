@@ -14,6 +14,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -42,6 +43,8 @@ const (
 	openAIImageMaxUploadPartSize           = 50 << 20 // OpenAI's documented per-image limit for GPT image edits
 	openAIImagesResponsesMainModel         = "gpt-5.6-luna"
 	openAIImagesVerbatimPromptInstructions = "When invoking the image_generation tool, use the user's image prompt verbatim. Do not rewrite, expand, summarize, embellish, translate, normalize punctuation, or add or remove visual details or constraints. Preserve the original language, wording, capitalization, quotes, and punctuation exactly."
+	nbilityImageAsyncTimeout               = 5 * time.Minute
+	nbilityImageAsyncPollInterval          = 2 * time.Second
 )
 
 // openAIImagesResponsesMainModelValue selects the Responses driver independently
@@ -749,6 +752,10 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if err != nil {
 		return nil, err
 	}
+	useNbilityAsync := shouldUseNbilityImageAsync(account, upstreamReq, upstreamModel, parsed)
+	if useNbilityAsync {
+		upstreamReq.Header.Set("X-New-Api-Async-Task", "true")
+	}
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
@@ -772,6 +779,15 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 			Message:            safeErr,
 		})
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
+	}
+	// Opt into Nbility's asynchronous GIF generation to avoid waiting for the
+	// entire generation in one upstream POST. Poll here so clients receive a normal
+	// Images API response without needing the upstream account credential.
+	if useNbilityAsync && resp.StatusCode < 400 {
+		resp, err = s.resolveNbilityImageAsyncResponse(upstreamCtx, resp, proxyURL, account, token, parsed)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
@@ -949,6 +965,281 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	// 账号级请求头覆写（仅 openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
 	return req, nil
+}
+
+func shouldUseNbilityImageAsync(account *Account, req *http.Request, model string, parsed *OpenAIImagesRequest) bool {
+	if account == nil || req == nil || req.URL == nil || parsed == nil || parsed.Stream || !isNbilityGIFModel(model) || !strings.EqualFold(strings.TrimSpace(parsed.OutputFormat), "gif") {
+		return false
+	}
+	host := ""
+	if parsedURL, err := url.Parse(req.URL.String()); err == nil {
+		host = strings.ToLower(strings.TrimSuffix(parsedURL.Hostname(), "."))
+	}
+	return host == "api.nbility.ai" || host == "nbility.ai"
+}
+
+func isNbilityGIFModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	model = strings.Replace(model, "gpt-image-2.6", "gpt-image-2-6", 1)
+	return model == "gpt-image-2-6" || model == "gpt-image-2-6-flare" || model == "gpt-image-2-6-sunburst"
+}
+
+func (s *OpenAIGatewayService) resolveNbilityImageAsyncResponse(ctx context.Context, submitResp *http.Response, proxyURL string, account *Account, token string, parsed *OpenAIImagesRequest) (*http.Response, error) {
+	defer submitResp.Body.Close()
+	// Both submission fallback and task results may contain an entire GIF as
+	// base64. Use the configured image response limit instead of truncating at 1 MB.
+	submitBody, err := readUpstreamResponseBodyLimited(submitResp.Body, resolveUpstreamResponseReadLimit(s.cfg))
+	if err != nil {
+		return nil, fmt.Errorf("read Nbility image task response: %w", err)
+	}
+	taskID := strings.TrimSpace(gjson.GetBytes(submitBody, "data.task_id").String())
+	if taskID == "" {
+		taskID = strings.TrimSpace(gjson.GetBytes(submitBody, "task_id").String())
+	}
+	// Be defensive if the provider silently falls back to synchronous mode.
+	if taskID == "" {
+		return &http.Response{StatusCode: submitResp.StatusCode, Header: submitResp.Header.Clone(), Body: io.NopCloser(bytes.NewReader(submitBody))}, nil
+	}
+	baseURL := account.GetOpenAIBaseURL()
+	validatedBase, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, err
+	}
+	taskURL := buildOpenAIEndpointURL(validatedBase, "/v1/images/tasks/"+url.PathEscape(taskID))
+	deadlineCtx, cancel := context.WithTimeout(ctx, nbilityImageAsyncTimeout)
+	defer cancel()
+	ticker := time.NewTicker(nbilityImageAsyncPollInterval)
+	defer ticker.Stop()
+	for {
+		pollReq, err := http.NewRequestWithContext(deadlineCtx, http.MethodGet, taskURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build Nbility image task request: %w", err)
+		}
+		pollReq = pollReq.WithContext(WithHTTPUpstreamProfile(pollReq.Context(), HTTPUpstreamProfileOpenAI))
+		authHeaders, err := s.buildOpenAIAuthenticationHeaders(deadlineCtx, account, token)
+		if err != nil {
+			return nil, fmt.Errorf("build Nbility image task authentication: %w", err)
+		}
+		for key, values := range authHeaders {
+			for _, value := range values {
+				pollReq.Header.Add(key, value)
+			}
+		}
+		account.ApplyHeaderOverrides(pollReq.Header)
+		pollResp, err := s.doOpenAIUpstream(pollReq, proxyURL, account)
+		if err != nil {
+			if deadlineCtx.Err() != nil {
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+			}
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Nbility GIF task poll request failed; retrying")
+			select {
+			case <-deadlineCtx.Done():
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+			case <-ticker.C:
+				continue
+			}
+		}
+		if pollResp == nil || pollResp.Body == nil {
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Nbility GIF task poll returned an empty response; retrying")
+			select {
+			case <-deadlineCtx.Done():
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+			case <-ticker.C:
+				continue
+			}
+		}
+		body, readErr := readUpstreamResponseBodyLimited(pollResp.Body, resolveUpstreamResponseReadLimit(s.cfg))
+		pollResp.Body.Close()
+		if readErr != nil {
+			if errors.Is(readErr, ErrUpstreamResponseBodyTooLarge) {
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusBadGateway, ErrorType: "upstream_error", Message: "Nbility image task response exceeds the configured response size limit"}
+			}
+			if deadlineCtx.Err() != nil {
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+			}
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Nbility GIF task poll response read failed; retrying")
+			select {
+			case <-deadlineCtx.Done():
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+			case <-ticker.C:
+				continue
+			}
+		}
+		if pollResp.StatusCode >= 400 {
+			return nil, openAIImagesUpstreamErrorFromHTTP(pollResp.StatusCode, pollResp.Header, body)
+		}
+		if !gjson.ValidBytes(body) {
+			contentType := pollResp.Header.Get("Content-Type")
+			if imageBody := normalizeNbilityImageBinaryResponse(body, contentType, parsed.OutputFormat); len(imageBody) > 0 {
+				body = imageBody
+			} else {
+				prefix := body
+				if len(prefix) > 16 {
+					prefix = prefix[:16]
+				}
+				logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Nbility GIF task poll returned non-JSON result status=%d content_type=%q bytes=%d prefix_hex=%x", pollResp.StatusCode, contentType, len(body), prefix)
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusBadGateway, ErrorType: "upstream_error", Message: fmt.Sprintf("Nbility image task returned an unsupported result (content-type: %s)", firstNonEmptyString(contentType, "unknown"))}
+			}
+		}
+		status := strings.ToLower(strings.TrimSpace(firstNonEmptyString(gjson.GetBytes(body, "data.status").String(), gjson.GetBytes(body, "status").String())))
+		if status == "" && nbilityImageTaskBodyHasResult(body) {
+			status = "completed"
+		}
+		switch status {
+		case "failed", "failure", "error", "cancelled", "canceled":
+			message := firstNonEmptyString(gjson.GetBytes(body, "data.error.message").String(), gjson.GetBytes(body, "error.message").String(), gjson.GetBytes(body, "message").String(), "Nbility image task failed")
+			return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusBadGateway, ErrorType: "upstream_error", Message: message}
+		case "completed", "complete", "succeeded", "success":
+			finalBody := normalizeNbilityImageTaskResponse(body, parsed.OutputFormat)
+			if extractOpenAIImageCountFromJSONBytes(finalBody) == 0 {
+				return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusBadGateway, ErrorType: "upstream_error", Message: "Nbility image task completed without an image result"}
+			}
+			return &http.Response{StatusCode: http.StatusOK, Header: pollResp.Header.Clone(), Body: io.NopCloser(bytes.NewReader(finalBody))}, nil
+		}
+		if deadlineCtx.Err() != nil {
+			return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+		}
+		select {
+		case <-deadlineCtx.Done():
+			return nil, &OpenAIImagesUpstreamError{StatusCode: http.StatusGatewayTimeout, ErrorType: "timeout_error", Message: "Nbility image task timed out after 5 minutes"}
+		case <-ticker.C:
+		}
+	}
+}
+
+func normalizeNbilityImageTaskResponse(body []byte, outputFormat string) []byte {
+	body = bytes.TrimSpace(body)
+	body = bytes.TrimSpace(bytes.TrimPrefix(body, []byte{0xef, 0xbb, 0xbf}))
+	format := strings.TrimSpace(outputFormat)
+	paths := []string{"data.result", "data.result.response", "data.result.data", "result", "data"}
+	for _, path := range paths {
+		candidate := gjson.GetBytes(body, path)
+		if !candidate.Exists() {
+			continue
+		}
+		if candidate.IsArray() {
+			out := []byte(`{"data":` + candidate.Raw + `}`)
+			return addNbilityImageOutputFormats(out, format)
+		}
+		if candidate.IsObject() && candidate.Get("data").IsArray() {
+			return addNbilityImageOutputFormats([]byte(candidate.Raw), format)
+		}
+		if candidate.IsObject() && (candidate.Get("url").Exists() || candidate.Get("b64_json").Exists()) {
+			return addNbilityImageOutputFormats([]byte(`{"data":[`+candidate.Raw+`]}`), format)
+		}
+		if candidate.Type == gjson.String && strings.TrimSpace(candidate.String()) != "" {
+			value := strings.TrimSpace(candidate.String())
+			item := map[string]string{"url": value}
+			if strings.HasPrefix(strings.ToLower(value), "data:image/") {
+				item = map[string]string{"b64_json": normalizeOpenAIImageBase64(value)}
+			}
+			out, _ := json.Marshal(map[string]any{"data": []any{item}})
+			if format != "" {
+				out, _ = sjson.SetBytes(out, "data.0.output_format", format)
+			}
+			return out
+		}
+	}
+	// The documented task API returns image_urls / result_url directly in data,
+	// without a result.data wrapper. Prefer the full list and avoid returning the
+	// first image twice when result_url repeats image_urls[0].
+	for _, path := range []string{"data.image_urls", "image_urls", "data.result_url", "result_url"} {
+		candidate := gjson.GetBytes(body, path)
+		values := candidate.Array()
+		if candidate.Type == gjson.String {
+			values = []gjson.Result{candidate}
+		}
+		items := make([]map[string]string, 0, len(values))
+		seen := make(map[string]bool)
+		for _, value := range values {
+			if value.Type != gjson.String {
+				continue
+			}
+			imageURL := strings.TrimSpace(value.String())
+			if imageURL == "" || seen[imageURL] {
+				continue
+			}
+			seen[imageURL] = true
+			items = append(items, map[string]string{"url": imageURL})
+		}
+		if len(items) > 0 {
+			out, _ := json.Marshal(map[string]any{"data": items})
+			return addNbilityImageOutputFormats(out, format)
+		}
+	}
+	return body
+}
+
+func normalizeNbilityImageBinaryResponse(body []byte, _ string, outputFormat string) []byte {
+	contentType := detectedImageContentType(body)
+	if contentType == "" {
+		return nil
+	}
+	format := inferNbilityImageOutputFormat(gjson.Parse(`{"mime_type":"`+contentType+`"}`), outputFormat)
+	item := map[string]string{
+		"b64_json":      base64.StdEncoding.EncodeToString(body),
+		"output_format": format,
+	}
+	out, err := json.Marshal(map[string]any{"data": []any{item}})
+	if err != nil {
+		return nil
+	}
+	return out
+}
+
+func addNbilityImageOutputFormats(body []byte, fallback string) []byte {
+	items := gjson.GetBytes(body, "data").Array()
+	for i, item := range items {
+		if strings.TrimSpace(item.Get("output_format").String()) != "" {
+			continue
+		}
+		format := inferNbilityImageOutputFormat(item, "")
+		if format == "" && i == 0 {
+			format = strings.TrimSpace(fallback)
+		}
+		if format != "" {
+			body, _ = sjson.SetBytes(body, fmt.Sprintf("data.%d.output_format", i), format)
+		}
+	}
+	return body
+}
+
+func inferNbilityImageOutputFormat(item gjson.Result, fallback string) string {
+	if format := strings.TrimSpace(item.Get("output_format").String()); format != "" {
+		return format
+	}
+	mimeType := strings.ToLower(strings.TrimSpace(firstNonEmptyString(item.Get("mime_type").String(), item.Get("mimeType").String(), item.Get("content_type").String())))
+	if strings.HasSuffix(mimeType, "/gif") {
+		return "gif"
+	}
+	if strings.HasSuffix(mimeType, "/png") {
+		return "png"
+	}
+	if strings.HasSuffix(mimeType, "/jpeg") || strings.HasSuffix(mimeType, "/jpg") {
+		return "jpeg"
+	}
+	if strings.HasSuffix(mimeType, "/webp") {
+		return "webp"
+	}
+	imageURL := strings.ToLower(strings.TrimSpace(item.Get("url").String()))
+	for _, ext := range []string{"gif", "png", "jpeg", "jpg", "webp"} {
+		if strings.Contains(imageURL, "."+ext) {
+			if ext == "jpg" {
+				return "jpeg"
+			}
+			return ext
+		}
+	}
+	return strings.TrimSpace(fallback)
+}
+
+func nbilityImageTaskBodyHasResult(body []byte) bool {
+	for _, item := range gjson.GetBytes(normalizeNbilityImageTaskResponse(body, ""), "data").Array() {
+		if item.IsObject() && (strings.TrimSpace(item.Get("url").String()) != "" || strings.TrimSpace(item.Get("b64_json").String()) != "") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildOpenAIImagesURL(base string, endpoint string) string {
